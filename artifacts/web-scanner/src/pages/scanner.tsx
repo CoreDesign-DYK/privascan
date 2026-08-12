@@ -4,6 +4,7 @@ import { Camera, Image as ImageIcon, Zap, CheckCircle2, ChevronRight, X, Smartph
 import { useCamera } from '@/hooks/use-camera';
 import { useScannerContext } from '@/contexts/scanner-context';
 import { SettingsSheet } from '@/components/settings-sheet';
+import { RadialMenu } from '@/components/radial-menu';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -284,18 +285,26 @@ export default function ScannerScreen() {
             <ImageIcon className="w-6 h-6" />
           </Button>
 
-          <button
-            onClick={handleCaptureClick}
-            className="relative flex items-center justify-center w-20 h-20 rounded-full border-4 border-gray-800 active:scale-95 transition-transform"
+          <RadialMenu
+            onRetake={() => { toast('Retake'); }}
+            onCrop={() => { toast('Crop'); }}
+            onRotate={() => { toast('Rotate'); }}
+            onMarkup={() => { toast('Markup'); }}
+            onDelete={() => { toast.error('Deleted'); }}
           >
-            <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center">
-              {mode === 'manual' ? (
-                <div className="w-14 h-14 border-2 border-white rounded-full" />
-              ) : (
-                <Zap className="w-6 h-6 text-white fill-white" />
-              )}
-            </div>
-          </button>
+            <button
+              onClick={handleCaptureClick}
+              className="relative flex items-center justify-center w-20 h-20 rounded-full border-4 border-gray-800 active:scale-95 transition-transform"
+            >
+              <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center">
+                {mode === 'manual' ? (
+                  <div className="w-14 h-14 border-2 border-white rounded-full" />
+                ) : (
+                  <Zap className="w-6 h-6 text-white fill-white" />
+                )}
+              </div>
+            </button>
+          </RadialMenu>
 
           {mode === 'manual' ? (
             <Button
