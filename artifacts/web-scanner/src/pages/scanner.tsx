@@ -89,6 +89,9 @@ export default function ScannerScreen() {
   const [stableProgress, setStableProgress] = useState(0); // 0 – 1
   // "captured!" flash label that fades out
   const [capturedLabel, setCapturedLabel] = useState<number | null>(null); // page number
+  // Thumbnail strip: tracks which thumb is highlighted (always last page)
+  const [selectedThumb, setSelectedThumb] = useState(-1);
+  const lastThumbRef = useRef<HTMLButtonElement>(null);
 
   // Refs for values used inside setInterval (avoids stale-closure bugs)
   const modeRef          = useRef(mode);
@@ -101,6 +104,16 @@ export default function ScannerScreen() {
   useEffect(() => { modeRef.current     = mode;          }, [mode]);
   useEffect(() => { pagesLenRef.current = pages.length;  }, [pages.length]);
   useEffect(() => { settingsRef.current = settings;      }, [settings]);
+
+  // Auto-select & scroll to the newest thumbnail whenever pages[] grows
+  useEffect(() => {
+    if (pages.length === 0) { setSelectedThumb(-1); return; }
+    setSelectedThumb(pages.length - 1);
+    // small delay so the DOM element exists before scrolling
+    setTimeout(() => {
+      lastThumbRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'end' });
+    }, 60);
+  }, [pages.length]);
 
   // Reset stability when switching modes
   useEffect(() => {
@@ -377,19 +390,23 @@ export default function ScannerScreen() {
 
         {/* Page thumbnails */}
         {pages.length > 0 && (
-          <div className="flex gap-3 overflow-x-auto snap-x px-1 pb-0.5">
+          <div className="flex gap-2.5 overflow-x-auto snap-x px-1 pb-1" style={{ scrollbarWidth: 'none' }}>
             {pages.map((p, i) => (
               <button
                 key={i}
+                ref={i === pages.length - 1 ? lastThumbRef : null}
                 onClick={() => {
-                  // Tap thumbnail → open that page in edit
+                  setSelectedThumb(i);
                   setPendingPage(p);
                   setDetectedCorners(defaultCorners(1240, 1754));
                   setLocation('/edit');
                 }}
-                className="relative shrink-0 w-14 h-[4.5rem] rounded-md overflow-hidden
-                           border-2 border-gray-200 snap-center shadow-sm
-                           hover:border-blue-400 transition-colors group"
+                className={cn(
+                  'relative shrink-0 w-[4.5rem] h-[5.75rem] rounded-xl overflow-hidden snap-center shadow-md transition-all duration-200 group',
+                  i === selectedThumb
+                    ? 'border-[3px] border-blue-500 scale-105 shadow-blue-200'
+                    : 'border-2 border-white/80 hover:border-blue-300',
+                )}
               >
                 <img src={p} alt={`Page ${i + 1}`} className="w-full h-full object-cover" />
                 {/* Edit icon on hover */}
@@ -397,8 +414,13 @@ export default function ScannerScreen() {
                                transition-opacity flex items-center justify-center">
                   <Edit2 className="w-4 h-4 text-white" />
                 </div>
-                <div className="absolute bottom-0.5 right-0.5 bg-white/90 text-[9px]
-                               text-gray-700 px-1 py-0.5 rounded font-mono leading-none">
+                {/* Page number badge */}
+                <div className={cn(
+                  'absolute bottom-0 inset-x-0 py-1 text-center text-[10px] font-bold leading-none transition-colors',
+                  i === selectedThumb
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-black/50 text-white',
+                )}>
                   {i + 1}
                 </div>
               </button>
