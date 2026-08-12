@@ -94,8 +94,8 @@ export function RadialMenu({
                 'transition-transform active:scale-90',
                 'shadow-[0_2px_12px_rgba(0,0,0,0.25)]',
                 item.danger
-                  ? 'bg-gray-900 text-white hover:bg-black'          // 휴지통: 검정 배경 + 흰 아이콘
-                  : 'bg-black/20 backdrop-blur-md text-white hover:bg-black/35' // 나머지: 반투명
+                  ? 'bg-gray-900 text-white hover:bg-black'           // 휴지통: 검정 배경 + 흰 아이콘
+                  : 'bg-transparent text-gray-900 hover:bg-black/10'  // 나머지: 투명 배경 + 검정 아이콘
               )}
               style={{
                 transform: open
