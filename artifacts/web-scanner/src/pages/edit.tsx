@@ -1,10 +1,12 @@
 /**
- * edit.tsx
- * Post-capture document crop & filter editor.
- * • 4-corner drag handles → perspective warp (on-device Canvas)
- * • Filter presets: Original / B&W / High-Contrast / Auto-Color
- * • Brightness & Contrast sliders
- * All processing is local — zero server, instant.
+ * edit.tsx — Post-capture crop & filter editor
+ *
+ * Handle system:
+ *  • Corner circles  (r=16, white+blue border) → free XY drag
+ *  • Edge bars       (rounded rect on each side midpoint)
+ *      top / bottom  → Y-axis only  (up / down)
+ *      left / right  → X-axis only  (left / right)
+ *  • Edge lines      → same axis-constrained drag as their bar handle
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocation } from 'wouter';
@@ -19,46 +21,55 @@ import { toast } from 'sonner';
 
 const FILTERS: FilterType[] = ['original', 'auto', 'bw', 'highcontrast'];
 
+/* ── Drag target types ──────────────────────────────────────────────────────── */
+type DragTarget =
+  | 'corner-0' | 'corner-1' | 'corner-2' | 'corner-3'
+  | 'edge-top'  | 'edge-right' | 'edge-bottom' | 'edge-left';
+
+/* ── Geometry helpers ──────────────────────────────────────────────────────── */
+function midpoint(a: Point, b: Point): Point {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
 export default function EditScreen() {
-  const [, setLocation]   = useLocation();
+  const [, setLocation] = useLocation();
   const {
     pendingPage, setPendingPage,
     detectedCorners, setDetectedCorners,
-    addPage, settings,
+    addPage,
   } = useScannerContext();
 
-  // ── image loading ──────────────────────────────────────────────────────────
-  const imgRef    = useRef<HTMLImageElement>(null);
+  /* ── image loading ────────────────────────────────────────────────────────── */
+  const imgRef       = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [imgLoaded, setImgLoaded] = useState(false);
-  const [displayW, setDisplayW]   = useState(0);
-  const [displayH, setDisplayH]   = useState(0);
+  const [displayW,  setDisplayW]  = useState(0);
+  const [displayH,  setDisplayH]  = useState(0);
   const [natW, setNatW]           = useState(0);
   const [natH, setNatH]           = useState(0);
 
-  // ── corner handles (in *display* pixel coordinates) ───────────────────────
-  const [corners, setCorners] = useState<[Point, Point, Point, Point] | null>(null);
-  const dragging = useRef<number | null>(null);
+  /* ── corner state (display coords) ───────────────────────────────────────── */
+  const [corners, setCorners]     = useState<[Point, Point, Point, Point] | null>(null);
+  const dragging = useRef<DragTarget | null>(null);
 
-  // ── filter state ──────────────────────────────────────────────────────────
-  const [filter, setFilter]         = useState<FilterType>('original');
+  /* ── filter state ─────────────────────────────────────────────────────────── */
+  const [filter,     setFilter]     = useState<FilterType>('original');
   const [brightness, setBrightness] = useState(0);
   const [contrast,   setContrast]   = useState(0);
   const [applying,   setApplying]   = useState(false);
 
-  // If no pending image, go back to scanner
   useEffect(() => {
     if (!pendingPage) setLocation('/');
   }, [pendingPage, setLocation]);
 
-  // Compute display size after image loads
+  /* ── Image load: compute display size + initial corners ──────────────────── */
   const onImageLoad = useCallback(() => {
     const img = imgRef.current;
     const con = containerRef.current;
     if (!img || !con) return;
 
     const nw = img.naturalWidth, nh = img.naturalHeight;
-    const cw = con.clientWidth, ch = con.clientHeight;
+    const cw = con.clientWidth,  ch = con.clientHeight;
     const scale = Math.min(cw / nw, ch / nh, 1);
     const dw = Math.round(nw * scale), dh = Math.round(nh * scale);
 
@@ -66,72 +77,83 @@ export default function EditScreen() {
     setDisplayW(dw); setDisplayH(dh);
     setImgLoaded(true);
 
-    // Set initial corners (detected or default), in display coords
     const src = detectedCorners
       ? detectedCorners.map(p => ({ x: p.x * scale, y: p.y * scale })) as [Point, Point, Point, Point]
       : defaultCorners(dw, dh);
     setCorners(src);
   }, [detectedCorners]);
 
-  // ── pointer drag handlers ──────────────────────────────────────────────────
-  const onPointerDown = (e: React.PointerEvent, idx: number) => {
-    e.currentTarget.setPointerCapture(e.pointerId);
-    dragging.current = idx;
+  /* ── Pointer events ──────────────────────────────────────────────────────── */
+  const startDrag = (e: React.PointerEvent, target: DragTarget) => {
+    e.stopPropagation();
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    dragging.current = target;
   };
 
   const onPointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
-    if (dragging.current === null || !corners) return;
+    if (!dragging.current || !corners) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const x = Math.max(0, Math.min(displayW, e.clientX - rect.left));
     const y = Math.max(0, Math.min(displayH, e.clientY - rect.top));
-    const next = [...corners] as [Point, Point, Point, Point];
-    next[dragging.current] = { x, y };
-    setCorners(next);
+    const c = corners.map(p => ({ ...p })) as [Point, Point, Point, Point];
+
+    switch (dragging.current) {
+      // ── Corners: free XY ──────────────────────────────────────────────────
+      case 'corner-0': c[0] = { x, y }; break;
+      case 'corner-1': c[1] = { x, y }; break;
+      case 'corner-2': c[2] = { x, y }; break;
+      case 'corner-3': c[3] = { x, y }; break;
+      // ── Edge: top — move TL + TR vertically ───────────────────────────────
+      case 'edge-top':
+        c[0] = { ...c[0], y };
+        c[1] = { ...c[1], y };
+        break;
+      // ── Edge: bottom — move BR + BL vertically ───────────────────────────
+      case 'edge-bottom':
+        c[2] = { ...c[2], y };
+        c[3] = { ...c[3], y };
+        break;
+      // ── Edge: left — move TL + BL horizontally ───────────────────────────
+      case 'edge-left':
+        c[0] = { ...c[0], x };
+        c[3] = { ...c[3], x };
+        break;
+      // ── Edge: right — move TR + BR horizontally ──────────────────────────
+      case 'edge-right':
+        c[1] = { ...c[1], x };
+        c[2] = { ...c[2], x };
+        break;
+    }
+    setCorners(c);
   }, [corners, displayW, displayH]);
 
   const onPointerUp = () => { dragging.current = null; };
 
-  // Reset corners to full image
   const resetCorners = () => {
     if (displayW && displayH) setCorners(defaultCorners(displayW, displayH));
   };
 
-  // ── Apply: warp + filter → addPage ────────────────────────────────────────
+  /* ── Apply: warp + filter → addPage ─────────────────────────────────────── */
   const handleApply = async () => {
     if (!pendingPage || !corners) return;
     setApplying(true);
     const tid = toast.loading('Processing…');
-
     try {
-      // 1. Draw original image to a canvas
       const img = new Image();
-      await new Promise<void>((res, rej) => {
-        img.onload = () => res();
-        img.onerror = rej;
-        img.src = pendingPage!;
-      });
+      await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = pendingPage!; });
 
       const srcCanvas = document.createElement('canvas');
-      srcCanvas.width  = natW; srcCanvas.height = natH;
+      srcCanvas.width = natW; srcCanvas.height = natH;
       srcCanvas.getContext('2d')!.drawImage(img, 0, 0);
 
-      // 2. Scale corners back to natural image coordinates
       const scaleX = natW / displayW, scaleY = natH / displayH;
-      const natCorners = corners.map(p => ({
-        x: p.x * scaleX, y: p.y * scaleY,
-      })) as [Point, Point, Point, Point];
+      const natCorners = corners.map(p => ({ x: p.x * scaleX, y: p.y * scaleY })) as [Point, Point, Point, Point];
 
-      // 3. Warp perspective
       const { w: outW, h: outH } = estimateOutputSize(natCorners);
-      const warped = warpPerspective(srcCanvas, natCorners, outW, outH);
-
-      // 4. Apply filter
+      const warped   = warpPerspective(srcCanvas, natCorners, outW, outH);
       const filtered = filterCanvas(warped, filter, brightness, contrast);
 
-      // 5. Export to JPEG and add to pages
-      const dataUrl = filtered.toDataURL('image/jpeg', 0.92);
-      addPage(dataUrl);
-
+      addPage(filtered.toDataURL('image/jpeg', 0.92));
       toast.success('Page added!', { id: tid });
       setPendingPage(null);
       setDetectedCorners(null);
@@ -144,10 +166,15 @@ export default function EditScreen() {
     }
   };
 
-  // ── render ─────────────────────────────────────────────────────────────────
-  const CORNER_LABELS = ['TL', 'TR', 'BR', 'BL'];
-  const CORNER_COLORS = ['#3b82f6', '#3b82f6', '#3b82f6', '#3b82f6'];
+  /* ── Derived geometry ────────────────────────────────────────────────────── */
+  const mids = corners ? {
+    top:    midpoint(corners[0], corners[1]),
+    right:  midpoint(corners[1], corners[2]),
+    bottom: midpoint(corners[2], corners[3]),
+    left:   midpoint(corners[0], corners[3]),
+  } : null;
 
+  /* ── Render ──────────────────────────────────────────────────────────────── */
   return (
     <div className="min-h-[100dvh] bg-gray-950 flex flex-col select-none">
 
@@ -169,76 +196,138 @@ export default function EditScreen() {
           className="rounded-full bg-blue-500 hover:bg-blue-600 text-white font-semibold px-5"
           onClick={handleApply}
         >
-          {applying ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            : <><Check className="w-4 h-4 mr-1" /> Apply</>}
+          {applying
+            ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            : <><Check className="w-4 h-4 mr-1" />Apply</>}
         </Button>
       </div>
 
-      {/* Image + Corner overlay */}
+      {/* Image + overlay */}
       <div
         ref={containerRef}
         className="flex-1 flex items-center justify-center overflow-hidden px-4 py-2"
         style={{ minHeight: 0 }}
       >
         {pendingPage && (
-          <div className="relative" style={{ width: displayW || 'auto', height: displayH || 'auto' }}>
+          <div
+            className="relative"
+            style={{ width: displayW || 'auto', height: displayH || 'auto' }}
+          >
             {/* Source image */}
             <img
               ref={imgRef}
               src={pendingPage}
               onLoad={onImageLoad}
               className="block rounded-md"
-              style={{ width: displayW || undefined, height: displayH || undefined, opacity: imgLoaded ? 1 : 0 }}
+              style={{
+                width: displayW || undefined,
+                height: displayH || undefined,
+                opacity: imgLoaded ? 1 : 0,
+              }}
               alt="Captured page"
               draggable={false}
             />
 
-            {/* SVG overlay with quad + handles */}
-            {imgLoaded && corners && (
+            {/* SVG overlay */}
+            {imgLoaded && corners && mids && (
               <svg
-                className="absolute inset-0 cursor-crosshair touch-none"
+                className="absolute inset-0 touch-none overflow-visible"
                 width={displayW}
                 height={displayH}
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
+                onPointerLeave={onPointerUp}
               >
-                {/* Quad outline */}
+                {/* ── Quad outline (solid, no fill) ── */}
                 <polygon
                   points={corners.map(p => `${p.x},${p.y}`).join(' ')}
-                  fill="rgba(59,130,246,0.12)"
+                  fill="none"
                   stroke="#3b82f6"
                   strokeWidth="2"
-                  strokeDasharray="6 3"
                 />
 
-                {/* Corner handles */}
+                {/* ════════════════════════════════════════
+                    EDGE DRAG LINES — invisible wide hit area
+                    ════════════════════════════════════════ */}
+
+                {/* Top edge */}
+                <line
+                  x1={corners[0].x} y1={corners[0].y}
+                  x2={corners[1].x} y2={corners[1].y}
+                  stroke="transparent" strokeWidth="20"
+                  style={{ cursor: 'ns-resize' }}
+                  onPointerDown={e => startDrag(e, 'edge-top')}
+                />
+                {/* Right edge */}
+                <line
+                  x1={corners[1].x} y1={corners[1].y}
+                  x2={corners[2].x} y2={corners[2].y}
+                  stroke="transparent" strokeWidth="20"
+                  style={{ cursor: 'ew-resize' }}
+                  onPointerDown={e => startDrag(e, 'edge-right')}
+                />
+                {/* Bottom edge */}
+                <line
+                  x1={corners[2].x} y1={corners[2].y}
+                  x2={corners[3].x} y2={corners[3].y}
+                  stroke="transparent" strokeWidth="20"
+                  style={{ cursor: 'ns-resize' }}
+                  onPointerDown={e => startDrag(e, 'edge-bottom')}
+                />
+                {/* Left edge */}
+                <line
+                  x1={corners[3].x} y1={corners[3].y}
+                  x2={corners[0].x} y2={corners[0].y}
+                  stroke="transparent" strokeWidth="20"
+                  style={{ cursor: 'ew-resize' }}
+                  onPointerDown={e => startDrag(e, 'edge-left')}
+                />
+
+                {/* ════════════════════════════════════════
+                    EDGE MID-POINT HANDLES (rounded rect bars)
+                    Top/Bottom → horizontal bar (ns-resize)
+                    Left/Right → vertical bar   (ew-resize)
+                    ════════════════════════════════════════ */}
+
+                {/* Top bar */}
+                <EdgeBar
+                  cx={mids.top.x} cy={mids.top.y}
+                  horizontal
+                  onPointerDown={e => startDrag(e, 'edge-top')}
+                  cursor="ns-resize"
+                />
+                {/* Bottom bar */}
+                <EdgeBar
+                  cx={mids.bottom.x} cy={mids.bottom.y}
+                  horizontal
+                  onPointerDown={e => startDrag(e, 'edge-bottom')}
+                  cursor="ns-resize"
+                />
+                {/* Left bar */}
+                <EdgeBar
+                  cx={mids.left.x} cy={mids.left.y}
+                  horizontal={false}
+                  onPointerDown={e => startDrag(e, 'edge-left')}
+                  cursor="ew-resize"
+                />
+                {/* Right bar */}
+                <EdgeBar
+                  cx={mids.right.x} cy={mids.right.y}
+                  horizontal={false}
+                  onPointerDown={e => startDrag(e, 'edge-right')}
+                  cursor="ew-resize"
+                />
+
+                {/* ════════════════════════════════════════
+                    CORNER HANDLES — large circles, free XY
+                    ════════════════════════════════════════ */}
+
                 {corners.map((p, i) => (
-                  <g key={i}>
-                    {/* Outer ring for easier touch */}
-                    <circle
-                      cx={p.x} cy={p.y} r={20}
-                      fill="transparent"
-                      onPointerDown={e => onPointerDown(e, i)}
-                      style={{ cursor: 'grab' }}
-                    />
-                    {/* Visible dot */}
-                    <circle
-                      cx={p.x} cy={p.y} r={9}
-                      fill={CORNER_COLORS[i]}
-                      stroke="white"
-                      strokeWidth="2.5"
-                      style={{ pointerEvents: 'none' }}
-                    />
-                    {/* Label */}
-                    <text
-                      x={p.x} y={p.y + 1}
-                      textAnchor="middle" dominantBaseline="middle"
-                      fill="white" fontSize="7" fontWeight="bold"
-                      style={{ pointerEvents: 'none' }}
-                    >
-                      {CORNER_LABELS[i]}
-                    </text>
-                  </g>
+                  <CornerHandle
+                    key={i}
+                    cx={p.x} cy={p.y}
+                    onPointerDown={e => startDrag(e, `corner-${i}` as DragTarget)}
+                  />
                 ))}
               </svg>
             )}
@@ -252,10 +341,9 @@ export default function EditScreen() {
         )}
       </div>
 
-      {/* Controls */}
+      {/* Controls panel */}
       <div className="shrink-0 bg-gray-900 rounded-t-2xl px-4 pt-4 pb-6 space-y-4">
 
-        {/* Reset corners */}
         <div className="flex justify-end">
           <button
             onClick={resetCorners}
@@ -277,7 +365,7 @@ export default function EditScreen() {
                   'shrink-0 px-4 py-2 rounded-full text-sm font-semibold transition-all',
                   filter === f
                     ? 'bg-blue-500 text-white'
-                    : 'bg-white/10 text-white/70 hover:bg-white/20'
+                    : 'bg-white/10 text-white/70 hover:bg-white/20',
                 )}
               >
                 {FILTER_LABELS[f]}
@@ -288,26 +376,78 @@ export default function EditScreen() {
 
         {/* Sliders */}
         <div className="space-y-3">
-          <SliderRow
-            label="Brightness" value={brightness}
-            onChange={setBrightness} min={-100} max={100}
-          />
-          <SliderRow
-            label="Contrast" value={contrast}
-            onChange={setContrast} min={-100} max={100}
-          />
+          <SliderRow label="Brightness" value={brightness} onChange={setBrightness} min={-100} max={100} />
+          <SliderRow label="Contrast"   value={contrast}   onChange={setContrast}   min={-100} max={100} />
         </div>
       </div>
     </div>
   );
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   Sub-components
+───────────────────────────────────────────────────────────────────────────── */
+
+/** Large white circle with blue border — free XY drag */
+function CornerHandle({
+  cx, cy, onPointerDown,
+}: {
+  cx: number; cy: number;
+  onPointerDown: (e: React.PointerEvent) => void;
+}) {
+  return (
+    <g>
+      {/* Invisible large touch target */}
+      <circle cx={cx} cy={cy} r={26} fill="transparent" onPointerDown={onPointerDown} style={{ cursor: 'grab' }} />
+      {/* Visible white circle */}
+      <circle cx={cx} cy={cy} r={14} fill="white" stroke="#3b82f6" strokeWidth="2.5" style={{ pointerEvents: 'none' }} />
+      {/* Inner blue dot */}
+      <circle cx={cx} cy={cy} r={4}  fill="#3b82f6" style={{ pointerEvents: 'none' }} />
+    </g>
+  );
+}
+
+/** Rounded-rect bar at edge midpoint — axis-constrained drag */
+function EdgeBar({
+  cx, cy, horizontal, onPointerDown, cursor,
+}: {
+  cx: number; cy: number; horizontal: boolean;
+  onPointerDown: (e: React.PointerEvent) => void;
+  cursor: string;
+}) {
+  const W = horizontal ? 28 : 10;
+  const H = horizontal ? 10 : 28;
+  return (
+    <g>
+      {/* Invisible touch target */}
+      <rect
+        x={cx - W / 2 - 6} y={cy - H / 2 - 6}
+        width={W + 12} height={H + 12}
+        rx={8} fill="transparent"
+        onPointerDown={onPointerDown}
+        style={{ cursor }}
+      />
+      {/* Visible bar */}
+      <rect
+        x={cx - W / 2} y={cy - H / 2}
+        width={W} height={H}
+        rx={5}
+        fill="white" stroke="#3b82f6" strokeWidth="2"
+        style={{ pointerEvents: 'none' }}
+      />
+      {/* Centre tick line */}
+      {horizontal
+        ? <line x1={cx - 5} y1={cy} x2={cx + 5} y2={cy} stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" style={{ pointerEvents: 'none' }} />
+        : <line x1={cx} y1={cy - 5} x2={cx} y2={cy + 5} stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" style={{ pointerEvents: 'none' }} />
+      }
+    </g>
+  );
+}
+
 function SliderRow({
   label, value, onChange, min, max,
 }: {
-  label: string; value: number;
-  onChange: (v: number) => void;
-  min: number; max: number;
+  label: string; value: number; onChange: (v: number) => void; min: number; max: number;
 }) {
   return (
     <div className="flex items-center gap-3">
