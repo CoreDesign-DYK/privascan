@@ -243,12 +243,7 @@ export default function ScannerScreen() {
         )}
 
         {/* Viewfinder overlay */}
-        <div className="absolute inset-4 border-2 border-gray-300 rounded-2xl pointer-events-none">
-          <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-primary rounded-tl-2xl" />
-          <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-primary rounded-tr-2xl" />
-          <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-primary rounded-bl-2xl" />
-          <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-primary rounded-br-2xl" />
-        </div>
+        <div className="absolute inset-4 border-2 border-gray-300 rounded-2xl pointer-events-none" />
 
         {/* Desktop Hint (production only) */}
         {!isMockMode && (
