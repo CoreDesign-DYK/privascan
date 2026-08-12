@@ -21,7 +21,7 @@ export function TopBar() {
   };
 
   return (
-    <div className="fixed top-0 right-0 z-50 flex items-center gap-1 px-3 py-2">
+    <div className="fixed top-0 right-0 z-50 flex items-center gap-1 px-4 py-3 pr-5">
       {/* Language pills */}
       <div className="flex items-center bg-white/80 backdrop-blur-sm rounded-full border border-gray-200 shadow-sm px-1 py-1 gap-0.5">
         {LANGUAGES.map((lang) => (
