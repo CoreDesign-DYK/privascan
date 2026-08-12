@@ -20,7 +20,7 @@ const ITEMS_CONFIG = [
   { angle:  70, label: 'Delete',  icon: <Trash2   className="w-6 h-6" />, key: 'delete', danger: true },
 ];
 
-const RADIUS = 84; // px  (120 × 0.7)
+const RADIUS = 130; // px
 
 function angleToXY(angleDeg: number) {
   const rad = ((angleDeg - 90) * Math.PI) / 180;
