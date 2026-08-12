@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 
 export default function ScannerScreen() {
   const [, setLocation] = useLocation();
-  const { videoRef, startCamera, stopCamera, hasPermission, error } = useCamera();
+  const { videoRef, startCamera, stopCamera, hasPermission, isMockMode } = useCamera();
   const { mode, setMode, pages, addPage, settings } = useScannerContext();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isCapturing, setIsCapturing] = useState(false);
@@ -22,38 +22,103 @@ export default function ScannerScreen() {
   }, [startCamera, stopCamera]);
 
   const captureFrame = () => {
-    if (!videoRef.current || !canvasRef.current) return;
-    
+    if (!canvasRef.current) return;
+
     setIsCapturing(true);
     setTimeout(() => setIsCapturing(false), 150); // Flash effect
-    
-    const video = videoRef.current;
+
     const canvas = canvasRef.current;
-    
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    // Draw current frame
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    // Apply greyscale filter if selected
-    if (settings.colorMode === 'greyscale') {
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imageData.data;
-      for (let i = 0; i < data.length; i += 4) {
-        const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-        data[i] = avg;     // red
-        data[i + 1] = avg; // green
-        data[i + 2] = avg; // blue
+
+    if (isMockMode || !videoRef.current) {
+      // Dev mode: generate a fake scanned document image
+      canvas.width = 1240;
+      canvas.height = 1754; // A4 proportions
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const pageNum = pages.length + 1;
+      const bg = settings.colorMode === 'greyscale' ? '#f0f0f0' : '#fafaf8';
+      const ink = settings.colorMode === 'greyscale' ? '#222' : '#1a1a2e';
+
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Subtle paper texture lines
+      ctx.strokeStyle = settings.colorMode === 'greyscale' ? '#ddd' : '#e8e4dc';
+      ctx.lineWidth = 1;
+      for (let y = 80; y < canvas.height; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(60, y);
+        ctx.lineTo(canvas.width - 60, y);
+        ctx.stroke();
       }
-      ctx.putImageData(imageData, 0, 0);
+
+      // Mock text content
+      ctx.fillStyle = ink;
+      ctx.font = 'bold 56px sans-serif';
+      ctx.fillText(`Sample Document`, 80, 120);
+      ctx.font = '32px sans-serif';
+      ctx.fillStyle = '#666';
+      ctx.fillText(`Page ${pageNum}  ·  ${settings.paperSize}  ·  ${settings.scanType}`, 80, 175);
+      ctx.fillStyle = ink;
+      ctx.font = '28px sans-serif';
+      const lines = [
+        'Lorem ipsum dolor sit amet, consectetur adipiscing',
+        'elit. Sed do eiusmod tempor incididunt ut labore et',
+        'dolore magna aliqua. Ut enim ad minim veniam.',
+        '',
+        'Quis nostrud exercitation ullamco laboris nisi ut',
+        'aliquip ex ea commodo consequat. Duis aute irure',
+        'dolor in reprehenderit in voluptate velit esse.',
+        '',
+        'Cillum dolore eu fugiat nulla pariatur. Excepteur',
+        'sint occaecat cupidatat non proident, sunt in culpa',
+        'qui officia deserunt mollit anim id est laborum.',
+      ];
+      lines.forEach((line, i) => {
+        ctx.fillText(line, 80, 240 + i * 46);
+      });
+
+      // Corner scan marks
+      const markColor = '#3b82f6';
+      ctx.strokeStyle = markColor;
+      ctx.lineWidth = 6;
+      [[0,0],[canvas.width,0],[0,canvas.height],[canvas.width,canvas.height]].forEach(([x,y]) => {
+        const dx = x === 0 ? 1 : -1;
+        const dy = y === 0 ? 1 : -1;
+        ctx.beginPath();
+        ctx.moveTo(x + dx * 30, y + dy * 8);
+        ctx.lineTo(x + dx * 8, y + dy * 8);
+        ctx.lineTo(x + dx * 8, y + dy * 30);
+        ctx.stroke();
+      });
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      addPage(dataUrl);
+    } else {
+      const video = videoRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      if (settings.colorMode === 'greyscale') {
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        for (let i = 0; i < data.length; i += 4) {
+          const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+          data[i] = avg;
+          data[i + 1] = avg;
+          data[i + 2] = avg;
+        }
+        ctx.putImageData(imageData, 0, 0);
+      }
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+      addPage(dataUrl);
     }
-    
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
-    addPage(dataUrl);
     
     // In auto mode, wait 1.5s then capture again? Actually, prompt: 
     // "In Auto mode: camera streams continuously; when the user taps the capture button, it captures and auto-continues."
@@ -137,28 +202,58 @@ export default function ScannerScreen() {
         )} 
       />
 
-      {/* Video View */}
-      <div className="flex-1 relative flex items-center justify-center bg-zinc-900">
-        <video 
-          ref={videoRef} 
-          autoPlay 
-          playsInline 
-          muted 
-          className="absolute inset-0 w-full h-full object-cover"
+      {/* Camera View (hidden in dev mode) */}
+      {!isMockMode && (
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className="absolute inset-0 w-full h-full object-cover z-0"
         />
-        
+      )}
+
+      {/* Mock Camera View (dev mode only) */}
+      <div className={cn(
+        "flex-1 relative flex items-center justify-center",
+        isMockMode ? "bg-zinc-800" : "bg-zinc-900"
+      )}>
+        {isMockMode && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none">
+            {/* Simulated document on desk */}
+            <div className="relative w-48 h-64 rounded-md shadow-2xl"
+              style={{ background: 'linear-gradient(135deg, #f5f0e8 0%, #ede8dc 100%)' }}>
+              <div className="p-4 space-y-2">
+                <div className="h-2 bg-zinc-400/60 rounded w-3/4" />
+                <div className="h-2 bg-zinc-400/40 rounded w-full" />
+                <div className="h-2 bg-zinc-400/40 rounded w-5/6" />
+                <div className="h-2 bg-zinc-400/40 rounded w-full" />
+                <div className="h-2 bg-zinc-400/40 rounded w-2/3" />
+                <div className="mt-4 h-2 bg-zinc-400/40 rounded w-full" />
+                <div className="h-2 bg-zinc-400/40 rounded w-4/5" />
+                <div className="h-2 bg-zinc-400/40 rounded w-full" />
+              </div>
+            </div>
+            <p className="mt-6 text-white/40 text-xs tracking-widest uppercase">
+              Dev Mode — Camera Off
+            </p>
+          </div>
+        )}
+
         {/* Viewfinder overlay */}
         <div className="absolute inset-4 border-2 border-white/30 rounded-2xl pointer-events-none">
-          <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-primary rounded-tl-2xl"></div>
-          <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-primary rounded-tr-2xl"></div>
-          <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-primary rounded-bl-2xl"></div>
-          <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-primary rounded-br-2xl"></div>
+          <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-primary rounded-tl-2xl" />
+          <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-primary rounded-tr-2xl" />
+          <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-primary rounded-bl-2xl" />
+          <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-primary rounded-br-2xl" />
         </div>
 
-        {/* Desktop Hint */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white/50 text-sm hidden md:flex items-center gap-2 backdrop-blur-md bg-black/40 px-4 py-2 rounded-full pointer-events-none">
-          <Smartphone className="w-4 h-4" /> Use on mobile for best experience
-        </div>
+        {/* Desktop Hint (production only) */}
+        {!isMockMode && (
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white/50 text-sm hidden md:flex items-center gap-2 backdrop-blur-md bg-black/40 px-4 py-2 rounded-full pointer-events-none">
+            <Smartphone className="w-4 h-4" /> Use on mobile for best experience
+          </div>
+        )}
       </div>
 
       {/* Bottom Bar */}
