@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Web Scanner"
+description = "A commercial-grade web scanner app for mobile phones and tablets. Uses the device camera to scan documents and photos, supports auto and manual scan modes, PDF/JPEG export, cloud/OneDrive saving, and email attachment. Optimized for mobile and tablet use."
+version = "1.0.0"
+id = "artifacts/web-scanner"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22230
+
+[services.development]
+run = "pnpm --filter @workspace/web-scanner run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/web-scanner", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/web-scanner/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22230"
+BASE_PATH = "/"

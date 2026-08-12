@@ -3,13 +3,17 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Web Scanner API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: scans
+    description: Scan session operations
+  - name: share
+    description: Share and export operations
 paths:
   /healthz:
     get:
@@ -24,6 +28,94 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /scans:
+    get:
+      operationId: listScans
+      tags: [scans]
+      summary: List saved scans
+      responses:
+        "200":
+          description: List of scans
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Scan"
+    post:
+      operationId: createScan
+      tags: [scans]
+      summary: Create a new scan session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanInput"
+      responses:
+        "201":
+          description: Created scan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Scan"
+
+  /scans/{id}:
+    get:
+      operationId: getScan
+      tags: [scans]
+      summary: Get a specific scan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Scan details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Scan"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteScan
+      tags: [scans]
+      summary: Delete a scan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  /share/email:
+    post:
+      operationId: sendByEmail
+      tags: [share]
+      summary: Send a scan by email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailShareInput"
+      responses:
+        "200":
+          description: Email sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailShareResult"
+        "400":
+          description: Bad request
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +126,99 @@ components:
       required:
         - status
 
+    Scan:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        pageCount:
+          type: number
+        scanType:
+          type: string
+          enum: [document, photo]
+        colorMode:
+          type: string
+          enum: [color, greyscale]
+        paperSize:
+          type: string
+        format:
+          type: string
+          enum: [pdf, jpeg]
+        thumbnailUrl:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - pageCount
+        - scanType
+        - colorMode
+        - paperSize
+        - format
+        - thumbnailUrl
+        - createdAt
+
+    ScanInput:
+      type: object
+      properties:
+        name:
+          type: string
+        pageCount:
+          type: number
+        scanType:
+          type: string
+          enum: [document, photo]
+        colorMode:
+          type: string
+          enum: [color, greyscale]
+        paperSize:
+          type: string
+        format:
+          type: string
+          enum: [pdf, jpeg]
+        thumbnailUrl:
+          type: ["string", "null"]
+      required:
+        - name
+        - pageCount
+        - scanType
+        - colorMode
+        - paperSize
+        - format
+
+    EmailShareInput:
+      type: object
+      properties:
+        to:
+          type: string
+        subject:
+          type: string
+        message:
+          type: string
+        fileName:
+          type: string
+        fileBase64:
+          type: string
+        mimeType:
+          type: string
+      required:
+        - to
+        - subject
+        - fileName
+        - fileBase64
+        - mimeType
+
+    EmailShareResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+        - success
+        - message
