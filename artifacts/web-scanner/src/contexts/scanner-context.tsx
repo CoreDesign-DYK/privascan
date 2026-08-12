@@ -1,31 +1,28 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import { type Point } from '@/lib/perspective';
+import {
+  type ScanType, type ColorMode, type PaperSize, type ScannerSettings,
+  PAPER_SIZES,
+} from '@/lib/scanner-types';
 
-export type ScanType = 'document' | 'photo';
-export type ColorMode = 'color' | 'greyscale';
-
-export const PAPER_SIZES = [
-  'Card', 'L Landscape', 'L Portrait', '4"x6" Landscape', '4"x6" Portrait', 
-  'Hagaki Landscape', 'Hagaki Portrait', '2L Landscape', '2L Portrait', 
-  'A5', 'B5', 'A4', 'Statement', 'Letter'
-] as const;
-
-export type PaperSize = typeof PAPER_SIZES[number];
-
-interface ScannerSettings {
-  scanType: ScanType;
-  colorMode: ColorMode;
-  paperSize: PaperSize;
-}
+// Type-only re-exports are erased at runtime — Fast Refresh compatible
+export type { ScanType, ColorMode, PaperSize, ScannerSettings };
 
 interface ScannerContextType {
   settings: ScannerSettings;
-  setSettings: (settings: Partial<ScannerSettings>) => void;
-  pages: string[]; // Base64 JPEG data URLs
+  setSettings: (s: Partial<ScannerSettings>) => void;
+  pages: string[];
   addPage: (dataUrl: string) => void;
   removePage: (index: number) => void;
   clearPages: () => void;
   mode: 'auto' | 'manual';
   setMode: (mode: 'auto' | 'manual') => void;
+  /** Raw captured image waiting to be edited */
+  pendingPage: string | null;
+  setPendingPage: (url: string | null) => void;
+  /** Document corners detected by the camera (or null if none found) */
+  detectedCorners: [Point, Point, Point, Point] | null;
+  setDetectedCorners: (c: [Point, Point, Point, Point] | null) => void;
 }
 
 const ScannerContext = createContext<ScannerContextType | undefined>(undefined);
@@ -34,33 +31,27 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
   const [settings, setFullSettings] = useState<ScannerSettings>({
     scanType: 'document',
     colorMode: 'color',
-    paperSize: 'A4'
+    paperSize: 'A4',
   });
-  
-  const [pages, setPages] = useState<string[]>([]);
-  const [mode, setMode] = useState<'auto' | 'manual'>('manual');
+  const [pages, setPages]                     = useState<string[]>([]);
+  const [mode, setMode]                       = useState<'auto' | 'manual'>('manual');
+  const [pendingPage, setPendingPage]         = useState<string | null>(null);
+  const [detectedCorners, setDetectedCorners] = useState<[Point, Point, Point, Point] | null>(null);
 
-  const setSettings = (newSettings: Partial<ScannerSettings>) => {
-    setFullSettings(prev => ({ ...prev, ...newSettings }));
-  };
+  const setSettings = (s: Partial<ScannerSettings>) =>
+    setFullSettings(prev => ({ ...prev, ...s }));
 
-  const addPage = (dataUrl: string) => {
-    setPages(prev => [...prev, dataUrl]);
-  };
-
-  const removePage = (index: number) => {
-    setPages(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const clearPages = () => {
-    setPages([]);
-  };
+  const addPage     = useCallback((url: string)  => setPages(p => [...p, url]),           []);
+  const removePage  = useCallback((i: number)    => setPages(p => p.filter((_, j) => j !== i)), []);
+  const clearPages  = useCallback(()             => setPages([]),                           []);
 
   return (
     <ScannerContext.Provider value={{
       settings, setSettings,
       pages, addPage, removePage, clearPages,
-      mode, setMode
+      mode, setMode,
+      pendingPage, setPendingPage,
+      detectedCorners, setDetectedCorners,
     }}>
       {children}
     </ScannerContext.Provider>
@@ -68,9 +59,7 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
 }
 
 export function useScannerContext() {
-  const context = useContext(ScannerContext);
-  if (context === undefined) {
-    throw new Error('useScannerContext must be used within a ScannerProvider');
-  }
-  return context;
+  const ctx = useContext(ScannerContext);
+  if (!ctx) throw new Error('useScannerContext must be inside ScannerProvider');
+  return ctx;
 }

@@ -14,7 +14,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useScannerContext, PAPER_SIZES, PaperSize } from '@/contexts/scanner-context';
+import { useScannerContext } from '@/contexts/scanner-context';
+import { PAPER_SIZES, type PaperSize } from '@/lib/scanner-types';
 
 export function SettingsSheet() {
   const { settings, setSettings } = useScannerContext();

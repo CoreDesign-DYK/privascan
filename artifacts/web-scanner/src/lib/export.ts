@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf';
-import { PaperSize } from '@/contexts/scanner-context';
+import { type PaperSize } from '@/lib/scanner-types';
 
 export async function generatePDF(pages: string[], paperSize: PaperSize): Promise<Blob> {
   // Rough mapping of paper sizes to jsPDF format

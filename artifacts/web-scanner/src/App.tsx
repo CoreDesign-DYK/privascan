@@ -18,10 +18,14 @@ import { TopBar } from '@/components/top-bar';
 import ScannerScreen from '@/pages/scanner';
 import PreviewScreen from '@/pages/preview';
 import GalleryScreen from '@/pages/gallery';
+import EditScreen from '@/pages/edit';
 
 const queryClient = new QueryClient();
 
 function Router() {
+  const [location] = useLocation();
+  const hideTopBar = location === '/edit';
+
   return (
     <RoutedErrorBoundary>
       <ScannerProvider>
@@ -29,8 +33,10 @@ function Router() {
           <Route path="/" component={ScannerScreen} />
           <Route path="/preview" component={PreviewScreen} />
           <Route path="/gallery" component={GalleryScreen} />
+          <Route path="/edit" component={EditScreen} />
           <Route component={NotFound} />
         </Switch>
+        {!hideTopBar && <TopBar />}
       </ScannerProvider>
     </RoutedErrorBoundary>
   );
@@ -49,7 +55,6 @@ function App() {
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
             <Router />
           </WouterRouter>
-          <TopBar />
           <Toaster />
           <SonnerToaster position="top-center" />
         </LanguageProvider>
