@@ -22,21 +22,24 @@ interface RadialMenuProps {
 // 5 items spread in a fan arc above the button
 // Angles measured from top (0° = straight up), spread from -70° to +70°
 const ITEMS_CONFIG = [
-  { angle: -70, label: 'Retake',  icon: <Camera  className="w-4 h-4" />, key: 'retake'  },
-  { angle: -35, label: 'Crop',    icon: <Crop    className="w-4 h-4" />, key: 'crop'    },
-  { angle:   0, label: 'Rotate',  icon: <RotateCw className="w-4 h-4" />, key: 'rotate' },
-  { angle:  35, label: 'Markup',  icon: <Type    className="w-4 h-4" />, key: 'markup'  },
-  { angle:  70, label: 'Delete',  icon: <Trash2  className="w-4 h-4" />, key: 'delete', danger: true },
+  { angle: -70, label: 'Retake',  icon: <Camera   className="w-8 h-8" />, key: 'retake'  },
+  { angle: -35, label: 'Crop',    icon: <Crop     className="w-8 h-8" />, key: 'crop'    },
+  { angle:   0, label: 'Rotate',  icon: <RotateCw className="w-8 h-8" />, key: 'rotate'  },
+  { angle:  35, label: 'Markup',  icon: <Type     className="w-8 h-8" />, key: 'markup'  },
+  { angle:  70, label: 'Delete',  icon: <Trash2   className="w-8 h-8" />, key: 'delete', danger: true },
 ];
 
-const RADIUS = 88; // px
+const RADIUS = 120; // px
 
 function angleToXY(angleDeg: number) {
-  // Convert angle-from-top to standard math angle, then negate y for CSS
+  // angleDeg: 0 = straight up, positive = clockwise
+  // Convert to standard math angle (0 = right, CCW positive)
   const rad = ((angleDeg - 90) * Math.PI) / 180;
   return {
     x: Math.cos(rad) * RADIUS,
-    y: Math.sin(rad) * RADIUS, // CSS y is already correct direction (sin gives positive = down, but we want up so negate below)
+    // sin gives: positive = down in math coords when angle > 180°
+    // We want upward movement → keep as-is and ADD to top (CSS y↓)
+    y: Math.sin(rad) * RADIUS,
   };
 }
 
@@ -70,7 +73,7 @@ export function RadialMenu({
             style={{
               // Center of each item is offset from button center
               left: `calc(50% + ${x}px)`,
-              top:  `calc(50% - ${y}px)`, // negate y because CSS y goes down
+              top:  `calc(50% + ${y}px)`, // y is already negative for upward items
               transform: 'translate(-50%, -50%)',
               transition: `opacity 180ms ease ${i * 30}ms, transform 220ms cubic-bezier(0.34,1.56,0.64,1) ${i * 30}ms`,
               opacity: open ? 1 : 0,
@@ -84,7 +87,7 @@ export function RadialMenu({
                 setOpen(false);
               }}
               className={cn(
-                'w-10 h-10 rounded-full flex items-center justify-center shadow-md',
+                'w-20 h-20 rounded-full flex items-center justify-center shadow-lg',
                 'transition-transform active:scale-90',
                 item.danger
                   ? 'bg-red-500 text-white hover:bg-red-600'
@@ -93,7 +96,7 @@ export function RadialMenu({
               style={{
                 transform: open
                   ? 'scale(1)'
-                  : `scale(0.4) translate(${-x * 0.6}px, ${y * 0.6}px)`,
+                  : `scale(0.4) translate(${-x * 0.6}px, ${-y * 0.6}px)`,
                 transition: `transform 220ms cubic-bezier(0.34,1.56,0.64,1) ${i * 30}ms`,
               }}
             >
@@ -102,7 +105,7 @@ export function RadialMenu({
             {/* Label */}
             <span
               className={cn(
-                'text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap select-none',
+                'text-xs font-semibold px-2 py-1 rounded-full whitespace-nowrap select-none',
                 'bg-gray-900/80 text-white backdrop-blur-sm',
                 'transition-opacity'
               )}
