@@ -4,13 +4,17 @@ import { useScannerContext } from '@/contexts/scanner-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Trash2, Plus, Share, ChevronLeft, Download, Share2 } from 'lucide-react';
+import {
+  Trash2, Plus, Share, ChevronLeft, Download, Share2,
+  Scissors, ScanText, ChevronDown, ChevronUp,
+} from 'lucide-react';
 import {
   Dialog, DialogContent, DialogDescription,
-  DialogFooter, DialogHeader, DialogTitle,
+  DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
-import { generatePDF, downloadBlob, shareFile } from '@/lib/export';
+import { generatePDF, downloadBlob, shareFile, splitPages } from '@/lib/export';
 import { useSaveScan } from '@/hooks/use-local-scans';
+import { OcrPanel } from '@/components/ocr-panel';
 import { toast } from 'sonner';
 
 export default function PreviewScreen() {
@@ -18,24 +22,18 @@ export default function PreviewScreen() {
   const { pages, removePage, clearPages, settings } = useScannerContext();
   const saveScan = useSaveScan();
 
-  const [exportOpen, setExportOpen] = useState(false);
-  const [fileName, setFileName] = useState(() => `Scan_${new Date().toISOString().slice(0, 10)}`);
+  const [exportOpen, setExportOpen]   = useState(false);
+  const [fileName, setFileName]       = useState(() => `Scan_${new Date().toISOString().slice(0, 10)}`);
+  const [ocrPage, setOcrPage]         = useState<number | null>(null);   // which page to OCR
+  const [splitting, setSplitting]     = useState(false);
 
-  const handleDiscardAll = () => {
-    if (confirm('Discard all pages?')) { clearPages(); setLocation('/'); }
-  };
-
-  /** Persist the scan record to IndexedDB (device-local) */
+  /* ── persist to local IndexedDB ──────────────────────────────────────────── */
   const persist = async (format: 'pdf' | 'jpeg') => {
     await saveScan.mutateAsync({
-      name:      fileName,
-      pageCount: pages.length,
-      scanType:  settings.scanType,
-      colorMode: settings.colorMode,
-      paperSize: settings.paperSize,
-      format,
-      thumbnail: pages[0],
-      pages:     [...pages],
+      name: fileName, pageCount: pages.length,
+      scanType: settings.scanType, colorMode: settings.colorMode,
+      paperSize: settings.paperSize, format,
+      thumbnail: pages[0], pages: [...pages],
     });
   };
 
@@ -48,12 +46,8 @@ export default function PreviewScreen() {
       downloadBlob(blob, `${fileName}.pdf`);
       await persist('pdf');
       toast.success('PDF saved to device', { id: tid });
-      setExportOpen(false);
-      clearPages();
-      setLocation('/gallery');
-    } catch {
-      toast.error('Failed to export PDF', { id: tid });
-    }
+      setExportOpen(false); clearPages(); setLocation('/gallery');
+    } catch { toast.error('Failed to export PDF', { id: tid }); }
   };
 
   /* ── Save as JPEG ─────────────────────────────────────────────────────────── */
@@ -63,21 +57,15 @@ export default function PreviewScreen() {
     try {
       pages.forEach((p, i) => {
         const a = document.createElement('a');
-        a.href = p;
-        a.download = `${fileName}_page_${i + 1}.jpg`;
-        a.click();
+        a.href = p; a.download = `${fileName}_page_${i + 1}.jpg`; a.click();
       });
       await persist('jpeg');
       toast.success('Images saved to device', { id: tid });
-      setExportOpen(false);
-      clearPages();
-      setLocation('/gallery');
-    } catch {
-      toast.error('Failed to save images', { id: tid });
-    }
+      setExportOpen(false); clearPages(); setLocation('/gallery');
+    } catch { toast.error('Failed to save', { id: tid }); }
   };
 
-  /* ── Share via system sheet (iOS Files / Android share) ──────────────────── */
+  /* ── Share via OS sheet ───────────────────────────────────────────────────── */
   const handleShare = async () => {
     if (!pages.length) return;
     const tid = toast.loading('Preparing share…');
@@ -86,15 +74,38 @@ export default function PreviewScreen() {
       await shareFile(blob, `${fileName}.pdf`, 'application/pdf');
       await persist('pdf');
       toast.success('Shared!', { id: tid });
-      setExportOpen(false);
-      clearPages();
-      setLocation('/gallery');
+      setExportOpen(false); clearPages(); setLocation('/gallery');
     } catch (e: any) {
       if (e?.name !== 'AbortError') toast.error('Share failed', { id: tid });
       else toast.dismiss(tid);
     }
   };
 
+  /* ── Split into individual PDFs ───────────────────────────────────────────── */
+  const handleSplit = async () => {
+    if (pages.length < 2) { toast.error('Need at least 2 pages to split'); return; }
+    if (!confirm(`Split ${pages.length} pages into ${pages.length} individual PDFs?`)) return;
+    const tid = toast.loading('Splitting pages…');
+    try {
+      setSplitting(true);
+      const blobs = await splitPages(pages, settings.paperSize);
+      blobs.forEach((blob, i) => downloadBlob(blob, `${fileName}_page_${i + 1}.pdf`));
+      // Save each page as its own local record
+      for (let i = 0; i < pages.length; i++) {
+        await saveScan.mutateAsync({
+          name: `${fileName}_page_${i + 1}`, pageCount: 1,
+          scanType: settings.scanType, colorMode: settings.colorMode,
+          paperSize: settings.paperSize, format: 'pdf',
+          thumbnail: pages[i], pages: [pages[i]],
+        });
+      }
+      toast.success(`${pages.length} PDFs saved!`, { id: tid });
+      clearPages(); setLocation('/gallery');
+    } catch { toast.error('Split failed', { id: tid }); }
+    finally { setSplitting(false); }
+  };
+
+  /* ── empty state ──────────────────────────────────────────────────────────── */
   if (pages.length === 0) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
@@ -116,27 +127,63 @@ export default function PreviewScreen() {
           <ChevronLeft className="w-6 h-6" />
         </Button>
         <span className="font-semibold text-lg">{pages.length} Page{pages.length !== 1 ? 's' : ''}</span>
-        <Button variant="ghost" size="icon" onClick={handleDiscardAll} className="text-destructive -mr-2">
-          <Trash2 className="w-5 h-5" />
-        </Button>
+        <div className="flex items-center gap-1">
+          {/* Split button (multi-page only) */}
+          {pages.length > 1 && (
+            <Button
+              variant="ghost" size="sm"
+              className="text-xs gap-1 text-muted-foreground"
+              onClick={handleSplit}
+              disabled={splitting}
+            >
+              <Scissors className="w-3.5 h-3.5" />
+              {splitting ? 'Splitting…' : 'Split'}
+            </Button>
+          )}
+          <Button variant="ghost" size="icon"
+            onClick={() => { if (confirm('Discard all pages?')) { clearPages(); setLocation('/'); } }}
+            className="text-destructive -mr-2">
+            <Trash2 className="w-5 h-5" />
+          </Button>
+        </div>
       </div>
 
       {/* Pages */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6 pb-32">
+      <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-32">
         {pages.map((p, i) => (
-          <div key={i} className="relative group">
-            <div className="absolute -top-3 -left-3 w-8 h-8 bg-black text-white rounded-full flex items-center justify-center font-bold text-sm z-10 shadow-md">
-              {i + 1}
+          <div key={i} className="space-y-3">
+            {/* Page card */}
+            <div className="relative group">
+              <div className="absolute -top-3 -left-3 w-8 h-8 bg-black text-white rounded-full flex items-center justify-center font-bold text-sm z-10 shadow-md">
+                {i + 1}
+              </div>
+              <div className="bg-background p-2 rounded-xl shadow-sm border">
+                <img src={p} alt={`Page ${i + 1}`} className="w-full h-auto rounded-lg object-contain" />
+              </div>
+              <button
+                onClick={() => removePage(i)}
+                className="absolute -top-3 -right-3 w-8 h-8 bg-destructive text-white rounded-full flex items-center justify-center shadow-md hover:scale-105 transition-transform"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
             </div>
-            <div className="bg-background p-2 rounded-xl shadow-sm border">
-              <img src={p} alt={`Page ${i + 1}`} className="w-full h-auto rounded-lg object-contain" />
-            </div>
+
+            {/* OCR toggle for this page */}
             <button
-              onClick={() => removePage(i)}
-              className="absolute -top-3 -right-3 w-8 h-8 bg-destructive text-white rounded-full flex items-center justify-center shadow-md hover:scale-105 transition-transform"
+              onClick={() => setOcrPage(ocrPage === i ? null : i)}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-background border text-xs font-medium text-muted-foreground hover:text-primary hover:border-primary/30 transition-colors"
             >
-              <Trash2 className="w-4 h-4" />
+              <span className="flex items-center gap-1.5">
+                <ScanText className="w-3.5 h-3.5" />
+                OCR — Extract text from page {i + 1}
+                <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-semibold">Free · Offline</span>
+              </span>
+              {ocrPage === i ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             </button>
+
+            {ocrPage === i && (
+              <OcrPanel imageDataUrl={p} />
+            )}
           </div>
         ))}
       </div>
@@ -155,8 +202,10 @@ export default function PreviewScreen() {
       <Dialog open={exportOpen} onOpenChange={setExportOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Save & Export</DialogTitle>
-            <DialogDescription>Files are saved on your device — no cloud, no server.</DialogDescription>
+            <DialogTitle>Save &amp; Export</DialogTitle>
+            <DialogDescription>
+              All processing runs on your device — no cloud server, instant speed.
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
@@ -165,34 +214,42 @@ export default function PreviewScreen() {
               <Input value={fileName} onChange={e => setFileName(e.target.value)} placeholder="File name" />
             </div>
 
-            {/* Save buttons */}
+            {/* Save formats */}
             <div className="grid grid-cols-2 gap-3">
-              <Button variant="outline" className="h-24 flex-col gap-2" onClick={handleSavePDF}>
+              <Button variant="outline" className="h-24 flex-col gap-1.5" onClick={handleSavePDF}>
                 <Download className="w-6 h-6" />
                 <span className="text-sm font-semibold">Save PDF</span>
-                <span className="text-[10px] text-muted-foreground">to Downloads</span>
+                <span className="text-[10px] text-muted-foreground">{pages.length} page{pages.length !== 1 ? 's' : ''} merged</span>
               </Button>
-              <Button variant="outline" className="h-24 flex-col gap-2" onClick={handleSaveJPEG}>
+              <Button variant="outline" className="h-24 flex-col gap-1.5" onClick={handleSaveJPEG}>
                 <Download className="w-6 h-6" />
                 <span className="text-sm font-semibold">Save JPEG</span>
-                <span className="text-[10px] text-muted-foreground">to Downloads</span>
+                <span className="text-[10px] text-muted-foreground">{pages.length} image{pages.length !== 1 ? 's' : ''}</span>
               </Button>
             </div>
 
-            <div className="relative my-2">
+            {/* Split shortcut if multi-page */}
+            {pages.length > 1 && (
+              <Button variant="outline" className="w-full h-12 gap-2" onClick={() => { setExportOpen(false); handleSplit(); }}>
+                <Scissors className="w-4 h-4" />
+                Split into {pages.length} individual PDFs
+                <span className="text-[10px] text-muted-foreground ml-1">on-device</span>
+              </Button>
+            )}
+
+            <div className="relative my-1">
               <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
               <div className="relative flex justify-center text-xs uppercase">
                 <span className="bg-background px-2 text-muted-foreground">Or share</span>
               </div>
             </div>
 
-            {/* Share via OS sheet */}
             <Button variant="secondary" className="w-full h-12" onClick={handleShare}>
               <Share2 className="w-5 h-5 mr-2" />
               Share via Files / AirDrop / Apps
             </Button>
             <p className="text-center text-[11px] text-muted-foreground">
-              Opens the system share sheet — send to Files, AirDrop, email app, or any installed app.
+              Opens the system share sheet — save to Files, AirDrop, email, or any installed app.
             </p>
           </div>
         </DialogContent>

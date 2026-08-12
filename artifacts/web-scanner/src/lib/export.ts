@@ -67,11 +67,54 @@ export async function blobToBase64(blob: Blob): Promise<string> {
  */
 export async function shareFile(blob: Blob, filename: string, mimeType: string): Promise<void> {
   const file = new File([blob], filename, { type: mimeType });
-
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     await navigator.share({ files: [file], title: filename });
   } else {
-    // Fallback: plain download (desktop browsers, older Android)
     downloadBlob(blob, filename);
   }
+}
+
+/**
+ * Merge multiple scan page arrays into a single PDF blob.
+ * Runs entirely on-device — no server required.
+ */
+export async function mergeToPDF(
+  scanGroups: { name: string; pages: string[]; paperSize: string }[],
+): Promise<Blob> {
+  const firstSize = (scanGroups[0]?.paperSize ?? 'A4').toLowerCase();
+  let fmt = 'a4';
+  if (firstSize.includes('letter')) fmt = 'letter';
+  if (firstSize.includes('a5'))     fmt = 'a5';
+
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: fmt });
+  let first = true;
+
+  for (const group of scanGroups) {
+    for (const page of group.pages) {
+      if (!first) doc.addPage();
+      first = false;
+      const w = doc.internal.pageSize.getWidth();
+      const h = doc.internal.pageSize.getHeight();
+      doc.addImage(page, 'JPEG', 0, 0, w, h, undefined, 'FAST');
+    }
+  }
+
+  return doc.output('blob');
+}
+
+/**
+ * Split a multi-page scan into individual single-page PDF blobs.
+ * Returns one blob per page.
+ */
+export async function splitPages(
+  pages: string[],
+  paperSize: string,
+): Promise<Blob[]> {
+  const blobs: Blob[] = [];
+  for (const page of pages) {
+    const blob = await generatePDF([page], paperSize as PaperSize);
+    blobs.push(blob);
+  }
+  return blobs;
 }
