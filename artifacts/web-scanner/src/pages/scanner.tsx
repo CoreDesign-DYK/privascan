@@ -137,13 +137,13 @@ export default function ScannerScreen() {
 
   if (hasPermission === false) {
     return (
-      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 text-center">
+      <div className="min-h-screen bg-white text-foreground flex flex-col items-center justify-center p-6 text-center">
         <Camera className="w-16 h-16 text-muted-foreground mb-4" />
         <h2 className="text-xl font-semibold mb-2">Camera Access Denied</h2>
         <p className="text-muted-foreground mb-6 max-w-sm">
           DocScan needs camera access to scan documents. Please enable it in your browser settings and refresh.
         </p>
-        <Button onClick={() => window.location.reload()} variant="outline" className="text-black">
+        <Button onClick={() => window.location.reload()} variant="outline">
           Refresh Page
         </Button>
       </div>
@@ -151,20 +151,20 @@ export default function ScannerScreen() {
   }
 
   return (
-    <div className="relative min-h-[100dvh] bg-black overflow-hidden flex flex-col">
+    <div className="relative min-h-[100dvh] bg-white overflow-hidden flex flex-col">
       {/* Hidden canvas for capturing */}
       <canvas ref={canvasRef} className="hidden" />
 
       {/* Top Bar */}
-      <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between p-4 bg-gradient-to-b from-black/60 to-transparent">
+      <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between p-4 bg-gradient-to-b from-white/90 to-transparent">
         <SettingsSheet />
-        
-        <div className="flex bg-black/40 backdrop-blur-md rounded-full p-1 border border-white/10">
+
+        <div className="flex bg-gray-100 rounded-full p-1 border border-gray-200">
           <button
             onClick={() => setMode('auto')}
             className={cn(
               "px-4 py-1.5 rounded-full text-sm font-semibold transition-all",
-              mode === 'auto' ? "bg-white text-black" : "text-white/70 hover:text-white"
+              mode === 'auto' ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-800"
             )}
           >
             Auto
@@ -173,7 +173,7 @@ export default function ScannerScreen() {
             onClick={() => setMode('manual')}
             className={cn(
               "px-4 py-1.5 rounded-full text-sm font-semibold transition-all",
-              mode === 'manual' ? "bg-white text-black" : "text-white/70 hover:text-white"
+              mode === 'manual' ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-800"
             )}
           >
             Manual
@@ -181,25 +181,25 @@ export default function ScannerScreen() {
         </div>
 
         {mode === 'auto' ? (
-          <Button 
-            variant="ghost" 
-            size="sm" 
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => setLocation('/preview')}
-            className="text-white hover:bg-white/20 font-semibold"
+            className="text-gray-700 hover:bg-gray-100 font-semibold"
           >
             Exit
           </Button>
         ) : (
-          <div className="w-[68px]"></div> /* Placeholder for balance */
+          <div className="w-[68px]" />
         )}
       </div>
 
       {/* Flash Effect */}
-      <div 
+      <div
         className={cn(
           "absolute inset-0 bg-white z-50 pointer-events-none transition-opacity duration-150",
-          isCapturing ? "opacity-100" : "opacity-0"
-        )} 
+          isCapturing ? "opacity-80" : "opacity-0"
+        )}
       />
 
       {/* Camera View (hidden in dev mode) */}
@@ -216,32 +216,34 @@ export default function ScannerScreen() {
       {/* Mock Camera View (dev mode only) */}
       <div className={cn(
         "flex-1 relative flex items-center justify-center",
-        isMockMode ? "bg-zinc-800" : "bg-zinc-900"
+        isMockMode ? "bg-gray-50" : "bg-gray-100"
       )}>
         {isMockMode && (
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none">
-            {/* Simulated document on desk */}
-            <div className="relative w-48 h-64 rounded-md shadow-2xl"
-              style={{ background: 'linear-gradient(135deg, #f5f0e8 0%, #ede8dc 100%)' }}>
+            {/* Simulated document */}
+            <div
+              className="relative w-48 h-64 rounded-md shadow-lg border border-gray-200"
+              style={{ background: 'linear-gradient(135deg, #ffffff 0%, #f5f5f0 100%)' }}
+            >
               <div className="p-4 space-y-2">
-                <div className="h-2 bg-zinc-400/60 rounded w-3/4" />
-                <div className="h-2 bg-zinc-400/40 rounded w-full" />
-                <div className="h-2 bg-zinc-400/40 rounded w-5/6" />
-                <div className="h-2 bg-zinc-400/40 rounded w-full" />
-                <div className="h-2 bg-zinc-400/40 rounded w-2/3" />
-                <div className="mt-4 h-2 bg-zinc-400/40 rounded w-full" />
-                <div className="h-2 bg-zinc-400/40 rounded w-4/5" />
-                <div className="h-2 bg-zinc-400/40 rounded w-full" />
+                <div className="h-2 bg-gray-300 rounded w-3/4" />
+                <div className="h-2 bg-gray-200 rounded w-full" />
+                <div className="h-2 bg-gray-200 rounded w-5/6" />
+                <div className="h-2 bg-gray-200 rounded w-full" />
+                <div className="h-2 bg-gray-200 rounded w-2/3" />
+                <div className="mt-4 h-2 bg-gray-200 rounded w-full" />
+                <div className="h-2 bg-gray-200 rounded w-4/5" />
+                <div className="h-2 bg-gray-200 rounded w-full" />
               </div>
             </div>
-            <p className="mt-6 text-white/40 text-xs tracking-widest uppercase">
+            <p className="mt-5 text-gray-400 text-xs tracking-widest uppercase">
               Dev Mode — Camera Off
             </p>
           </div>
         )}
 
         {/* Viewfinder overlay */}
-        <div className="absolute inset-4 border-2 border-white/30 rounded-2xl pointer-events-none">
+        <div className="absolute inset-4 border-2 border-gray-300 rounded-2xl pointer-events-none">
           <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-primary rounded-tl-2xl" />
           <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-primary rounded-tr-2xl" />
           <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-primary rounded-bl-2xl" />
@@ -250,26 +252,26 @@ export default function ScannerScreen() {
 
         {/* Desktop Hint (production only) */}
         {!isMockMode && (
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white/50 text-sm hidden md:flex items-center gap-2 backdrop-blur-md bg-black/40 px-4 py-2 rounded-full pointer-events-none">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-gray-500 text-sm hidden md:flex items-center gap-2 bg-white/80 backdrop-blur-md px-4 py-2 rounded-full pointer-events-none border border-gray-200">
             <Smartphone className="w-4 h-4" /> Use on mobile for best experience
           </div>
         )}
       </div>
 
       {/* Bottom Bar */}
-      <div className="absolute bottom-0 inset-x-0 z-20 pb-8 pt-12 px-6 bg-gradient-to-t from-black via-black/80 to-transparent flex flex-col gap-6">
-        
+      <div className="absolute bottom-0 inset-x-0 z-20 pb-8 pt-12 px-6 bg-gradient-to-t from-white via-white/90 to-transparent flex flex-col gap-6">
+
         {/* Thumbnails */}
         {pages.length > 0 && (
           <div className="flex gap-3 overflow-x-auto snap-x hide-scrollbar px-2">
             {pages.map((p, i) => (
-              <div 
-                key={i} 
-                className="relative shrink-0 w-16 h-20 rounded-md overflow-hidden border border-white/20 snap-center"
+              <div
+                key={i}
+                className="relative shrink-0 w-16 h-20 rounded-md overflow-hidden border border-gray-200 snap-center shadow-sm"
               >
-                <img src={p} alt={`Page ${i+1}`} className="w-full h-full object-cover" />
-                <div className="absolute bottom-1 right-1 bg-black/70 text-[10px] text-white px-1.5 py-0.5 rounded font-mono">
-                  {i+1}
+                <img src={p} alt={`Page ${i + 1}`} className="w-full h-full object-cover" />
+                <div className="absolute bottom-1 right-1 bg-white/90 text-[10px] text-gray-700 px-1.5 py-0.5 rounded font-mono">
+                  {i + 1}
                 </div>
               </div>
             ))}
@@ -278,24 +280,24 @@ export default function ScannerScreen() {
 
         {/* Controls */}
         <div className="flex items-center justify-between">
-          <Button 
-            variant="ghost" 
-            size="icon" 
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => setLocation('/gallery')}
-            className="text-white hover:bg-white/20 w-12 h-12 rounded-full"
+            className="text-gray-600 hover:bg-gray-100 w-12 h-12 rounded-full"
           >
             <ImageIcon className="w-6 h-6" />
           </Button>
 
-          <button 
+          <button
             onClick={handleCaptureClick}
-            className="relative flex items-center justify-center w-20 h-20 rounded-full border-4 border-white active:scale-95 transition-transform"
+            className="relative flex items-center justify-center w-20 h-20 rounded-full border-4 border-gray-800 active:scale-95 transition-transform"
           >
-            <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center">
+            <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center">
               {mode === 'manual' ? (
-                <div className="w-14 h-14 border-2 border-black rounded-full" />
+                <div className="w-14 h-14 border-2 border-white rounded-full" />
               ) : (
-                <Zap className="w-6 h-6 text-black fill-black" />
+                <Zap className="w-6 h-6 text-white fill-white" />
               )}
             </div>
           </button>
@@ -312,7 +314,7 @@ export default function ScannerScreen() {
               </div>
             </Button>
           ) : (
-             <div className="w-16" />
+            <div className="w-16" />
           )}
         </div>
       </div>
