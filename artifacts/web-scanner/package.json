@@ -75,6 +75,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "idb": "^8.0.3",
     "jspdf": "^4.2.1"
   }
 }

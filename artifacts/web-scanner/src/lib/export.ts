@@ -50,7 +50,6 @@ export async function blobToBase64(blob: Blob): Promise<string> {
     const reader = new FileReader();
     reader.onloadend = () => {
       if (typeof reader.result === 'string') {
-        // Strip the data URL prefix e.g., "data:application/pdf;base64,"
         const b64 = reader.result.split(',')[1];
         resolve(b64);
       } else {
@@ -60,4 +59,19 @@ export async function blobToBase64(blob: Blob): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+}
+
+/**
+ * Share a file via the Web Share API (iOS Files / Android share sheet).
+ * Falls back to a plain browser download when the API is unavailable.
+ */
+export async function shareFile(blob: Blob, filename: string, mimeType: string): Promise<void> {
+  const file = new File([blob], filename, { type: mimeType });
+
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    await navigator.share({ files: [file], title: filename });
+  } else {
+    // Fallback: plain download (desktop browsers, older Android)
+    downloadBlob(blob, filename);
+  }
 }

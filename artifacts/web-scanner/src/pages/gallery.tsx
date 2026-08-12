@@ -1,58 +1,88 @@
 import React, { useState } from 'react';
 import { useLocation } from 'wouter';
-import { useListScans, useDeleteScan, useGetScan, getListScansQueryKey, getGetScanQueryKey } from '@workspace/api-client-react';
-import { ChevronLeft, FileText, Image as ImageIcon, Trash2, Calendar, X, Download } from 'lucide-react';
+import { ChevronLeft, FileText, Image as ImageIcon, Trash2, Calendar, Download, Share2, HardDrive } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
+  Dialog, DialogContent, DialogHeader,
+  DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
+import { useLocalScans, useLocalScan, useDeleteLocalScan, type LocalScan } from '@/hooks/use-local-scans';
+import { generatePDF, downloadBlob, shareFile } from '@/lib/export';
 
 export default function GalleryScreen() {
   const [, setLocation] = useLocation();
-  const { data: scans, isLoading } = useListScans();
-  const deleteScan = useDeleteScan();
-  const queryClient = useQueryClient();
-  
-  const [selectedScanId, setSelectedScanId] = useState<string | null>(null);
-  
-  const { data: selectedScan, isLoading: scanLoading } = useGetScan(selectedScanId || '', {
-    query: {
-      enabled: !!selectedScanId,
-      queryKey: selectedScanId ? getGetScanQueryKey(selectedScanId) : ['scan', 'empty']
-    }
-  });
+  const { data: scans = [], isLoading } = useLocalScans();
+  const deleteScan = useDeleteLocalScan();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const { data: selected } = useLocalScan(selectedId);
 
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
+  const handleDelete = async (scan: LocalScan, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm('Are you sure you want to delete this scan record?')) return;
-    
+    if (!confirm(`Delete "${scan.name}"?`)) return;
     try {
-      await deleteScan.mutateAsync({ id });
-      queryClient.invalidateQueries({ queryKey: getListScansQueryKey() });
+      await deleteScan.mutateAsync(scan.id);
+      if (selectedId === scan.id) setSelectedId(null);
       toast.success('Scan deleted');
-    } catch (err) {
-      toast.error('Failed to delete scan');
+    } catch {
+      toast.error('Failed to delete');
     }
   };
 
-  const formatDate = (isoString: string) => {
-    const d = new Date(isoString);
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const handleDownload = async (scan: LocalScan) => {
+    const tid = toast.loading('Preparing file…');
+    try {
+      if (scan.format === 'pdf') {
+        const blob = await generatePDF(scan.pages, scan.paperSize as any);
+        downloadBlob(blob, `${scan.name}.pdf`);
+      } else {
+        scan.pages.forEach((p, i) => {
+          const a = document.createElement('a');
+          a.href = p;
+          a.download = `${scan.name}_page_${i + 1}.jpg`;
+          a.click();
+        });
+      }
+      toast.success('Saved to device', { id: tid });
+    } catch {
+      toast.error('Export failed', { id: tid });
+    }
   };
+
+  const handleShare = async (scan: LocalScan) => {
+    const tid = toast.loading('Preparing share…');
+    try {
+      const blob = scan.format === 'pdf'
+        ? await generatePDF(scan.pages, scan.paperSize as any)
+        : await (async () => {
+            const res = await fetch(scan.pages[0]);
+            return res.blob();
+          })();
+      const ext  = scan.format === 'pdf' ? 'pdf' : 'jpg';
+      const mime = scan.format === 'pdf' ? 'application/pdf' : 'image/jpeg';
+      await shareFile(blob, `${scan.name}.${ext}`, mime);
+      toast.success('Shared!', { id: tid });
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') toast.error('Share failed', { id: tid });
+      else toast.dismiss(tid);
+    }
+  };
+
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
   return (
     <div className="min-h-[100dvh] bg-secondary flex flex-col">
+      {/* Header */}
       <div className="bg-background px-4 h-16 flex items-center border-b sticky top-0 z-10">
         <Button variant="ghost" size="icon" onClick={() => setLocation('/')} className="-ml-2 mr-2">
           <ChevronLeft className="w-6 h-6" />
         </Button>
         <h1 className="font-semibold text-lg flex-1">My Scans</h1>
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          <HardDrive className="w-3.5 h-3.5" />
+          <span>On-device</span>
+        </div>
       </div>
 
       <div className="flex-1 p-4 overflow-y-auto">
@@ -62,137 +92,111 @@ export default function GalleryScreen() {
               <div key={i} className="bg-background h-24 rounded-xl border animate-pulse" />
             ))}
           </div>
-        ) : scans && scans.length > 0 ? (
-          <div className="space-y-4">
+        ) : scans.length > 0 ? (
+          <div className="space-y-3">
             {scans.map(scan => (
-              <div 
-                key={scan.id} 
-                className="bg-background border rounded-xl p-4 flex items-center gap-4 active:scale-[0.98] transition-transform cursor-pointer shadow-sm hover:shadow-md"
-                onClick={() => setSelectedScanId(scan.id)}
+              <div
+                key={scan.id}
+                className="bg-background border rounded-xl p-4 flex items-center gap-4 cursor-pointer active:scale-[0.98] transition-transform shadow-sm hover:shadow-md"
+                onClick={() => setSelectedId(scan.id)}
               >
-                <div className="w-16 h-20 bg-secondary rounded-md flex-shrink-0 flex items-center justify-center overflow-hidden border">
-                  {scan.thumbnailUrl ? (
-                    <img src={scan.thumbnailUrl} alt={scan.name} className="w-full h-full object-cover" />
+                {/* Thumbnail */}
+                <div className="w-14 h-18 min-w-[3.5rem] h-[4.5rem] bg-secondary rounded-md flex items-center justify-center overflow-hidden border">
+                  {scan.thumbnail ? (
+                    <img src={scan.thumbnail} alt={scan.name} className="w-full h-full object-cover" />
                   ) : scan.scanType === 'document' ? (
                     <FileText className="w-6 h-6 text-muted-foreground" />
                   ) : (
                     <ImageIcon className="w-6 h-6 text-muted-foreground" />
                   )}
                 </div>
-                
+
+                {/* Info */}
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-foreground truncate">{scan.name}</h3>
-                  
-                  <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
+                  <h3 className="font-semibold truncate">{scan.name}</h3>
+                  <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
-                      <FileText className="w-3.5 h-3.5" />
+                      <FileText className="w-3 h-3" />
                       {scan.pageCount} page{scan.pageCount !== 1 ? 's' : ''}
                     </span>
                     <span className="flex items-center gap-1">
-                      <Calendar className="w-3.5 h-3.5" />
-                      {formatDate(scan.createdAt)}
+                      <Calendar className="w-3 h-3" />
+                      {fmt(scan.createdAt)}
                     </span>
                   </div>
-                  
-                  <div className="mt-2 flex gap-2">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary uppercase">
-                      {scan.format}
-                    </span>
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-secondary text-secondary-foreground uppercase">
-                      {scan.colorMode}
-                    </span>
+                  <div className="mt-1.5 flex gap-1.5">
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary uppercase">{scan.format}</span>
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-secondary text-secondary-foreground uppercase">{scan.colorMode}</span>
                   </div>
                 </div>
 
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="text-muted-foreground hover:text-destructive shrink-0 -mr-2"
-                  onClick={(e) => handleDelete(scan.id, e)}
-                >
-                  <Trash2 className="w-5 h-5" />
-                </Button>
+                {/* Actions */}
+                <div className="flex flex-col gap-1 shrink-0">
+                  <Button variant="ghost" size="icon" className="w-9 h-9 text-muted-foreground hover:text-foreground"
+                    onClick={e => { e.stopPropagation(); handleDownload(scan); }}>
+                    <Download className="w-4 h-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="w-9 h-9 text-muted-foreground hover:text-destructive"
+                    onClick={e => handleDelete(scan, e)}>
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="h-full flex flex-col items-center justify-center text-center px-6 pt-20">
+          <div className="h-full flex flex-col items-center justify-center text-center px-6 pt-24">
             <div className="w-20 h-20 bg-background rounded-full flex items-center justify-center mb-4 shadow-sm border">
               <FileText className="w-8 h-8 text-muted-foreground" />
             </div>
             <h2 className="text-xl font-bold mb-2">No scans yet</h2>
-            <p className="text-muted-foreground mb-6">Your saved scans will appear here.</p>
+            <p className="text-muted-foreground mb-6 text-sm">Scans are stored privately on your device.</p>
             <Button onClick={() => setLocation('/')} className="rounded-full">Start Scanning</Button>
           </div>
         )}
       </div>
 
-      <Dialog open={!!selectedScanId} onOpenChange={(open) => !open && setSelectedScanId(null)}>
+      {/* Detail dialog */}
+      <Dialog open={!!selectedId} onOpenChange={open => !open && setSelectedId(null)}>
         <DialogContent className="sm:max-w-md bg-background">
           <DialogHeader>
-            <DialogTitle>Scan Details</DialogTitle>
-            <DialogDescription>View information about this scan.</DialogDescription>
+            <DialogTitle>{selected?.name ?? 'Scan Details'}</DialogTitle>
+            <DialogDescription>Stored locally on this device</DialogDescription>
           </DialogHeader>
-          
-          <div className="py-4">
-            {scanLoading ? (
-              <div className="flex justify-center p-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-              </div>
-            ) : selectedScan ? (
-              <div className="space-y-6">
-                {selectedScan.thumbnailUrl && (
-                  <div className="bg-secondary rounded-lg overflow-hidden border p-2 flex justify-center">
-                    <img 
-                      src={selectedScan.thumbnailUrl} 
-                      alt={selectedScan.name} 
-                      className="max-h-48 object-contain rounded"
-                    />
-                  </div>
-                )}
-                
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground mb-1">Name</p>
-                    <p className="font-medium text-foreground">{selectedScan.name}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground mb-1">Date</p>
-                    <p className="font-medium text-foreground">{formatDate(selectedScan.createdAt)}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground mb-1">Type</p>
-                    <p className="font-medium text-foreground capitalize">{selectedScan.scanType}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground mb-1">Color Mode</p>
-                    <p className="font-medium text-foreground capitalize">{selectedScan.colorMode}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground mb-1">Format</p>
-                    <p className="font-medium text-foreground uppercase">{selectedScan.format}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground mb-1">Pages</p>
-                    <p className="font-medium text-foreground">{selectedScan.pageCount}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground mb-1">Paper Size</p>
-                    <p className="font-medium text-foreground">{selectedScan.paperSize}</p>
-                  </div>
+
+          {selected && (
+            <div className="space-y-5 py-2">
+              {selected.thumbnail && (
+                <div className="bg-secondary rounded-lg overflow-hidden border flex justify-center p-2">
+                  <img src={selected.thumbnail} alt={selected.name} className="max-h-48 object-contain rounded" />
                 </div>
+              )}
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                {[
+                  ['Date',       fmt(selected.createdAt)],
+                  ['Pages',      selected.pageCount],
+                  ['Type',       selected.scanType],
+                  ['Color',      selected.colorMode],
+                  ['Format',     selected.format.toUpperCase()],
+                  ['Paper',      selected.paperSize],
+                ].map(([label, val]) => (
+                  <div key={label as string}>
+                    <p className="text-muted-foreground text-xs mb-0.5">{label}</p>
+                    <p className="font-medium capitalize">{val}</p>
+                  </div>
+                ))}
               </div>
-            ) : (
-              <div className="text-center text-muted-foreground py-8">Scan not found</div>
-            )}
-          </div>
-          
-          <div className="flex justify-end gap-3 mt-4">
-            <Button variant="outline" onClick={() => setSelectedScanId(null)}>Close</Button>
-            <Button onClick={() => toast.info('Download functionality goes here')}>
-              <Download className="w-4 h-4 mr-2" /> Download File
-            </Button>
-          </div>
+
+              <div className="flex gap-2 pt-1">
+                <Button variant="outline" className="flex-1" onClick={() => handleDownload(selected)}>
+                  <Download className="w-4 h-4 mr-2" /> Save to Device
+                </Button>
+                <Button className="flex-1" onClick={() => handleShare(selected)}>
+                  <Share2 className="w-4 h-4 mr-2" /> Share
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
