@@ -13,6 +13,8 @@ import {
 } from 'wouter';
 
 import { ScannerProvider } from '@/contexts/scanner-context';
+import { LanguageProvider } from '@/contexts/language-context';
+import { TopBar } from '@/components/top-bar';
 import ScannerScreen from '@/pages/scanner';
 import PreviewScreen from '@/pages/preview';
 import GalleryScreen from '@/pages/gallery';
@@ -43,11 +45,14 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
-        <SonnerToaster position="top-center" />
+        <LanguageProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+            <Router />
+          </WouterRouter>
+          <TopBar />
+          <Toaster />
+          <SonnerToaster position="top-center" />
+        </LanguageProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );
