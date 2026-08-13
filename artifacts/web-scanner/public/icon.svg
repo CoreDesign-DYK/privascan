@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="102" fill="#0d0d14"/>
+  <!-- Corner brackets -->
+  <path d="M60,160 L60,60 L160,60"  stroke="#38bdf8" stroke-width="30" fill="none" stroke-linecap="square"/>
+  <path d="M352,60 L452,60 L452,160" stroke="#38bdf8" stroke-width="30" fill="none" stroke-linecap="square"/>
+  <path d="M60,352 L60,452 L160,452" stroke="#38bdf8" stroke-width="30" fill="none" stroke-linecap="square"/>
+  <path d="M452,352 L452,452 L352,452" stroke="#38bdf8" stroke-width="30" fill="none" stroke-linecap="square"/>
+  <!-- Document body -->
+  <rect x="145" y="100" width="182" height="256" rx="12" fill="white" opacity="0.92"/>
+  <!-- Folded corner -->
+  <path d="M277,100 L327,150 L277,150 Z" fill="#cbd5e1"/>
+  <path d="M277,100 L327,100 L327,150 Z" fill="white" opacity="0.92"/>
+  <!-- Text lines -->
+  <line x1="173" y1="196" x2="299" y2="196" stroke="#334155" stroke-width="16" stroke-linecap="round"/>
+  <line x1="173" y1="228" x2="287" y2="228" stroke="#334155" stroke-width="14" stroke-linecap="round"/>
+  <line x1="173" y1="260" x2="299" y2="260" stroke="#334155" stroke-width="14" stroke-linecap="round"/>
+  <line x1="173" y1="292" x2="257" y2="292" stroke="#334155" stroke-width="12" stroke-linecap="round"/>
+  <!-- Scan line -->
+  <line x1="56" y1="228" x2="456" y2="228" stroke="#38bdf8" stroke-width="16" stroke-linecap="round" opacity="0.9"/>
+</svg>

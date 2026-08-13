@@ -1,0 +1,13 @@
+{
+  "name": "PrivaScan",
+  "short_name": "PrivaScan",
+  "description": "Privacy-first document scanner — scan, save, share.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d0d14",
+  "theme_color": "#38bdf8",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

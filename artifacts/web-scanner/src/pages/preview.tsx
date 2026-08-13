@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Trash2, Plus, Share, ChevronLeft, Download, Share2,
-  Scissors, ScanText, ChevronDown, ChevronUp,
+  Scissors, ScanText, ChevronDown, ChevronUp, Mail,
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogDescription,
@@ -24,8 +24,48 @@ export default function PreviewScreen() {
 
   const [exportOpen, setExportOpen]   = useState(false);
   const [fileName, setFileName]       = useState(() => `Scan_${new Date().toISOString().slice(0, 10)}`);
-  const [ocrPage, setOcrPage]         = useState<number | null>(null);   // which page to OCR
+  const [ocrPage, setOcrPage]         = useState<number | null>(null);
   const [splitting, setSplitting]     = useState(false);
+  const [emailOpen, setEmailOpen]     = useState(false);
+  const [emailTo, setEmailTo]         = useState('');
+  const [emailSending, setEmailSending] = useState(false);
+
+  /* ── Email share ─────────────────────────────────────────────────────────── */
+  const handleEmailShare = async () => {
+    if (!pages.length || !emailTo.trim()) return;
+    setEmailSending(true);
+    const tid = toast.loading('Sending email…');
+    try {
+      const blob = await generatePDF(pages, settings.paperSize);
+      const reader = new FileReader();
+      const base64: string = await new Promise((res, rej) => {
+        reader.onload = () => res((reader.result as string).split(',')[1]);
+        reader.onerror = rej;
+        reader.readAsDataURL(blob);
+      });
+      const resp = await fetch('/api/share/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: emailTo.trim(),
+          subject: `PrivaScan — ${fileName}`,
+          message: 'Please find your scanned document attached.',
+          fileName: `${fileName}.pdf`,
+          fileBase64: base64,
+          mimeType: 'application/pdf',
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.success) throw new Error(data.message ?? 'Unknown error');
+      toast.success(`Email sent to ${emailTo}`, { id: tid });
+      setEmailOpen(false);
+      setEmailTo('');
+    } catch (e: any) {
+      toast.error(e.message ?? 'Failed to send email', { id: tid });
+    } finally {
+      setEmailSending(false);
+    }
+  };
 
   /* ── persist to local IndexedDB ──────────────────────────────────────────── */
   const persist = async (format: 'pdf' | 'jpeg') => {
@@ -251,6 +291,34 @@ export default function PreviewScreen() {
             <p className="text-center text-[11px] text-muted-foreground">
               Opens the system share sheet — save to Files, AirDrop, email, or any installed app.
             </p>
+
+            {/* Email share */}
+            {!emailOpen ? (
+              <Button variant="outline" className="w-full h-12" onClick={() => setEmailOpen(true)}>
+                <Mail className="w-5 h-5 mr-2" />
+                Send by Email
+              </Button>
+            ) : (
+              <div className="space-y-2 rounded-lg border border-border p-3">
+                <Label className="text-xs font-semibold text-muted-foreground">Recipient email</Label>
+                <Input
+                  type="email"
+                  placeholder="name@example.com"
+                  value={emailTo}
+                  onChange={e => setEmailTo(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleEmailShare()}
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="sm" className="flex-1" onClick={() => { setEmailOpen(false); setEmailTo(''); }}>
+                    Cancel
+                  </Button>
+                  <Button size="sm" className="flex-1" disabled={!emailTo.trim() || emailSending} onClick={handleEmailShare}>
+                    {emailSending ? 'Sending…' : 'Send PDF'}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
