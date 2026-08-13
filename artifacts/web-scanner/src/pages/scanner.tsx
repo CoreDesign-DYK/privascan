@@ -262,7 +262,7 @@ export default function ScannerScreen() {
       <div className="min-h-screen bg-[#0d0d14] flex flex-col items-center justify-center p-6 text-center">
         <h2 className="text-xl font-semibold mb-2 text-white">Camera Access Denied</h2>
         <p className="text-white/50 mb-6 max-w-sm">
-          DocScan needs camera access. Please enable it in browser settings and refresh.
+          PrivaScan needs camera access. Please enable it in browser settings and refresh.
         </p>
         <Button onClick={() => window.location.reload()} variant="outline">Refresh Page</Button>
       </div>
@@ -319,12 +319,33 @@ export default function ScannerScreen() {
           <SettingsSheet />
         </div>
 
-        {/* Center: brand logo */}
-        <div className="flex items-center gap-1.5">
-          <div className="w-6 h-6 rounded-md bg-blue-500 flex items-center justify-center shadow-lg shadow-blue-500/40">
-            <ScanLine className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
-          </div>
-          <span className="text-white font-bold text-base tracking-tight">DocScan</span>
+        {/* Center: PrivaScan brand logo */}
+        <div className="flex items-center gap-2.5">
+          {/* Icon — document + scanner brackets (SVG, 20% larger than prev 24px) */}
+          <svg width="30" height="30" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            {/* Blue corner brackets */}
+            <path d="M2,12 L2,2 L12,2"   stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
+            <path d="M36,2 L46,2 L46,12"  stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
+            <path d="M2,36 L2,46 L12,46"  stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
+            <path d="M46,36 L46,46 L36,46" stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
+            {/* Document body */}
+            <rect x="10" y="7" width="22" height="30" rx="1.5" fill="white" opacity="0.92"/>
+            {/* Folded top-right corner */}
+            <path d="M26,7 L32,13 L26,13 Z" fill="#cbd5e1"/>
+            <path d="M26,7 L32,7 L32,13 Z" fill="white" opacity="0.92"/>
+            {/* Content lines */}
+            <line x1="14" y1="18" x2="28" y2="18" stroke="#334155" strokeWidth="2"   strokeLinecap="round"/>
+            <line x1="14" y1="22" x2="26" y2="22" stroke="#334155" strokeWidth="1.8" strokeLinecap="round"/>
+            <line x1="14" y1="26" x2="28" y2="26" stroke="#334155" strokeWidth="1.8" strokeLinecap="round"/>
+            <line x1="14" y1="30" x2="23" y2="30" stroke="#334155" strokeWidth="1.6" strokeLinecap="round"/>
+            {/* Blue scan line across document */}
+            <line x1="7" y1="24" x2="41" y2="24" stroke="#38bdf8" strokeWidth="2" strokeLinecap="round" opacity="0.9"/>
+          </svg>
+
+          {/* Wordmark: "Priva" white + "Scan" blue */}
+          <span className="font-bold tracking-tight" style={{ fontSize: '1.2rem', lineHeight: 1 }}>
+            <span className="text-white">Priva</span><span style={{ color: '#38bdf8' }}>Scan</span>
+          </span>
         </div>
 
         {/* Right: Done / spacer */}
