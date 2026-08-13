@@ -360,72 +360,68 @@ export default function ScannerScreen() {
           </div>
         )}
 
-        {/* ── A+B: Unified SVG overlay — guide brackets + detected doc brackets ── */}
-        <svg
-          className="absolute inset-0 w-full h-full z-10 pointer-events-none"
-          viewBox={`0 0 ${viewW} ${viewH}`}
-          preserveAspectRatio="xMidYMid slice"
-        >
-          {edgeCorners && !isMockMode ? (
-            <>
-              {/* Subtle fill over detected document */}
-              <polygon
-                points={edgeCorners.map(p => `${p.x},${p.y}`).join(' ')}
-                fill={edgeFill}
-                stroke="none"
-                style={{ transition: 'fill 0.3s' }}
-              />
-              {/* Dynamic L-brackets snapped to detected corners [TL,TR,BR,BL] */}
-              {edgeCorners.map((p, i) => {
-                const ARM = Math.min(viewW, viewH) * 0.08;
-                const dirs: [[number, number], [number, number]][] = [
-                  [[ARM, 0], [0, ARM]],    // TL → right + down
-                  [[-ARM, 0], [0, ARM]],   // TR → left  + down
-                  [[-ARM, 0], [0, -ARM]],  // BR → left  + up
-                  [[ARM, 0], [0, -ARM]],   // BL → right + up
-                ];
-                const [d1, d2] = dirs[i];
-                return (
-                  <path
-                    key={i}
-                    d={`M ${p.x + d1[0]},${p.y + d1[1]} L ${p.x},${p.y} L ${p.x + d2[0]},${p.y + d2[1]}`}
-                    stroke={edgeStroke}
-                    strokeWidth="4"
-                    fill="none"
-                    strokeLinecap="round"
-                    style={{ transition: 'stroke 0.3s ease, d 0.15s ease' }}
-                  />
-                );
-              })}
-            </>
-          ) : (
-            /* Guide brackets — centered, shown when no document detected */
-            (() => {
-              const gW = viewW * 0.62;
-              const gH = viewH * 0.52;
-              const cx = viewW / 2, cy = viewH / 2;
-              const x1 = cx - gW / 2, y1 = cy - gH / 2;
-              const x2 = cx + gW / 2, y2 = cy + gH / 2;
-              const ARM = Math.min(gW, gH) * 0.13;
-              const guides: [number, number, [number,number], [number,number]][] = [
-                [x1, y1, [ARM, 0],  [0, ARM] ],
-                [x2, y1, [-ARM, 0], [0, ARM] ],
-                [x2, y2, [-ARM, 0], [0, -ARM]],
-                [x1, y2, [ARM, 0],  [0, -ARM]],
+        {/* ── A: Guide brackets — A4 portrait (0.707), top/bottom anchored ── */}
+        {(!edgeCorners || isMockMode) && (
+          <div
+            className="absolute pointer-events-none"
+            style={{
+              top: '12%',          // below top bar
+              bottom: '32%',       // above bottom controls + toggle
+              left: '50%',
+              transform: 'translateX(-50%)',
+              aspectRatio: '0.707 / 1',
+              maxHeight: '100%',
+            }}
+          >
+            {/* TL */}
+            <div className="absolute top-0 left-0 w-8 h-8 border-t-[3px] border-l-[3px] border-white/55" />
+            {/* TR */}
+            <div className="absolute top-0 right-0 w-8 h-8 border-t-[3px] border-r-[3px] border-white/55" />
+            {/* BL */}
+            <div className="absolute bottom-0 left-0 w-8 h-8 border-b-[3px] border-l-[3px] border-white/55" />
+            {/* BR */}
+            <div className="absolute bottom-0 right-0 w-8 h-8 border-b-[3px] border-r-[3px] border-white/55" />
+          </div>
+        )}
+
+        {/* ── B: Dynamic SVG overlay — only for detected document (Method B) ── */}
+        {!isMockMode && edgeCorners && (
+          <svg
+            className="absolute inset-0 w-full h-full z-10 pointer-events-none"
+            viewBox={`0 0 ${viewW} ${viewH}`}
+            preserveAspectRatio="xMidYMid slice"
+          >
+            {/* Subtle fill */}
+            <polygon
+              points={edgeCorners.map(p => `${p.x},${p.y}`).join(' ')}
+              fill={edgeFill}
+              stroke="none"
+              style={{ transition: 'fill 0.3s' }}
+            />
+            {/* L-brackets at actual detected corners [TL, TR, BR, BL] */}
+            {edgeCorners.map((p, i) => {
+              const ARM = Math.min(viewW, viewH) * 0.08;
+              const dirs: [[number, number], [number, number]][] = [
+                [[ARM, 0],  [0, ARM] ],   // TL → right + down
+                [[-ARM, 0], [0, ARM] ],   // TR → left  + down
+                [[-ARM, 0], [0, -ARM]],   // BR → left  + up
+                [[ARM, 0],  [0, -ARM]],   // BL → right + up
               ];
-              return guides.map(([px, py, d1, d2], i) => (
+              const [d1, d2] = dirs[i];
+              return (
                 <path
                   key={i}
-                  d={`M ${px + d1[0]},${py + d1[1]} L ${px},${py} L ${px + d2[0]},${py + d2[1]}`}
-                  stroke="rgba(255,255,255,0.38)"
-                  strokeWidth="3"
+                  d={`M ${p.x + d1[0]},${p.y + d1[1]} L ${p.x},${p.y} L ${p.x + d2[0]},${p.y + d2[1]}`}
+                  stroke={edgeStroke}
+                  strokeWidth="3.5"
                   fill="none"
-                  strokeLinecap="round"
+                  strokeLinecap="square"
+                  style={{ transition: 'stroke 0.3s ease' }}
                 />
-              ));
-            })()
-          )}
-        </svg>
+              );
+            })}
+          </svg>
+        )}
 
         {/* "Hold still…" / "Capturing…" label */}
         {mode === 'auto' && isStable && !isMockMode && (
