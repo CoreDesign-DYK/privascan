@@ -29,7 +29,7 @@ export function SettingsSheet() {
         </Button>
       </DrawerTrigger>
       <DrawerContent className="bg-background" style={{ left: '35%', right: '35%' }}>
-        <div className="mx-auto w-full">
+        <div className="mx-auto w-full px-6">
           <DrawerHeader>
             <DrawerTitle>Scanner Settings</DrawerTitle>
             <DrawerDescription>Configure your capture defaults.</DrawerDescription>
