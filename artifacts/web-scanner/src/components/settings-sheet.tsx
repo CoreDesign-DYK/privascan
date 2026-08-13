@@ -26,7 +26,7 @@ export function SettingsSheet() {
         sideOffset={8}
       >
         {/* Header */}
-        <div className="px-5 pt-5 pb-3 border-b border-border">
+        <div className="px-5 pt-[30px] pb-3 border-b border-border">
           <p className="text-base font-semibold">Scanner Settings</p>
           <p className="text-sm text-muted-foreground">Configure your capture defaults.</p>
         </div>
