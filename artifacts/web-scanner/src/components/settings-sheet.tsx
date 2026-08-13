@@ -20,7 +20,7 @@ export function SettingsSheet() {
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-80 p-0 rounded-xl shadow-2xl border border-border bg-background overflow-y-auto"
+        className="w-80 p-0 rounded-sm shadow-2xl border border-border bg-background overflow-y-auto"
         style={{ height: '453px' }}
         align="end"
         sideOffset={8}
@@ -45,7 +45,7 @@ export function SettingsSheet() {
                 <button
                   key={value}
                   onClick={() => setSettings({ imageQuality: value })}
-                  className={`flex-1 flex flex-col items-center py-2.5 rounded-lg border-2 transition-all text-sm font-medium ${
+                  className={`flex-1 flex flex-col items-center py-2.5 rounded-sm border-2 transition-all text-sm font-medium ${
                     settings.imageQuality === value
                       ? 'border-blue-500 bg-blue-50 text-blue-700'
                       : 'border-transparent bg-secondary text-foreground hover:border-muted-foreground/30'
@@ -66,11 +66,11 @@ export function SettingsSheet() {
               onValueChange={(val: 'color' | 'greyscale') => setSettings({ colorMode: val })}
               className="flex gap-3"
             >
-              <div className="flex items-center space-x-2 bg-secondary p-3 rounded-lg flex-1">
+              <div className="flex items-center space-x-2 bg-secondary p-3 rounded-sm flex-1">
                 <RadioGroupItem value="color" id="c1" />
                 <Label htmlFor="c1" className="cursor-pointer font-medium">Color</Label>
               </div>
-              <div className="flex items-center space-x-2 bg-secondary p-3 rounded-lg flex-1">
+              <div className="flex items-center space-x-2 bg-secondary p-3 rounded-sm flex-1">
                 <RadioGroupItem value="greyscale" id="c2" />
                 <Label htmlFor="c2" className="cursor-pointer font-medium">Greyscale</Label>
               </div>
@@ -84,7 +84,7 @@ export function SettingsSheet() {
               value={settings.paperSize}
               onValueChange={(val: PaperSize) => setSettings({ paperSize: val })}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="w-full rounded-sm">
                 <SelectValue placeholder="Select paper size" />
               </SelectTrigger>
               <SelectContent>
