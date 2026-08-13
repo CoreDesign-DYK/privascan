@@ -33,25 +33,6 @@ export function SettingsSheet() {
 
         {/* Body */}
         <div className="px-5 py-4 space-y-5">
-          {/* Type */}
-          <div className="space-y-2">
-            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Type</Label>
-            <RadioGroup
-              value={settings.scanType}
-              onValueChange={(val: 'document' | 'photo') => setSettings({ scanType: val })}
-              className="flex gap-3"
-            >
-              <div className="flex items-center space-x-2 bg-secondary p-3 rounded-lg flex-1">
-                <RadioGroupItem value="document" id="r1" />
-                <Label htmlFor="r1" className="cursor-pointer font-medium">Document</Label>
-              </div>
-              <div className="flex items-center space-x-2 bg-secondary p-3 rounded-lg flex-1">
-                <RadioGroupItem value="photo" id="r2" />
-                <Label htmlFor="r2" className="cursor-pointer font-medium">Photo</Label>
-              </div>
-            </RadioGroup>
-          </div>
-
           {/* Color Mode */}
           <div className="space-y-2">
             <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Color Mode</Label>
