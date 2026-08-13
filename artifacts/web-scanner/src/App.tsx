@@ -19,12 +19,13 @@ import ScannerScreen from '@/pages/scanner';
 import PreviewScreen from '@/pages/preview';
 import GalleryScreen from '@/pages/gallery';
 import EditScreen from '@/pages/edit';
+import MarkupScreen from '@/pages/markup';
 
 const queryClient = new QueryClient();
 
 function Router() {
   const [location] = useLocation();
-  const hideTopBar = location === '/edit';
+  const hideTopBar = location === '/edit' || location === '/markup';
 
   return (
     <RoutedErrorBoundary>
@@ -34,6 +35,7 @@ function Router() {
           <Route path="/preview" component={PreviewScreen} />
           <Route path="/gallery" component={GalleryScreen} />
           <Route path="/edit" component={EditScreen} />
+          <Route path="/markup" component={MarkupScreen} />
           <Route component={NotFound} />
         </Switch>
         {!hideTopBar && <TopBar />}

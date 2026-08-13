@@ -579,7 +579,10 @@ export default function ScannerScreen() {
               addPage(rotated);
               toast.success('Rotated 90°');
             }}
-            onMarkup={() => toast('Markup editor coming soon')}
+            onMarkup={() => {
+              if (!pages.length) { toast('No page to mark up'); return; }
+              setLocation('/markup');
+            }}
             onDelete={() => {
               if (!pages.length) { toast('No pages to delete'); return; }
               clearPages();
