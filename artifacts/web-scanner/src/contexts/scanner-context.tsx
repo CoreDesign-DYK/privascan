@@ -1,12 +1,12 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 import { type Point } from '@/lib/perspective';
 import {
-  type ScanType, type ColorMode, type PaperSize, type ScannerSettings,
+  type ScanType, type ColorMode, type PaperSize, type ImageQuality, type ScannerSettings,
   PAPER_SIZES,
 } from '@/lib/scanner-types';
 
 // Type-only re-exports are erased at runtime — Fast Refresh compatible
-export type { ScanType, ColorMode, PaperSize, ScannerSettings };
+export type { ScanType, ColorMode, PaperSize, ImageQuality, ScannerSettings };
 
 interface ScannerContextType {
   settings: ScannerSettings;
@@ -29,9 +29,10 @@ const ScannerContext = createContext<ScannerContextType | undefined>(undefined);
 
 export function ScannerProvider({ children }: { children: ReactNode }) {
   const [settings, setFullSettings] = useState<ScannerSettings>({
-    scanType: 'document',
-    colorMode: 'color',
-    paperSize: 'A4',
+    scanType:     'document',
+    colorMode:    'color',
+    paperSize:    'A4',
+    imageQuality: 'high',
   });
   const [pages, setPages]                     = useState<string[]>([]);
   const [mode, setMode]                       = useState<'auto' | 'manual'>('manual');

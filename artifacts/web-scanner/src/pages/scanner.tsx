@@ -21,7 +21,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { detectDocumentCorners, defaultCorners } from '@/lib/edge-detection';
 import { type Point } from '@/lib/perspective';
-import { type ScannerSettings } from '@/lib/scanner-types';
+import { type ScannerSettings, QUALITY_VALUES } from '@/lib/scanner-types';
 
 const EDGE_INTERVAL_MS = 200;
 const STABLE_TARGET = 8;
@@ -61,7 +61,7 @@ function generateMockPage(pageNum: number, settings: ScannerSettings): string {
     'dolor in reprehenderit in voluptate velit esse.',
   ].forEach((line, i) => ctx.fillText(line, 80, 240 + i * 46));
 
-  return canvas.toDataURL('image/jpeg', 0.92);
+  return canvas.toDataURL('image/jpeg', QUALITY_VALUES[settings.imageQuality]);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
@@ -185,7 +185,7 @@ export default function ScannerScreen() {
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth; canvas.height = video.videoHeight;
       canvas.getContext('2d')!.drawImage(video, 0, 0);
-      addPage(canvas.toDataURL('image/jpeg', 0.95));
+      addPage(canvas.toDataURL('image/jpeg', QUALITY_VALUES[settingsRef.current.imageQuality]));
     }
 
     triggerCaptureEffects();
@@ -243,7 +243,7 @@ export default function ScannerScreen() {
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth; canvas.height = video.videoHeight;
       canvas.getContext('2d')!.drawImage(video, 0, 0);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+      const dataUrl = canvas.toDataURL('image/jpeg', QUALITY_VALUES[settingsRef.current.imageQuality]);
       setPendingPage(dataUrl);
       setDetectedCorners(edgeCorners ?? defaultCorners(canvas.width, canvas.height));
       setLocation('/edit');

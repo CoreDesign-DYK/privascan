@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useScannerContext } from '@/contexts/scanner-context';
-import { PAPER_SIZES, type PaperSize } from '@/lib/scanner-types';
+import { PAPER_SIZES, type PaperSize, type ImageQuality } from '@/lib/scanner-types';
 
 export function SettingsSheet() {
   const { settings, setSettings } = useScannerContext();
@@ -33,6 +33,31 @@ export function SettingsSheet() {
 
         {/* Body */}
         <div className="px-5 py-4 space-y-5">
+          {/* Scan Quality */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Scan Quality</Label>
+            <div className="flex gap-3">
+              {([
+                { value: 'high',   label: 'High',   sub: '0.95' },
+                { value: 'medium', label: 'Medium', sub: '0.80' },
+                { value: 'low',    label: 'Low',    sub: '0.60' },
+              ] as { value: ImageQuality; label: string; sub: string }[]).map(({ value, label, sub }) => (
+                <button
+                  key={value}
+                  onClick={() => setSettings({ imageQuality: value })}
+                  className={`flex-1 flex flex-col items-center py-2.5 rounded-lg border-2 transition-all text-sm font-medium ${
+                    settings.imageQuality === value
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-transparent bg-secondary text-foreground hover:border-muted-foreground/30'
+                  }`}
+                >
+                  {label}
+                  <span className="text-[10px] text-muted-foreground mt-0.5">q={sub}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Color Mode */}
           <div className="space-y-2">
             <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Color Mode</Label>
