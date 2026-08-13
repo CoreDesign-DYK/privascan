@@ -559,7 +559,7 @@ export default function ScannerScreen() {
             onMarkup={() => toast('Markup')}
             onDelete={() => toast.error('Deleted')}
           >
-            <div className="relative w-20 h-20">
+            <div className="relative w-16 h-16">
               {/* Progress ring */}
               {mode === 'auto' && (
                 <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none" viewBox="0 0 80 80">
@@ -590,7 +590,7 @@ export default function ScannerScreen() {
                 )}
               >
                 <div className={cn(
-                  'w-[3.4rem] h-[3.4rem] rounded-full transition-all duration-300',
+                  'w-[2.7rem] h-[2.7rem] rounded-full transition-all duration-300',
                   isStable && mode === 'auto'
                     ? 'bg-green-400 shadow-[0_0_16px_rgba(74,222,128,0.6)]'
                     : mode === 'manual'
@@ -600,7 +600,7 @@ export default function ScannerScreen() {
                   {mode === 'auto' && (
                     <div className="w-full h-full flex items-center justify-center">
                       <Zap className={cn(
-                        'w-5 h-5 fill-current transition-colors',
+                        'w-4 h-4 fill-current transition-colors',
                         isStable ? 'text-white' : 'text-gray-800',
                       )} />
                     </div>
@@ -654,7 +654,7 @@ export default function ScannerScreen() {
                 key={m}
                 onClick={() => setMode(m)}
                 className={cn(
-                  'relative z-10 px-6 py-1.5 rounded-full text-sm font-semibold transition-colors duration-200 capitalize',
+                  'relative z-10 px-5 py-1 rounded-full text-xs font-semibold transition-colors duration-200 capitalize',
                   mode === m ? 'text-gray-900' : 'text-white/60 hover:text-white/90',
                 )}
               >

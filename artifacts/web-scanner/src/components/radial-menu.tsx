@@ -11,16 +11,16 @@ interface RadialMenuProps {
   children: React.ReactNode;
 }
 
-// 70% of previous sizes: button w-20→w-14, icon w-8→w-6, radius 120→84
+// 56% of original sizes: button w-11, icon w-5, radius 104
 const ITEMS_CONFIG = [
-  { angle: -70, label: 'Retake',  icon: <Camera   className="w-6 h-6" />, key: 'retake'               },
-  { angle: -35, label: 'Crop',    icon: <Crop     className="w-6 h-6" />, key: 'crop'                 },
-  { angle:   0, label: 'Rotate',  icon: <RotateCw className="w-6 h-6" />, key: 'rotate'               },
-  { angle:  35, label: 'Markup',  icon: <Type     className="w-6 h-6" />, key: 'markup'               },
-  { angle:  70, label: 'Delete',  icon: <Trash2   className="w-6 h-6" />, key: 'delete', danger: true },
+  { angle: -70, label: 'Retake',  icon: <Camera   className="w-5 h-5" />, key: 'retake'               },
+  { angle: -35, label: 'Crop',    icon: <Crop     className="w-5 h-5" />, key: 'crop'                 },
+  { angle:   0, label: 'Rotate',  icon: <RotateCw className="w-5 h-5" />, key: 'rotate'               },
+  { angle:  35, label: 'Markup',  icon: <Type     className="w-5 h-5" />, key: 'markup'               },
+  { angle:  70, label: 'Delete',  icon: <Trash2   className="w-5 h-5" />, key: 'delete', danger: true },
 ];
 
-const RADIUS = 130; // px
+const RADIUS = 104; // px (130 × 0.8)
 
 function angleToXY(angleDeg: number) {
   const rad = ((angleDeg - 90) * Math.PI) / 180;
@@ -90,7 +90,7 @@ export function RadialMenu({
                 setOpen(false);
               }}
               className={cn(
-                'w-14 h-14 rounded-full flex items-center justify-center',
+                'w-11 h-11 rounded-full flex items-center justify-center',
                 'transition-transform active:scale-90',
                 'shadow-[0_4px_16px_rgba(0,0,0,0.45)]',
                 item.danger
@@ -109,7 +109,7 @@ export function RadialMenu({
 
             {/* Label */}
             <span
-              className="text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap select-none bg-gray-900/80 text-white backdrop-blur-sm"
+              className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap select-none bg-gray-900/80 text-white backdrop-blur-sm"
               style={{
                 opacity: open ? 1 : 0,
                 transition: `opacity 180ms ease ${i * 25}ms`,
