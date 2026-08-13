@@ -20,7 +20,8 @@ export function SettingsSheet() {
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-80 p-0 rounded-xl shadow-2xl border border-border bg-background"
+        className="w-80 p-0 rounded-xl shadow-2xl border border-border bg-background overflow-y-auto"
+        style={{ height: '453px' }}
         align="end"
         sideOffset={8}
       >
