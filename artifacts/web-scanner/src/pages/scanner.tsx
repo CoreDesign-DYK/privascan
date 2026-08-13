@@ -323,22 +323,22 @@ export default function ScannerScreen() {
         <div className="flex items-center gap-2.5">
           {/* Icon — document + scanner brackets (SVG, 20% larger than prev 24px) */}
           <svg width="30" height="30" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-            {/* Blue corner brackets */}
-            <path d="M2,12 L2,2 L12,2"   stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
+            {/* Blue corner brackets — frame spans (2,2)→(46,46), centre = (24,24) */}
+            <path d="M2,12 L2,2 L12,2"    stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
             <path d="M36,2 L46,2 L46,12"  stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
             <path d="M2,36 L2,46 L12,46"  stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
             <path d="M46,36 L46,46 L36,46" stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
-            {/* Document body */}
-            <rect x="10" y="7" width="22" height="30" rx="1.5" fill="white" opacity="0.92"/>
-            {/* Folded top-right corner */}
-            <path d="M26,7 L32,13 L26,13 Z" fill="#cbd5e1"/>
-            <path d="M26,7 L32,7 L32,13 Z" fill="white" opacity="0.92"/>
-            {/* Content lines */}
-            <line x1="14" y1="18" x2="28" y2="18" stroke="#334155" strokeWidth="2"   strokeLinecap="round"/>
-            <line x1="14" y1="22" x2="26" y2="22" stroke="#334155" strokeWidth="1.8" strokeLinecap="round"/>
-            <line x1="14" y1="26" x2="28" y2="26" stroke="#334155" strokeWidth="1.8" strokeLinecap="round"/>
-            <line x1="14" y1="30" x2="23" y2="30" stroke="#334155" strokeWidth="1.6" strokeLinecap="round"/>
-            {/* Blue scan line across document */}
+            {/* Document body — centred: x=13 (24-11), y=9 (24-15), w=22, h=30 */}
+            <rect x="13" y="9" width="22" height="30" rx="1.5" fill="white" opacity="0.92"/>
+            {/* Folded top-right corner at (29,9)→(35,15) */}
+            <path d="M29,9 L35,15 L29,15 Z" fill="#cbd5e1"/>
+            <path d="M29,9 L35,9 L35,15 Z" fill="white" opacity="0.92"/>
+            {/* Content lines (all shifted +3x, +2y from before) */}
+            <line x1="17" y1="20" x2="31" y2="20" stroke="#334155" strokeWidth="2"   strokeLinecap="round"/>
+            <line x1="17" y1="24" x2="29" y2="24" stroke="#334155" strokeWidth="1.8" strokeLinecap="round"/>
+            <line x1="17" y1="28" x2="31" y2="28" stroke="#334155" strokeWidth="1.8" strokeLinecap="round"/>
+            <line x1="17" y1="32" x2="26" y2="32" stroke="#334155" strokeWidth="1.6" strokeLinecap="round"/>
+            {/* Blue scan line across the full bracket frame */}
             <line x1="7" y1="24" x2="41" y2="24" stroke="#38bdf8" strokeWidth="2" strokeLinecap="round" opacity="0.9"/>
           </svg>
 
