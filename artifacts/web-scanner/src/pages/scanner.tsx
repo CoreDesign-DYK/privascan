@@ -360,34 +360,72 @@ export default function ScannerScreen() {
           </div>
         )}
 
-        {/* ── A: Corner bracket viewfinder ── */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="relative w-[72%] h-[55%] max-w-xs">
-            <CornerBrackets color={bracketColor} />
-          </div>
-        </div>
-
-        {/* Edge-detection polygon overlay */}
-        {!isMockMode && edgeCorners && (
-          <svg
-            className="absolute inset-0 w-full h-full z-10 pointer-events-none"
-            viewBox={`0 0 ${viewW} ${viewH}`}
-            preserveAspectRatio="xMidYMid slice"
-          >
-            <polygon
-              points={edgeCorners.map(p => `${p.x},${p.y}`).join(' ')}
-              fill={edgeFill}
-              stroke={edgeStroke}
-              strokeWidth="2.5"
-              style={{ transition: 'stroke 0.3s, fill 0.3s' }}
-            />
-            {edgeCorners.map((p, i) => (
-              <circle key={i} cx={p.x} cy={p.y} r="8"
-                fill={edgeStroke} stroke="white" strokeWidth="2"
-                style={{ transition: 'fill 0.3s' }} />
-            ))}
-          </svg>
-        )}
+        {/* ── A+B: Unified SVG overlay — guide brackets + detected doc brackets ── */}
+        <svg
+          className="absolute inset-0 w-full h-full z-10 pointer-events-none"
+          viewBox={`0 0 ${viewW} ${viewH}`}
+          preserveAspectRatio="xMidYMid slice"
+        >
+          {edgeCorners && !isMockMode ? (
+            <>
+              {/* Subtle fill over detected document */}
+              <polygon
+                points={edgeCorners.map(p => `${p.x},${p.y}`).join(' ')}
+                fill={edgeFill}
+                stroke="none"
+                style={{ transition: 'fill 0.3s' }}
+              />
+              {/* Dynamic L-brackets snapped to detected corners [TL,TR,BR,BL] */}
+              {edgeCorners.map((p, i) => {
+                const ARM = Math.min(viewW, viewH) * 0.08;
+                const dirs: [[number, number], [number, number]][] = [
+                  [[ARM, 0], [0, ARM]],    // TL → right + down
+                  [[-ARM, 0], [0, ARM]],   // TR → left  + down
+                  [[-ARM, 0], [0, -ARM]],  // BR → left  + up
+                  [[ARM, 0], [0, -ARM]],   // BL → right + up
+                ];
+                const [d1, d2] = dirs[i];
+                return (
+                  <path
+                    key={i}
+                    d={`M ${p.x + d1[0]},${p.y + d1[1]} L ${p.x},${p.y} L ${p.x + d2[0]},${p.y + d2[1]}`}
+                    stroke={edgeStroke}
+                    strokeWidth="4"
+                    fill="none"
+                    strokeLinecap="round"
+                    style={{ transition: 'stroke 0.3s ease, d 0.15s ease' }}
+                  />
+                );
+              })}
+            </>
+          ) : (
+            /* Guide brackets — centered, shown when no document detected */
+            (() => {
+              const gW = viewW * 0.62;
+              const gH = viewH * 0.52;
+              const cx = viewW / 2, cy = viewH / 2;
+              const x1 = cx - gW / 2, y1 = cy - gH / 2;
+              const x2 = cx + gW / 2, y2 = cy + gH / 2;
+              const ARM = Math.min(gW, gH) * 0.13;
+              const guides: [number, number, [number,number], [number,number]][] = [
+                [x1, y1, [ARM, 0],  [0, ARM] ],
+                [x2, y1, [-ARM, 0], [0, ARM] ],
+                [x2, y2, [-ARM, 0], [0, -ARM]],
+                [x1, y2, [ARM, 0],  [0, -ARM]],
+              ];
+              return guides.map(([px, py, d1, d2], i) => (
+                <path
+                  key={i}
+                  d={`M ${px + d1[0]},${py + d1[1]} L ${px},${py} L ${px + d2[0]},${py + d2[1]}`}
+                  stroke="rgba(255,255,255,0.38)"
+                  strokeWidth="3"
+                  fill="none"
+                  strokeLinecap="round"
+                />
+              ));
+            })()
+          )}
+        </svg>
 
         {/* "Hold still…" / "Capturing…" label */}
         {mode === 'auto' && isStable && !isMockMode && (
