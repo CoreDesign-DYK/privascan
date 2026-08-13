@@ -314,10 +314,8 @@ export default function ScannerScreen() {
       <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between px-4 pt-4 pb-6"
         style={{ background: 'linear-gradient(to bottom, rgba(13,13,20,0.85) 0%, transparent 100%)' }}>
 
-        {/* Left: settings */}
-        <div className="text-white/80">
-          <SettingsSheet />
-        </div>
+        {/* Left: spacer (settings moved to top-right bar) */}
+        <div className="w-8" />
 
         {/* Center: PrivaScan brand logo */}
         <div className="flex items-center gap-2.5">

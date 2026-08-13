@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useLanguage, type Language } from '@/contexts/language-context';
 import { cn } from '@/lib/utils';
+import { SettingsSheet } from '@/components/settings-sheet';
 
 const LANGUAGES: Language[] = ['EN', 'DE', 'KO', 'JP'];
 const USER_INITIALS = 'DK';
@@ -26,6 +27,14 @@ export function TopBar() {
   return (
     <div className="fixed top-0 right-0 z-50 flex items-center gap-1 px-4 py-3 pr-8">
       <div className="flex items-center px-1 py-1 gap-0.5">
+        {/* Settings — left of EN */}
+        <div className={cn('text-white/80', !isScanner && 'text-gray-500')}>
+          <SettingsSheet />
+        </div>
+
+        {/* Divider */}
+        <div className={cn('w-px h-4 mx-1', isScanner ? 'bg-white/20' : 'bg-gray-200')} />
+
         {LANGUAGES.map((lang) => (
           <button
             key={lang}
