@@ -28,8 +28,8 @@ export function SettingsSheet() {
           <span className="sr-only">Settings</span>
         </Button>
       </DrawerTrigger>
-      <DrawerContent className="bg-background">
-        <div className="mx-auto w-full max-w-sm">
+      <DrawerContent className="bg-background" style={{ left: '10%', right: '10%' }}>
+        <div className="mx-auto w-full">
           <DrawerHeader>
             <DrawerTitle>Scanner Settings</DrawerTitle>
             <DrawerDescription>Configure your capture defaults.</DrawerDescription>
