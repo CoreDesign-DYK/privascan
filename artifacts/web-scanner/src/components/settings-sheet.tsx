@@ -28,7 +28,7 @@ export function SettingsSheet() {
           <span className="sr-only">Settings</span>
         </Button>
       </DrawerTrigger>
-      <DrawerContent className="bg-background" style={{ left: '10%', right: '10%' }}>
+      <DrawerContent className="bg-background" style={{ left: '25%', right: '25%' }}>
         <div className="mx-auto w-full">
           <DrawerHeader>
             <DrawerTitle>Scanner Settings</DrawerTitle>
