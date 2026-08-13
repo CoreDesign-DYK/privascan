@@ -92,10 +92,10 @@ export function RadialMenu({
               className={cn(
                 'w-14 h-14 rounded-full flex items-center justify-center',
                 'transition-transform active:scale-90',
-                'shadow-[0_2px_12px_rgba(0,0,0,0.25)]',
+                'shadow-[0_4px_16px_rgba(0,0,0,0.45)]',
                 item.danger
-                  ? 'bg-gray-900 text-white hover:bg-black'           // 휴지통: 검정 배경 + 흰 아이콘
-                  : 'bg-transparent text-gray-900 hover:bg-black/10'  // 나머지: 투명 배경 + 검정 아이콘
+                  ? 'bg-gray-900 text-white hover:bg-black border border-white/10'
+                  : 'bg-white/90 text-gray-800 hover:bg-white backdrop-blur-sm border border-white/30'
               )}
               style={{
                 transform: open

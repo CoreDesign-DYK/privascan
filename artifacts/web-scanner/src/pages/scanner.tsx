@@ -419,32 +419,6 @@ export default function ScannerScreen() {
         }}
       >
 
-        {/* ── I: Sliding mode toggle ── */}
-        <div className="flex justify-center">
-          <div className="relative flex items-center bg-white/10 border border-white/15 rounded-full p-1 backdrop-blur-sm">
-            {/* Sliding pill */}
-            <div
-              className="absolute top-1 bottom-1 rounded-full bg-white shadow-sm transition-all duration-300 ease-out"
-              style={{
-                width: 'calc(50% - 4px)',
-                left: mode === 'auto' ? '4px' : 'calc(50%)',
-              }}
-            />
-            {(['auto', 'manual'] as const).map(m => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                className={cn(
-                  'relative z-10 px-6 py-1.5 rounded-full text-sm font-semibold transition-colors duration-250 capitalize',
-                  mode === m ? 'text-gray-900' : 'text-white/60 hover:text-white/90',
-                )}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Auto-mode status hint */}
         {mode === 'auto' && (
           <div className="flex justify-center min-h-[20px]">
@@ -607,6 +581,32 @@ export default function ScannerScreen() {
               </button>
             ) : <div className="w-12" />
           )}
+        </div>
+
+        {/* ── I: Sliding mode toggle — below capture button ── */}
+        <div className="flex justify-center pb-1">
+          <div className="relative flex items-center bg-white/10 border border-white/15 rounded-full p-1 backdrop-blur-sm">
+            {/* Sliding pill */}
+            <div
+              className="absolute top-1 bottom-1 rounded-full bg-white shadow-sm transition-all duration-300 ease-out"
+              style={{
+                width: 'calc(50% - 4px)',
+                left: mode === 'auto' ? '4px' : 'calc(50%)',
+              }}
+            />
+            {(['auto', 'manual'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={cn(
+                  'relative z-10 px-6 py-1.5 rounded-full text-sm font-semibold transition-colors duration-200 capitalize',
+                  mode === m ? 'text-gray-900' : 'text-white/60 hover:text-white/90',
+                )}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>
