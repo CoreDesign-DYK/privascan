@@ -11,7 +11,7 @@
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocation } from 'wouter';
-import { Image as ImageIcon, Zap, ChevronRight, Smartphone, Edit2, ScanLine } from 'lucide-react';
+import { FolderOpen, Zap, ChevronRight, Smartphone, Edit2, ScanLine } from 'lucide-react';
 import { useCamera } from '@/hooks/use-camera';
 import { useScannerContext } from '@/contexts/scanner-context';
 import { SettingsSheet } from '@/components/settings-sheet';
@@ -544,7 +544,7 @@ export default function ScannerScreen() {
             onClick={() => setLocation('/gallery')}
             className="w-12 h-12 rounded-full flex items-center justify-center text-white/70 hover:text-white bg-white/8 hover:bg-white/15 border border-white/15 transition-all backdrop-blur-sm"
           >
-            <ImageIcon className="w-5 h-5" />
+            <FolderOpen className="w-5 h-5" />
           </button>
 
           {/* ── F: iOS-style capture button with progress ring ── */}
