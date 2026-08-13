@@ -1,14 +1,17 @@
 /**
- * scanner.tsx
+ * scanner.tsx — Dark camera UI with premium design
  *
- * Manual mode  →  capture button tap → /edit (full crop/filter editing)
- * Auto mode    →  edge detection stabilises → auto-capture → pages[] directly
- *                 Progress ring fills on capture button as document stabilises.
- *                 Blue outline → green when ready to fire.
+ * D: Dark background (#0d0d14)
+ * A: Animated corner bracket viewfinder
+ * B: Scan line sweep on capture
+ * E: Glassmorphism bottom bar
+ * F: iOS-style capture button
+ * H: DocScan brand wordmark in header
+ * I: Sliding mode toggle pill
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocation } from 'wouter';
-import { Image as ImageIcon, Zap, ChevronRight, Smartphone, Edit2 } from 'lucide-react';
+import { Image as ImageIcon, Zap, ChevronRight, Smartphone, Edit2, ScanLine } from 'lucide-react';
 import { useCamera } from '@/hooks/use-camera';
 import { useScannerContext } from '@/contexts/scanner-context';
 import { SettingsSheet } from '@/components/settings-sheet';
@@ -20,13 +23,11 @@ import { detectDocumentCorners, defaultCorners } from '@/lib/edge-detection';
 import { type Point } from '@/lib/perspective';
 import { type ScannerSettings } from '@/lib/scanner-types';
 
-// Edge-detection polling rate
 const EDGE_INTERVAL_MS = 200;
-// Frames document must stay stable before auto-capture triggers
-const STABLE_TARGET = 8; // 8 × 200 ms = 1.6 s
+const STABLE_TARGET = 8;
 
 /* ─────────────────────────────────────────────────────────────────────────── */
-/*  Helpers                                                                    */
+/*  Mock page generator                                                         */
 /* ─────────────────────────────────────────────────────────────────────────── */
 
 function generateMockPage(pageNum: number, settings: ScannerSettings): string {
@@ -39,13 +40,11 @@ function generateMockPage(pageNum: number, settings: ScannerSettings): string {
 
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-
   ctx.strokeStyle = settings.colorMode === 'greyscale' ? '#ddd' : '#e8e4dc';
   ctx.lineWidth = 1;
   for (let y = 80; y < canvas.height; y += 40) {
     ctx.beginPath(); ctx.moveTo(60, y); ctx.lineTo(canvas.width - 60, y); ctx.stroke();
   }
-
   ctx.fillStyle = ink;
   ctx.font = 'bold 56px sans-serif';
   ctx.fillText('Sample Document', 80, 120);
@@ -66,10 +65,49 @@ function generateMockPage(pageNum: number, settings: ScannerSettings): string {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
-/*  Progress ring geometry                                                      */
+/*  Progress ring geometry                                                       */
 /* ─────────────────────────────────────────────────────────────────────────── */
 const RING_R    = 39;
 const RING_CIRC = 2 * Math.PI * RING_R;
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/*  Corner bracket component (A)                                                */
+/* ─────────────────────────────────────────────────────────────────────────── */
+function CornerBrackets({ color }: { color: string }) {
+  const SIZE = 32;
+  const THICK = 3;
+
+  const corners = [
+    { top: 0, left: 0,  borderTop: THICK, borderLeft: THICK,  borderRight: 0, borderBottom: 0, borderRadius: '4px 0 0 0' },
+    { top: 0, right: 0, borderTop: THICK, borderRight: THICK, borderLeft: 0,  borderBottom: 0, borderRadius: '0 4px 0 0' },
+    { bottom: 0, left: 0,  borderBottom: THICK, borderLeft: THICK,  borderTop: 0, borderRight: 0,  borderRadius: '0 0 0 4px' },
+    { bottom: 0, right: 0, borderBottom: THICK, borderRight: THICK, borderTop: 0, borderLeft: 0,   borderRadius: '0 0 4px 0' },
+  ];
+
+  return (
+    <>
+      {corners.map((c, i) => (
+        <div
+          key={i}
+          className="absolute animate-bracket"
+          style={{
+            width: SIZE, height: SIZE,
+            top: c.top, left: (c as any).left, right: (c as any).right, bottom: (c as any).bottom,
+            borderStyle: 'solid',
+            borderColor: color,
+            borderTopWidth: c.borderTop ?? 0,
+            borderLeftWidth: c.borderLeft ?? 0,
+            borderRightWidth: c.borderRight ?? 0,
+            borderBottomWidth: c.borderBottom ?? 0,
+            borderRadius: c.borderRadius,
+            animationDelay: `${i * 40}ms`,
+            transition: 'border-color 0.35s ease',
+          }}
+        />
+      ))}
+    </>
+  );
+}
 
 /* ─────────────────────────────────────────────────────────────────────────── */
 /*  Component                                                                   */
@@ -83,33 +121,30 @@ export default function ScannerScreen() {
     setPendingPage, setDetectedCorners,
   } = useScannerContext();
 
-  const canvasRef           = useRef<HTMLCanvasElement>(null);
-  const [isCapturing,   setIsCapturing]   = useState(false);
-  const [edgeCorners,   setEdgeCorners]   = useState<[Point, Point, Point, Point] | null>(null);
-  const [stableProgress, setStableProgress] = useState(0); // 0 – 1
-  // "captured!" flash label that fades out
-  const [capturedLabel, setCapturedLabel] = useState<number | null>(null); // page number
-  // Thumbnail strip: tracks which thumb is highlighted (always last page)
-  const [selectedThumb, setSelectedThumb] = useState(-1);
-  const lastThumbRef = useRef<HTMLButtonElement>(null);
+  const canvasRef            = useRef<HTMLCanvasElement>(null);
+  const [isCapturing,    setIsCapturing]    = useState(false);
+  const [showScanLine,   setShowScanLine]   = useState(false);   // B
+  const [edgeCorners,    setEdgeCorners]    = useState<[Point, Point, Point, Point] | null>(null);
+  const [stableProgress, setStableProgress] = useState(0);
+  const [capturedLabel,  setCapturedLabel]  = useState<number | null>(null);
+  const [selectedThumb,  setSelectedThumb]  = useState(-1);
 
-  // Refs for values used inside setInterval (avoids stale-closure bugs)
+  const lastThumbRef     = useRef<HTMLButtonElement>(null);
   const modeRef          = useRef(mode);
   const pagesLenRef      = useRef(pages.length);
   const settingsRef      = useRef(settings);
   const edgeTimerRef     = useRef<ReturnType<typeof setInterval> | null>(null);
   const stableFrames     = useRef(0);
-  const captureAutoRef   = useRef<() => void>(() => {});  // kept fresh via effect
+  const captureAutoRef   = useRef<() => void>(() => {});
 
-  useEffect(() => { modeRef.current     = mode;          }, [mode]);
-  useEffect(() => { pagesLenRef.current = pages.length;  }, [pages.length]);
-  useEffect(() => { settingsRef.current = settings;      }, [settings]);
+  useEffect(() => { modeRef.current     = mode;         }, [mode]);
+  useEffect(() => { pagesLenRef.current = pages.length; }, [pages.length]);
+  useEffect(() => { settingsRef.current = settings;     }, [settings]);
 
-  // Auto-select & scroll to the newest thumbnail whenever pages[] grows
+  // Auto-select & scroll to newest thumbnail
   useEffect(() => {
     if (pages.length === 0) { setSelectedThumb(-1); return; }
     setSelectedThumb(pages.length - 1);
-    // small delay so the DOM element exists before scrolling
     setTimeout(() => {
       lastThumbRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'end' });
     }, 60);
@@ -131,7 +166,15 @@ export default function ScannerScreen() {
     };
   }, [startCamera, stopCamera]);
 
-  /* ── Auto-capture (direct → pages[], no edit screen) ───────────────────── */
+  /* ── Flash + scan line helper ───────────────────────────────────────────── */
+  const triggerCaptureEffects = useCallback(() => {
+    setIsCapturing(true);
+    setShowScanLine(true);
+    setTimeout(() => setIsCapturing(false), 180);
+    setTimeout(() => setShowScanLine(false), 520);
+  }, []);
+
+  /* ── Auto-capture ───────────────────────────────────────────────────────── */
   const autoCaptureFrame = useCallback(() => {
     const pageNum = pagesLenRef.current + 1;
 
@@ -141,22 +184,18 @@ export default function ScannerScreen() {
       const video = videoRef.current;
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(video, 0, 0);
+      canvas.getContext('2d')!.drawImage(video, 0, 0);
       addPage(canvas.toDataURL('image/jpeg', 0.95));
     }
 
-    // Visual feedback
-    setIsCapturing(true);
-    setTimeout(() => setIsCapturing(false), 180);
+    triggerCaptureEffects();
     setCapturedLabel(pageNum);
     setTimeout(() => setCapturedLabel(null), 1800);
-  }, [isMockMode, videoRef, addPage]);
+  }, [isMockMode, videoRef, addPage, triggerCaptureEffects]);
 
-  // Keep ref fresh so the interval can call it without stale closure
   useEffect(() => { captureAutoRef.current = autoCaptureFrame; }, [autoCaptureFrame]);
 
-  /* ── Real-time edge detection loop ─────────────────────────────────────── */
+  /* ── Edge detection loop ────────────────────────────────────────────────── */
   useEffect(() => {
     if (isMockMode) return;
 
@@ -172,7 +211,6 @@ export default function ScannerScreen() {
       if (corners) {
         stableFrames.current = Math.min(stableFrames.current + 1, STABLE_TARGET);
       } else {
-        // Decay faster so ring drops quickly when doc moves away
         stableFrames.current = Math.max(stableFrames.current - 2, 0);
       }
 
@@ -189,10 +227,9 @@ export default function ScannerScreen() {
     return () => { if (edgeTimerRef.current) clearInterval(edgeTimerRef.current); };
   }, [isMockMode, videoRef]);
 
-  /* ── Manual capture (→ /edit screen for crop/filter) ───────────────────── */
+  /* ── Manual capture ─────────────────────────────────────────────────────── */
   const manualCaptureFrame = useCallback(() => {
-    setIsCapturing(true);
-    setTimeout(() => setIsCapturing(false), 150);
+    triggerCaptureEffects();
 
     const pageNum = pagesLenRef.current + 1;
 
@@ -205,14 +242,13 @@ export default function ScannerScreen() {
       const video  = videoRef.current;
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(video, 0, 0);
+      canvas.getContext('2d')!.drawImage(video, 0, 0);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
       setPendingPage(dataUrl);
       setDetectedCorners(edgeCorners ?? defaultCorners(canvas.width, canvas.height));
       setLocation('/edit');
     }
-  }, [isMockMode, videoRef, edgeCorners, setPendingPage, setDetectedCorners, setLocation]);
+  }, [isMockMode, videoRef, edgeCorners, setPendingPage, setDetectedCorners, setLocation, triggerCaptureEffects]);
 
   /* ── Capture button handler ─────────────────────────────────────────────── */
   const handleCaptureButton = useCallback(() => {
@@ -223,9 +259,9 @@ export default function ScannerScreen() {
   /* ── Permission error ───────────────────────────────────────────────────── */
   if (hasPermission === false) {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 text-center">
-        <h2 className="text-xl font-semibold mb-2">Camera Access Denied</h2>
-        <p className="text-muted-foreground mb-6 max-w-sm">
+      <div className="min-h-screen bg-[#0d0d14] flex flex-col items-center justify-center p-6 text-center">
+        <h2 className="text-xl font-semibold mb-2 text-white">Camera Access Denied</h2>
+        <p className="text-white/50 mb-6 max-w-sm">
           DocScan needs camera access. Please enable it in browser settings and refresh.
         </p>
         <Button onClick={() => window.location.reload()} variant="outline">Refresh Page</Button>
@@ -233,11 +269,13 @@ export default function ScannerScreen() {
     );
   }
 
-  /* ── Edge overlay colours (blue → green as stability grows) ─────────────── */
-  const isStable     = stableProgress > 0.85;
-  const edgeStroke   = isStable ? '#22c55e' : '#3b82f6';
-  const edgeFill     = isStable ? 'rgba(34,197,94,0.10)' : 'rgba(59,130,246,0.08)';
-  const ringColor    = isStable ? '#22c55e' : '#3b82f6';
+  /* ── Derived colours ────────────────────────────────────────────────────── */
+  const isStable   = stableProgress > 0.85;
+  const edgeStroke = isStable ? '#4ade80' : '#60a5fa';
+  const edgeFill   = isStable ? 'rgba(74,222,128,0.08)' : 'rgba(96,165,250,0.06)';
+  const bracketColor = edgeCorners
+    ? (isStable ? '#4ade80' : '#60a5fa')
+    : 'rgba(255,255,255,0.45)';
 
   const videoEl = videoRef.current;
   const viewW   = videoEl?.videoWidth  || 640;
@@ -245,46 +283,26 @@ export default function ScannerScreen() {
 
   /* ── Render ─────────────────────────────────────────────────────────────── */
   return (
-    <div className="relative min-h-[100dvh] bg-white overflow-hidden flex flex-col">
+    <div className="relative min-h-[100dvh] overflow-hidden flex flex-col" style={{ background: '#0d0d14' }}>
       <canvas ref={canvasRef} className="hidden" />
-
-      {/* ── Top bar ── */}
-      <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between p-4
-                      bg-gradient-to-b from-white/90 to-transparent">
-        <SettingsSheet />
-
-        {/* Mode toggle */}
-        <div className="flex bg-gray-100 rounded-full p-1 border border-gray-200">
-          {(['auto', 'manual'] as const).map(m => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              className={cn(
-                'px-4 py-1.5 rounded-full text-sm font-semibold transition-all capitalize',
-                mode === m
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-800',
-              )}
-            >
-              {m}
-            </button>
-          ))}
-        </div>
-
-        {/* Right side */}
-        {mode === 'auto' && pages.length > 0 ? (
-          <Button variant="ghost" size="sm" onClick={() => setLocation('/preview')}
-            className="text-gray-700 hover:bg-gray-100 font-semibold">
-            Done&nbsp;({pages.length})
-          </Button>
-        ) : <div className="w-[80px]" />}
-      </div>
 
       {/* ── White flash on capture ── */}
       <div className={cn(
         'absolute inset-0 bg-white z-50 pointer-events-none transition-opacity duration-150',
-        isCapturing ? 'opacity-75' : 'opacity-0',
+        isCapturing ? 'opacity-60' : 'opacity-0',
       )} />
+
+      {/* ── B: Scan line sweep ── */}
+      {showScanLine && (
+        <div
+          className="animate-scan-line"
+          style={{
+            background: 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.9) 50%, transparent)',
+            height: '3px',
+            filter: 'blur(1px)',
+          }}
+        />
+      )}
 
       {/* ── Live camera ── */}
       {!isMockMode && (
@@ -292,32 +310,64 @@ export default function ScannerScreen() {
           className="absolute inset-0 w-full h-full object-cover z-0" />
       )}
 
-      {/* ── Main viewfinder area ── */}
-      <div className={cn(
-        'flex-1 relative flex items-center justify-center',
-        isMockMode ? 'bg-gray-50' : 'bg-transparent',
-      )}>
+      {/* ── H: Top bar — DocScan wordmark + controls ── */}
+      <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between px-4 pt-4 pb-6"
+        style={{ background: 'linear-gradient(to bottom, rgba(13,13,20,0.85) 0%, transparent 100%)' }}>
+
+        {/* Left: settings */}
+        <div className="text-white/80">
+          <SettingsSheet />
+        </div>
+
+        {/* Center: brand logo */}
+        <div className="flex items-center gap-1.5">
+          <div className="w-6 h-6 rounded-md bg-blue-500 flex items-center justify-center shadow-lg shadow-blue-500/40">
+            <ScanLine className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
+          </div>
+          <span className="text-white font-bold text-base tracking-tight">DocScan</span>
+        </div>
+
+        {/* Right: Done / spacer */}
+        {mode === 'auto' && pages.length > 0 ? (
+          <button
+            onClick={() => setLocation('/preview')}
+            className="text-sm font-semibold text-white/90 hover:text-white bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1.5 rounded-full transition-all backdrop-blur-sm"
+          >
+            Done ({pages.length})
+          </button>
+        ) : <div className="w-[80px]" />}
+      </div>
+
+      {/* ── Main viewfinder ── */}
+      <div className="flex-1 relative flex items-center justify-center">
 
         {/* Dev-mode mock document */}
         {isMockMode && (
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none">
-            <div className="relative w-48 h-64 rounded-md shadow-lg border border-gray-200"
-              style={{ background: 'linear-gradient(135deg,#fff 0%,#f5f5f0 100%)' }}>
+            <div className="relative w-48 h-64 rounded-md shadow-2xl border border-white/10"
+              style={{ background: 'linear-gradient(135deg,rgba(255,255,255,0.12) 0%,rgba(255,255,255,0.06) 100%)' }}>
               <div className="p-4 space-y-2">
                 {[3/4, 1, 5/6, 1, 2/3, 1, 4/5, 1].map((w, i) =>
                   <div key={i}
-                    className={cn('h-2 rounded', i === 0 ? 'bg-gray-300' : 'bg-gray-200')}
+                    className={cn('h-2 rounded', i === 0 ? 'bg-white/30' : 'bg-white/15')}
                     style={{ width: `${w * 100}%` }} />
                 )}
               </div>
             </div>
-            <p className="mt-5 text-gray-400 text-xs tracking-widest uppercase">
+            <p className="mt-5 text-white/30 text-xs tracking-widest uppercase">
               Dev Mode — Camera Off
             </p>
           </div>
         )}
 
-        {/* Edge-detection overlay */}
+        {/* ── A: Corner bracket viewfinder ── */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="relative w-[72%] h-[55%] max-w-xs">
+            <CornerBrackets color={bracketColor} />
+          </div>
+        </div>
+
+        {/* Edge-detection polygon overlay */}
         {!isMockMode && edgeCorners && (
           <svg
             className="absolute inset-0 w-full h-full z-10 pointer-events-none"
@@ -328,23 +378,22 @@ export default function ScannerScreen() {
               points={edgeCorners.map(p => `${p.x},${p.y}`).join(' ')}
               fill={edgeFill}
               stroke={edgeStroke}
-              strokeWidth="3"
-              strokeDasharray={isStable ? 'none' : '12 6'}
+              strokeWidth="2.5"
               style={{ transition: 'stroke 0.3s, fill 0.3s' }}
             />
             {edgeCorners.map((p, i) => (
-              <circle key={i} cx={p.x} cy={p.y} r="10"
-                fill={edgeStroke} stroke="white" strokeWidth="3"
+              <circle key={i} cx={p.x} cy={p.y} r="8"
+                fill={edgeStroke} stroke="white" strokeWidth="2"
                 style={{ transition: 'fill 0.3s' }} />
             ))}
           </svg>
         )}
 
-        {/* "Ready!" label when stable */}
+        {/* "Hold still…" / "Capturing…" label */}
         {mode === 'auto' && isStable && !isMockMode && (
           <div className="absolute top-24 left-1/2 -translate-x-1/2 z-20
-                          bg-green-500 text-white text-sm font-semibold
-                          px-5 py-2 rounded-full shadow-lg animate-pulse">
+                          bg-green-500/90 backdrop-blur-sm text-white text-sm font-semibold
+                          px-5 py-2 rounded-full shadow-lg shadow-green-500/30 animate-pulse">
             Capturing…
           </div>
         )}
@@ -352,45 +401,77 @@ export default function ScannerScreen() {
         {/* Desktop hint */}
         {!isMockMode && (
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2
-                          hidden md:flex items-center gap-2 bg-white/80 backdrop-blur-md
-                          px-4 py-2 rounded-full pointer-events-none border border-gray-200
-                          text-gray-500 text-sm">
+                          hidden md:flex items-center gap-2 bg-black/50 backdrop-blur-md
+                          px-4 py-2 rounded-full pointer-events-none border border-white/10
+                          text-white/60 text-sm">
             <Smartphone className="w-4 h-4" /> Use on mobile for best experience
           </div>
         )}
       </div>
 
-      {/* ── Bottom bar ── */}
-      <div className="absolute bottom-0 inset-x-0 z-20 pb-8 pt-12 px-6
-                      bg-gradient-to-t from-white via-white/90 to-transparent flex flex-col gap-5">
+      {/* ── E: Glassmorphism bottom bar ── */}
+      <div
+        className="absolute bottom-0 inset-x-0 z-20 pb-8 pt-4 px-5 flex flex-col gap-4"
+        style={{
+          background: 'linear-gradient(to top, rgba(13,13,20,0.92) 60%, rgba(13,13,20,0.6) 85%, transparent)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+        }}
+      >
+
+        {/* ── I: Sliding mode toggle ── */}
+        <div className="flex justify-center">
+          <div className="relative flex items-center bg-white/10 border border-white/15 rounded-full p-1 backdrop-blur-sm">
+            {/* Sliding pill */}
+            <div
+              className="absolute top-1 bottom-1 rounded-full bg-white shadow-sm transition-all duration-300 ease-out"
+              style={{
+                width: 'calc(50% - 4px)',
+                left: mode === 'auto' ? '4px' : 'calc(50%)',
+              }}
+            />
+            {(['auto', 'manual'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={cn(
+                  'relative z-10 px-6 py-1.5 rounded-full text-sm font-semibold transition-colors duration-250 capitalize',
+                  mode === m ? 'text-gray-900' : 'text-white/60 hover:text-white/90',
+                )}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* Auto-mode status hint */}
         {mode === 'auto' && (
-          <div className="flex justify-center">
+          <div className="flex justify-center min-h-[20px]">
             {capturedLabel !== null ? (
-              <span className="text-green-600 text-sm font-semibold animate-in fade-in">
+              <span className="text-green-400 text-sm font-semibold animate-in fade-in">
                 ✓ Page {capturedLabel} saved — aim at next page
               </span>
             ) : isMockMode ? (
-              <span className="text-gray-400 text-sm">
+              <span className="text-white/35 text-sm">
                 Tap the button to capture in dev mode
               </span>
             ) : edgeCorners ? (
               <span className={cn(
                 'text-sm font-medium transition-colors',
-                isStable ? 'text-green-600' : 'text-blue-500',
+                isStable ? 'text-green-400' : 'text-blue-400',
               )}>
                 {isStable ? 'Hold still…' : 'Document detected — hold steady'}
               </span>
             ) : (
-              <span className="text-gray-400 text-sm">Point camera at a document</span>
+              <span className="text-white/35 text-sm">Point camera at a document</span>
             )}
           </div>
         )}
 
         {/* Page thumbnails */}
         {pages.length > 0 && (
-          <div className="flex gap-2.5 overflow-x-auto snap-x px-1 pb-1" style={{ scrollbarWidth: 'none' }}>
+          <div className="flex gap-2.5 overflow-x-auto snap-x px-1 pb-1 no-scrollbar">
             {pages.map((p, i) => (
               <button
                 key={i}
@@ -402,24 +483,20 @@ export default function ScannerScreen() {
                   setLocation('/edit');
                 }}
                 className={cn(
-                  'relative shrink-0 w-[4.5rem] h-[5.75rem] rounded-xl overflow-hidden snap-center shadow-md transition-all duration-200 group',
+                  'relative shrink-0 w-[4.5rem] h-[5.75rem] rounded-xl overflow-hidden snap-center shadow-lg transition-all duration-200 group',
                   i === selectedThumb
-                    ? 'border-[3px] border-blue-500 scale-105 shadow-blue-200'
-                    : 'border-2 border-white/80 hover:border-blue-300',
+                    ? 'ring-2 ring-blue-400 ring-offset-1 ring-offset-transparent scale-105'
+                    : 'ring-1 ring-white/20 hover:ring-blue-300',
                 )}
               >
                 <img src={p} alt={`Page ${i + 1}`} className="w-full h-full object-cover" />
-                {/* Edit icon on hover */}
                 <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100
                                transition-opacity flex items-center justify-center">
                   <Edit2 className="w-4 h-4 text-white" />
                 </div>
-                {/* Page number badge */}
                 <div className={cn(
-                  'absolute bottom-0 inset-x-0 py-1 text-center text-[10px] font-bold leading-none transition-colors',
-                  i === selectedThumb
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-black/50 text-white',
+                  'absolute bottom-0 inset-x-0 py-1 text-center text-[10px] font-bold leading-none',
+                  i === selectedThumb ? 'bg-blue-500 text-white' : 'bg-black/55 text-white/90',
                 )}>
                   {i + 1}
                 </div>
@@ -432,13 +509,14 @@ export default function ScannerScreen() {
         <div className="flex items-center justify-between">
 
           {/* Gallery */}
-          <Button variant="ghost" size="icon"
+          <button
             onClick={() => setLocation('/gallery')}
-            className="text-gray-600 hover:bg-gray-100 w-12 h-12 rounded-full">
-            <ImageIcon className="w-6 h-6" />
-          </Button>
+            className="w-12 h-12 rounded-full flex items-center justify-center text-white/70 hover:text-white bg-white/8 hover:bg-white/15 border border-white/15 transition-all backdrop-blur-sm"
+          >
+            <ImageIcon className="w-5 h-5" />
+          </button>
 
-          {/* Capture button + progress ring */}
+          {/* ── F: iOS-style capture button with progress ring ── */}
           <RadialMenu
             onRetake={() => toast('Retake')}
             onCrop={() => {
@@ -453,23 +531,16 @@ export default function ScannerScreen() {
             onDelete={() => toast.error('Deleted')}
           >
             <div className="relative w-20 h-20">
-
-              {/* Progress ring — only in auto mode */}
+              {/* Progress ring */}
               {mode === 'auto' && (
-                <svg
-                  className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none"
-                  viewBox="0 0 80 80"
-                >
-                  {/* Track */}
-                  <circle cx="40" cy="40" r={RING_R}
-                    fill="none" stroke="rgba(0,0,0,0.08)" strokeWidth="3" />
-                  {/* Progress arc */}
+                <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none" viewBox="0 0 80 80">
+                  <circle cx="40" cy="40" r={RING_R} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="3" />
                   {stableProgress > 0 && (
                     <circle
                       cx="40" cy="40" r={RING_R}
                       fill="none"
-                      stroke={ringColor}
-                      strokeWidth="3.5"
+                      stroke={isStable ? '#4ade80' : '#60a5fa'}
+                      strokeWidth="3"
                       strokeLinecap="round"
                       strokeDasharray={RING_CIRC}
                       strokeDashoffset={RING_CIRC * (1 - stableProgress)}
@@ -479,21 +550,32 @@ export default function ScannerScreen() {
                 </svg>
               )}
 
-              {/* Shutter button */}
+              {/* iOS shutter button */}
               <button
                 onClick={handleCaptureButton}
-                className="absolute inset-0 flex items-center justify-center rounded-full
-                           border-4 border-gray-800 active:scale-95 transition-transform"
+                className={cn(
+                  'absolute inset-0 rounded-full border-[3px] border-white',
+                  'flex items-center justify-center',
+                  'active:scale-95 transition-transform duration-100',
+                  isStable && mode === 'auto' && 'animate-capture-glow',
+                )}
               >
                 <div className={cn(
-                  'w-[3.5rem] h-[3.5rem] rounded-full flex items-center justify-center transition-colors duration-300',
+                  'w-[3.4rem] h-[3.4rem] rounded-full transition-all duration-300',
                   isStable && mode === 'auto'
-                    ? 'bg-green-500'
-                    : 'bg-gray-800',
+                    ? 'bg-green-400 shadow-[0_0_16px_rgba(74,222,128,0.6)]'
+                    : mode === 'manual'
+                      ? 'bg-white'
+                      : 'bg-white',
                 )}>
-                  {mode === 'manual'
-                    ? <div className="w-12 h-12 border-2 border-white rounded-full" />
-                    : <Zap className="w-5 h-5 text-white fill-white" />}
+                  {mode === 'auto' && (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Zap className={cn(
+                        'w-5 h-5 fill-current transition-colors',
+                        isStable ? 'text-white' : 'text-gray-800',
+                      )} />
+                    </div>
+                  )}
                 </div>
               </button>
             </div>
@@ -501,32 +583,29 @@ export default function ScannerScreen() {
 
           {/* Preview / page count */}
           {mode === 'manual' ? (
-            <Button
+            <button
               onClick={() => setLocation('/preview')}
               disabled={pages.length === 0}
-              className="w-14 h-14 rounded-full bg-primary hover:bg-primary/90 text-white
-                         shadow-lg disabled:opacity-0 transition-opacity"
+              className={cn(
+                'w-12 h-12 rounded-full flex flex-col items-center justify-center transition-all',
+                pages.length > 0
+                  ? 'bg-blue-500 hover:bg-blue-400 text-white shadow-lg shadow-blue-500/40'
+                  : 'opacity-0 pointer-events-none',
+              )}
             >
-              <div className="flex flex-col items-center">
-                <span className="text-lg font-bold leading-none">{pages.length}</span>
-                <ChevronRight className="w-4 h-4" />
-              </div>
-            </Button>
+              <span className="text-base font-bold leading-none">{pages.length}</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
           ) : (
-            /* Auto: page count pill */
             pages.length > 0 ? (
               <button
                 onClick={() => setLocation('/preview')}
-                className="w-14 h-14 flex items-center justify-center rounded-full
-                           bg-gray-100 border border-gray-200 text-gray-700 font-semibold
-                           hover:bg-gray-200 transition-colors"
+                className="w-12 h-12 flex flex-col items-center justify-center rounded-full bg-white/10 border border-white/20 text-white font-semibold hover:bg-white/20 transition-all backdrop-blur-sm"
               >
-                <div className="flex flex-col items-center leading-none">
-                  <span className="text-lg font-bold">{pages.length}</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </div>
+                <span className="text-base font-bold leading-none">{pages.length}</span>
+                <ChevronRight className="w-3.5 h-3.5" />
               </button>
-            ) : <div className="w-14" />
+            ) : <div className="w-12" />
           )}
         </div>
       </div>

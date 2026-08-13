@@ -110,3 +110,41 @@
     @apply font-sans antialiased bg-background text-foreground;
   }
 }
+
+/* ── Scan line sweep animation (B) ── */
+@keyframes scanLine {
+  0%   { top: 2%;  opacity: 0;   }
+  8%   { opacity: 1; }
+  85%  { opacity: 0.7; }
+  100% { top: 98%; opacity: 0; }
+}
+.animate-scan-line {
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  animation: scanLine 0.5s ease-in forwards;
+  pointer-events: none;
+  z-index: 40;
+}
+
+/* ── Corner bracket fade-in (A) ── */
+@keyframes bracketIn {
+  from { opacity: 0; transform: scale(0.7); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.animate-bracket {
+  animation: bracketIn 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards;
+}
+
+/* ── Capture button glow (F) ── */
+@keyframes captureGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(74,222,128,0); }
+  50%       { box-shadow: 0 0 0 12px rgba(74,222,128,0.25); }
+}
+.animate-capture-glow {
+  animation: captureGlow 1.4s ease-in-out infinite;
+}
+
+/* ── Hide scrollbar (thumbnail strip) ── */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
