@@ -549,7 +549,11 @@ export default function ScannerScreen() {
 
           {/* ── F: iOS-style capture button with progress ring ── */}
           <RadialMenu
-            onRetake={() => toast('Retake')}
+            onRetake={() => {
+              if (!pages.length) { toast('No page to retake'); return; }
+              removePage(pages.length - 1);
+              toast('Last page removed — retake when ready');
+            }}
             onCrop={() => {
               if (pages.length) {
                 setPendingPage(pages[pages.length - 1]);
@@ -557,9 +561,30 @@ export default function ScannerScreen() {
                 setLocation('/edit');
               } else toast('No page yet');
             }}
-            onRotate={() => toast('Rotate')}
-            onMarkup={() => toast('Markup')}
-            onDelete={() => toast.error('Deleted')}
+            onRotate={async () => {
+              if (!pages.length) { toast('No page to rotate'); return; }
+              const src = pages[pages.length - 1];
+              const img = new Image();
+              img.src = src;
+              await new Promise<void>(res => { img.onload = () => res(); });
+              const canvas = document.createElement('canvas');
+              canvas.width  = img.naturalHeight;
+              canvas.height = img.naturalWidth;
+              const ctx = canvas.getContext('2d')!;
+              ctx.translate(canvas.width / 2, canvas.height / 2);
+              ctx.rotate(Math.PI / 2);
+              ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+              const rotated = canvas.toDataURL('image/jpeg', 0.92);
+              removePage(pages.length - 1);
+              addPage(rotated);
+              toast.success('Rotated 90°');
+            }}
+            onMarkup={() => toast('Markup editor coming soon')}
+            onDelete={() => {
+              if (!pages.length) { toast('No pages to delete'); return; }
+              clearPages();
+              toast.error(`All ${pages.length} page${pages.length > 1 ? 's' : ''} deleted`);
+            }}
           >
             <div className="relative w-16 h-16">
               {/* Progress ring */}

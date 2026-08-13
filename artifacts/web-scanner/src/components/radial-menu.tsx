@@ -21,33 +21,45 @@ const ITEMS_CONFIG = [
 ];
 
 const RADIUS = 104; // px (130 × 0.8)
+const LONG_PRESS_MS = 400;
+const CLOSE_DELAY   = 250;
 
 function angleToXY(angleDeg: number) {
   const rad = ((angleDeg - 90) * Math.PI) / 180;
   return {
     x: Math.cos(rad) * RADIUS,
-    y: Math.sin(rad) * RADIUS, // negative = upward in CSS
+    y: Math.sin(rad) * RADIUS,
   };
 }
-
-const CLOSE_DELAY = 250; // ms before menu hides after mouse leaves
 
 export function RadialMenu({
   onRetake, onCrop, onRotate, onMarkup, onDelete, children,
 }: RadialMenuProps) {
   const [open, setOpen] = useState(false);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeTimer    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /* ── Desktop: hover ────────────────────────────────────────────────────── */
   const cancelClose = () => {
-    if (closeTimer.current) {
-      clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
+    if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
   };
-
   const scheduleClose = () => {
     cancelClose();
     closeTimer.current = setTimeout(() => setOpen(false), CLOSE_DELAY);
+  };
+
+  /* ── Mobile: long-press to toggle ─────────────────────────────────────── */
+  const handleTouchStart = () => {
+    longPressTimer.current = setTimeout(() => {
+      longPressTimer.current = null;
+      setOpen(o => !o);
+    }, LONG_PRESS_MS);
+  };
+  const handleTouchEnd = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
   };
 
   const handlers: Record<string, (() => void) | undefined> = {
@@ -63,6 +75,9 @@ export function RadialMenu({
       className="relative flex items-center justify-center"
       onMouseEnter={() => { cancelClose(); setOpen(true); }}
       onMouseLeave={scheduleClose}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
     >
       {/* Radial items */}
       {ITEMS_CONFIG.map((item, i) => {
