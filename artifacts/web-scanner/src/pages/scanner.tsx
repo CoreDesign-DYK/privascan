@@ -184,7 +184,9 @@ export default function ScannerScreen() {
       const video = videoRef.current;
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-      canvas.getContext('2d')!.drawImage(video, 0, 0);
+      const ctx1 = canvas.getContext('2d')!;
+      if (settingsRef.current.colorMode === 'greyscale') ctx1.filter = 'grayscale(100%)';
+      ctx1.drawImage(video, 0, 0);
       addPage(canvas.toDataURL('image/jpeg', QUALITY_VALUES[settingsRef.current.imageQuality]));
     }
 
@@ -242,7 +244,9 @@ export default function ScannerScreen() {
       const video  = videoRef.current;
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-      canvas.getContext('2d')!.drawImage(video, 0, 0);
+      const ctx2 = canvas.getContext('2d')!;
+      if (settingsRef.current.colorMode === 'greyscale') ctx2.filter = 'grayscale(100%)';
+      ctx2.drawImage(video, 0, 0);
       const dataUrl = canvas.toDataURL('image/jpeg', QUALITY_VALUES[settingsRef.current.imageQuality]);
       setPendingPage(dataUrl);
       setDetectedCorners(edgeCorners ?? defaultCorners(canvas.width, canvas.height));
