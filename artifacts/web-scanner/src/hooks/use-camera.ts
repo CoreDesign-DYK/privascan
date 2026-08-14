@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-// In development, skip real camera access and use a mock instead.
-const IS_DEV = import.meta.env.DEV;
+// Set to true to use mock camera in development (no real camera needed).
+const IS_DEV = false;
 
 export function useCamera() {
   const videoRef = useRef<HTMLVideoElement>(null);
