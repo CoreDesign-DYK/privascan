@@ -732,7 +732,7 @@ export default function ScannerScreen() {
           </div>
 
           {/* ── Auto / Manual toggle ── */}
-          <div className="relative flex items-center h-9 bg-white/10 border border-white/15 rounded-full px-[3px]">
+          <div className="relative flex items-center h-9 bg-white/10 border border-white/15 rounded-full px-[3px] ml-[5px]">
               {/* Sliding pill */}
               <div
                 className="absolute top-[3px] bottom-[3px] rounded-full bg-white shadow-sm transition-all duration-300 ease-out"
