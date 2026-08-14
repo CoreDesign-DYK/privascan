@@ -767,70 +767,67 @@ export default function ScannerScreen() {
         )}
 
         {/* ── A: Guide brackets — mode-specific ── */}
-        {(!edgeCorners || isMockMode) && (<>
 
-          {/* Document: A4 portrait 0.707:1 */}
-          {scanMode === 'document' && (
-            <div className="absolute pointer-events-none" style={{ top:'12%', bottom:'32%', left:'50%', transform:'translateX(-50%)', aspectRatio:'0.707/1', maxHeight:'100%' }}>
+        {/* Document: A4 portrait — hide when edge detected on real camera */}
+        {scanMode === 'document' && (!edgeCorners || isMockMode) && (
+          <div className="absolute pointer-events-none"
+            style={{ top:'12%', bottom:'32%', left:'50%', transform:'translateX(-50%)', aspectRatio:'0.707/1', maxHeight:'100%' }}>
+            <div className="absolute top-0 left-0 w-8 h-8 border-t-[3px] border-l-[3px] border-white/55" />
+            <div className="absolute top-0 right-0 w-8 h-8 border-t-[3px] border-r-[3px] border-white/55" />
+            <div className="absolute bottom-0 left-0 w-8 h-8 border-b-[3px] border-l-[3px] border-white/55" />
+            <div className="absolute bottom-0 right-0 w-8 h-8 border-b-[3px] border-r-[3px] border-white/55" />
+          </div>
+        )}
+
+        {/* Book: two portrait frames side by side — width:height = 0.707:1 each */}
+        {scanMode === 'book' && (
+          <div className="absolute inset-0 pointer-events-none flex flex-row items-center justify-center"
+            style={{ top:'12%', bottom:'32%', gap:'12px' }}>
+            {(['Left','Right'] as const).map(side => (
+              <div key={side} className="relative flex-shrink-0"
+                style={{ width:'42vw', maxWidth:'200px', aspectRatio:'0.707/1' }}>
+                <div className="absolute top-0 left-0 w-7 h-7 border-t-[3px] border-l-[3px] border-white/55" />
+                <div className="absolute top-0 right-0 w-7 h-7 border-t-[3px] border-r-[3px] border-white/55" />
+                <div className="absolute bottom-0 left-0 w-7 h-7 border-b-[3px] border-l-[3px] border-white/55" />
+                <div className="absolute bottom-0 right-0 w-7 h-7 border-b-[3px] border-r-[3px] border-white/55" />
+                <span className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[9px] font-semibold text-white/40 uppercase tracking-widest select-none">{side}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Presentation: wide 16:9 */}
+        {scanMode === 'presentation' && (
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center"
+            style={{ top:'12%', bottom:'32%', left:'5%', right:'5%' }}>
+            <div className="relative" style={{ width:'100%', aspectRatio:'16/9', maxHeight:'100%' }}>
               <div className="absolute top-0 left-0 w-8 h-8 border-t-[3px] border-l-[3px] border-white/55" />
               <div className="absolute top-0 right-0 w-8 h-8 border-t-[3px] border-r-[3px] border-white/55" />
               <div className="absolute bottom-0 left-0 w-8 h-8 border-b-[3px] border-l-[3px] border-white/55" />
               <div className="absolute bottom-0 right-0 w-8 h-8 border-b-[3px] border-r-[3px] border-white/55" />
+              <span className="absolute top-2 left-1/2 -translate-x-1/2 text-[9px] font-semibold text-white/35 uppercase tracking-widest select-none">16:9 · Perspective Auto-Correct</span>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Book: two portrait frames side by side, each width:height = 0.707:1 */}
-          {scanMode === 'book' && (
-            <div className="absolute pointer-events-none flex flex-row items-center justify-center"
-              style={{ top:'12%', bottom:'32%', left:'50%', transform:'translateX(-50%)', gap:'12px' }}>
-              {(['Left','Right'] as const).map(side => (
-                <div key={side} className="relative flex-shrink-0"
-                  style={{ width:'40vw', height:'calc(40vw / 0.707)' }}>
-                  <div className="absolute top-0 left-0 w-7 h-7 border-t-[3px] border-l-[3px] border-white/55" />
-                  <div className="absolute top-0 right-0 w-7 h-7 border-t-[3px] border-r-[3px] border-white/55" />
-                  <div className="absolute bottom-0 left-0 w-7 h-7 border-b-[3px] border-l-[3px] border-white/55" />
-                  <div className="absolute bottom-0 right-0 w-7 h-7 border-b-[3px] border-r-[3px] border-white/55" />
-                  <span className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[9px] font-semibold text-white/40 uppercase tracking-widest">{side}</span>
-                </div>
-              ))}
-              {/* Binding divider */}
-              <div className="absolute inset-y-[8%] w-px bg-white/25" style={{ left:'calc(50% - 6px)' }} />
-            </div>
-          )}
-
-          {/* Presentation: wide 16:9 */}
-          {scanMode === 'presentation' && (
-            <div className="absolute pointer-events-none flex items-center justify-center"
-              style={{ top:'12%', bottom:'32%', left:'5%', right:'5%' }}>
-              <div className="relative w-full" style={{ aspectRatio:'16/9', maxHeight:'100%' }}>
-                <div className="absolute top-0 left-0 w-8 h-8 border-t-[3px] border-l-[3px] border-white/55" />
-                <div className="absolute top-0 right-0 w-8 h-8 border-t-[3px] border-r-[3px] border-white/55" />
-                <div className="absolute bottom-0 left-0 w-8 h-8 border-b-[3px] border-l-[3px] border-white/55" />
-                <div className="absolute bottom-0 right-0 w-8 h-8 border-b-[3px] border-r-[3px] border-white/55" />
-                <span className="absolute top-2 left-1/2 -translate-x-1/2 text-[9px] font-semibold text-white/35 uppercase tracking-widest">16:9 · Perspective Auto-Correct</span>
+        {/* ID Cards: two stacked landscape frames (1.585:1 = standard card ratio) */}
+        {scanMode === 'id-cards' && (
+          <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center"
+            style={{ top:'12%', bottom:'32%', gap:'14px' }}>
+            {(['front','back'] as const).map((side, idx) => (
+              <div key={side} className="relative flex-shrink-0"
+                style={{ width:'75vw', maxWidth:'320px', aspectRatio:'1.585/1', opacity: idStage === side ? 1 : 0.35 }}>
+                <div className={cn('absolute top-0 left-0 w-7 h-7 border-t-[3px] border-l-[3px]', idStage===side ? 'border-sky-400' : 'border-white/40')} />
+                <div className={cn('absolute top-0 right-0 w-7 h-7 border-t-[3px] border-r-[3px]', idStage===side ? 'border-sky-400' : 'border-white/40')} />
+                <div className={cn('absolute bottom-0 left-0 w-7 h-7 border-b-[3px] border-l-[3px]', idStage===side ? 'border-sky-400' : 'border-white/40')} />
+                <div className={cn('absolute bottom-0 right-0 w-7 h-7 border-b-[3px] border-r-[3px]', idStage===side ? 'border-sky-400' : 'border-white/40')} />
+                <span className={cn('absolute top-2 left-3 text-[9px] font-bold uppercase tracking-widest select-none', idStage===side ? 'text-sky-400' : 'text-white/35')}>
+                  {idx + 1}. {side === 'front' ? 'Front' : 'Back'}
+                </span>
               </div>
-            </div>
-          )}
-
-          {/* ID Cards: two stacked landscape frames (1.585:1) */}
-          {scanMode === 'id-cards' && (
-            <div className="absolute pointer-events-none flex flex-col items-center justify-center gap-4"
-              style={{ top:'12%', bottom:'32%', left:'50%', transform:'translateX(-50%)' }}>
-              {(['front','back'] as const).map((side, idx) => (
-                <div key={side} className="relative flex-shrink-0"
-                  style={{ width:'72vw', height:'calc(72vw / 1.585)', opacity: idStage === side ? 1 : 0.35 }}>
-                  <div className={cn('absolute top-0 left-0 w-7 h-7 border-t-[3px] border-l-[3px]', idStage===side ? 'border-sky-400' : 'border-white/45')} />
-                  <div className={cn('absolute top-0 right-0 w-7 h-7 border-t-[3px] border-r-[3px]', idStage===side ? 'border-sky-400' : 'border-white/45')} />
-                  <div className={cn('absolute bottom-0 left-0 w-7 h-7 border-b-[3px] border-l-[3px]', idStage===side ? 'border-sky-400' : 'border-white/45')} />
-                  <div className={cn('absolute bottom-0 right-0 w-7 h-7 border-b-[3px] border-r-[3px]', idStage===side ? 'border-sky-400' : 'border-white/45')} />
-                  <span className={cn('absolute top-2 left-3 text-[9px] font-bold uppercase tracking-widest', idStage===side ? 'text-sky-400' : 'text-white/35')}>
-                    {idx + 1}. {side === 'front' ? 'Front' : 'Back'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </>)}
+            ))}
+          </div>
+        )}
 
         {/* ── B: Dynamic SVG overlay — only for detected document (Method B) ── */}
         {!isMockMode && edgeCorners && (
