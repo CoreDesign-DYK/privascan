@@ -72,23 +72,23 @@ export default function HomeScreen() {
       className="min-h-[100dvh] flex flex-col overflow-y-auto"
       style={{ background: '#0d0d14' }}
     >
+      {/* ── Profile icon — fixed top-right (original TopBar position) ── */}
+      <button
+        className="fixed top-0 right-0 z-50 mt-[14px] mr-4 w-9 h-9 rounded-full flex items-center justify-center text-white/50 hover:bg-white/10 transition-colors"
+        aria-label="Profile"
+      >
+        <UserCircle2 className="w-6 h-6" />
+      </button>
+
       {/* ── Top bar ── */}
       <div className="flex items-center justify-between px-5 pt-14 pb-2">
         <h1 className="text-white font-semibold text-lg tracking-tight">Home</h1>
-        <div className="flex items-center gap-1">
-          <button
-            className="w-9 h-9 rounded-full flex items-center justify-center text-white/50 hover:bg-white/10 transition-colors"
-            aria-label="Profile"
-          >
-            <UserCircle2 className="w-6 h-6" />
-          </button>
-          <button
-            onClick={() => setLocation('/')}
-            className="w-9 h-9 rounded-full flex items-center justify-center text-white/50 hover:bg-white/10 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+        <button
+          onClick={() => setLocation('/')}
+          className="w-9 h-9 rounded-full flex items-center justify-center text-white/50 hover:bg-white/10 transition-colors"
+        >
+          <X className="w-4 h-4" />
+        </button>
       </div>
 
       <div className="flex-1 px-4 pb-12 space-y-6 mt-4">
