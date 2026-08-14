@@ -733,7 +733,7 @@ export default function ScannerScreen() {
 
           {/* ── Auto / Manual toggle ── */}
           <div className="flex flex-col items-center">
-            <div className="relative flex items-center bg-white/10 border border-white/15 rounded-full p-[3px]">
+            <div className="relative flex items-center h-9 bg-white/10 border border-white/15 rounded-full px-[3px]">
               {/* Sliding pill */}
               <div
                 className="absolute top-[3px] bottom-[3px] rounded-full bg-white shadow-sm transition-all duration-300 ease-out"
@@ -747,7 +747,7 @@ export default function ScannerScreen() {
                   key={m}
                   onClick={() => setMode(m)}
                   className={cn(
-                    'relative z-10 px-3 py-0.5 rounded-full text-[10px] font-semibold transition-colors duration-200 capitalize select-none',
+                    'relative z-10 h-full px-3 rounded-full text-[10px] font-semibold transition-colors duration-200 capitalize select-none',
                     mode === m ? 'text-gray-900' : 'text-white/60 hover:text-white/90',
                   )}
                 >
