@@ -33,7 +33,7 @@ function DarkSelect<T extends string>({
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div
-            className="absolute left-0 right-0 mt-1 z-50 rounded-md overflow-hidden py-1"
+            className="absolute left-0 right-0 mt-1 z-50 rounded-md overflow-y-auto py-1 max-h-56"
             style={{ background: 'rgba(22,22,26,0.98)', backdropFilter: 'blur(16px)', boxShadow: '0 8px 32px rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.08)' }}
           >
             {options.map(opt => (
@@ -88,7 +88,7 @@ export function SettingsSheet() {
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-80 p-0 overflow-hidden"
+        className="w-80 p-0 overflow-visible"
         style={{
           background: 'rgba(16,16,20,0.97)',
           backdropFilter: 'blur(20px)',
