@@ -5,7 +5,7 @@
 import { useLocation } from 'wouter';
 import {
   X, Crown, ChevronRight, Shield, FileText,
-  HelpCircle, Star, Info,
+  HelpCircle, Star, Info, UserCircle2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -75,12 +75,20 @@ export default function HomeScreen() {
       {/* ── Top bar ── */}
       <div className="flex items-center justify-between px-5 pt-14 pb-2">
         <h1 className="text-white font-semibold text-lg tracking-tight">Home</h1>
-        <button
-          onClick={() => setLocation('/')}
-          className="w-8 h-8 rounded-full flex items-center justify-center text-white/50 hover:bg-white/10 transition-colors"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            className="w-9 h-9 rounded-full flex items-center justify-center text-white/50 hover:bg-white/10 transition-colors"
+            aria-label="Profile"
+          >
+            <UserCircle2 className="w-6 h-6" />
+          </button>
+          <button
+            onClick={() => setLocation('/')}
+            className="w-9 h-9 rounded-full flex items-center justify-center text-white/50 hover:bg-white/10 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 px-4 pb-12 space-y-6 mt-4">
