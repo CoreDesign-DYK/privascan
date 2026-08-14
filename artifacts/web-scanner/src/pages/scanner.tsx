@@ -501,7 +501,7 @@ export default function ScannerScreen() {
                           setQualityOpen(false);
                         }}
                         className={cn(
-                          'flex-1 flex flex-col items-center py-2.5 rounded-xl border transition-all select-none',
+                          'flex-1 flex flex-row items-center justify-center gap-1.5 py-1 rounded border transition-all select-none',
                           settings.imageQuality === key
                             ? 'border-sky-400 bg-sky-400/10'
                             : 'border-white/10 bg-white/5 hover:bg-white/10',
@@ -513,8 +513,8 @@ export default function ScannerScreen() {
                         )}>
                           {label}
                         </span>
-                        <span className="text-[10px] text-white/35 mt-0.5 font-mono">
-                          q={q}
+                        <span className="text-[10px] text-white/35 font-mono">
+                          {q}
                         </span>
                       </button>
                     ))}
