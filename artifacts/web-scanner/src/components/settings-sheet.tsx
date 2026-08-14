@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings2, Check, Sun, Moon } from 'lucide-react';
+import { Settings2, Sun, Moon } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -8,7 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useScannerContext } from '@/contexts/scanner-context';
 import { PAPER_SIZES, type PaperSize } from '@/lib/scanner-types';
 import { useLanguage, LANGUAGES, type Language } from '@/contexts/language-context';
-import { cn } from '@/lib/utils';
 
 export function SettingsSheet() {
   const { settings, setSettings } = useScannerContext();
@@ -85,26 +84,22 @@ export function SettingsSheet() {
           {/* Language */}
           <div className="space-y-2">
             <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Language</Label>
-            <div className="flex flex-col gap-1">
-              {LANGUAGES.map((lang) => (
-                <button
-                  key={lang.code}
-                  onClick={() => setLanguage(lang.code as Language)}
-                  className={cn(
-                    'w-full flex items-center justify-between px-3 py-2 rounded-sm text-sm transition-colors',
-                    language === lang.code
-                      ? 'bg-blue-50 text-blue-700 font-semibold'
-                      : 'text-foreground hover:bg-secondary',
-                  )}
-                >
-                  <span>
+            <Select
+              value={language}
+              onValueChange={(val: Language) => setLanguage(val)}
+            >
+              <SelectTrigger className="w-full rounded-sm">
+                <SelectValue placeholder="Select language" />
+              </SelectTrigger>
+              <SelectContent>
+                {LANGUAGES.map((lang) => (
+                  <SelectItem key={lang.code} value={lang.code}>
                     <span className="font-mono text-xs text-muted-foreground mr-2">{lang.code}</span>
                     {lang.native}
-                  </span>
-                  {language === lang.code && <Check className="w-3.5 h-3.5 text-blue-500" />}
-                </button>
-              ))}
-            </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Display */}
