@@ -243,7 +243,8 @@ export default function ScannerScreen() {
   const [flashOpen,   setFlashOpen]   = useState(false);
   const [qualityOpen, setQualityOpen] = useState(false);
 
-  const [scanMode, setScanMode] = useState<ScanMode>('document');
+  const [scanMode,    setScanMode]    = useState<ScanMode>('document');
+  const [radialOpen,  setRadialOpen]  = useState(false);
   const [idStage,  setIdStage]  = useState<'front' | 'back'>('front');
   const idFrontRef = useRef<string | null>(null);
 
@@ -978,7 +979,10 @@ export default function ScannerScreen() {
         )}
 
         {/* ── Scan mode tabs ── */}
-        <div className="flex justify-center">
+        <div className={cn(
+          'flex justify-center transition-all duration-200 pointer-events-auto',
+          radialOpen && 'opacity-20 blur-[1px] pointer-events-none',
+        )}>
           <div className="flex items-center gap-0 bg-white/8 border border-white/10 rounded-full px-1 py-1">
             {([
               { id: 'document',     label: 'Document'     },
@@ -1026,6 +1030,7 @@ export default function ScannerScreen() {
 
           {/* ── F: iOS-style capture button with progress ring ── */}
           <RadialMenu
+            onOpenChange={setRadialOpen}
             onRetake={() => {
               if (!pages.length) { toast('No page to retake'); return; }
               removePage(pages.length - 1);

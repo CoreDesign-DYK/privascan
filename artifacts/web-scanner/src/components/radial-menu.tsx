@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Camera, Crop, RotateCw, Type, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -8,6 +8,7 @@ interface RadialMenuProps {
   onRotate?: () => void;
   onMarkup?: () => void;
   onDelete?: () => void;
+  onOpenChange?: (open: boolean) => void;
   children: React.ReactNode;
 }
 
@@ -33,9 +34,11 @@ function angleToXY(angleDeg: number) {
 }
 
 export function RadialMenu({
-  onRetake, onCrop, onRotate, onMarkup, onDelete, children,
+  onRetake, onCrop, onRotate, onMarkup, onDelete, onOpenChange, children,
 }: RadialMenuProps) {
   const [open, setOpen] = useState(false);
+
+  useEffect(() => { onOpenChange?.(open); }, [open]);
   const closeTimer    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
