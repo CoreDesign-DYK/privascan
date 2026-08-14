@@ -1,15 +1,27 @@
-import React from 'react';
-import { Settings2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Settings2, Check, Sun, Moon } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useScannerContext } from '@/contexts/scanner-context';
-import { PAPER_SIZES, type PaperSize, type ImageQuality } from '@/lib/scanner-types';
+import { PAPER_SIZES, type PaperSize } from '@/lib/scanner-types';
+import { useLanguage, LANGUAGES, type Language } from '@/contexts/language-context';
+import { cn } from '@/lib/utils';
 
 export function SettingsSheet() {
   const { settings, setSettings } = useScannerContext();
+  const { language, setLanguage } = useLanguage();
+  const [darkMode, setDarkMode] = useState(false);
+
+  const toggleDark = () => {
+    setDarkMode((prev) => {
+      const next = !prev;
+      document.documentElement.classList.toggle('dark', next);
+      return next;
+    });
+  };
 
   return (
     <Popover>
@@ -21,7 +33,6 @@ export function SettingsSheet() {
       </PopoverTrigger>
       <PopoverContent
         className="w-80 p-0 rounded-sm shadow-2xl border border-border bg-background overflow-y-auto"
-        style={{ height: '453px' }}
         align="end"
         sideOffset={8}
       >
@@ -33,30 +44,6 @@ export function SettingsSheet() {
 
         {/* Body */}
         <div className="px-5 py-4 space-y-5">
-          {/* Scan Quality */}
-          <div className="space-y-2">
-            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Scan Quality</Label>
-            <div className="flex gap-3">
-              {([
-                { value: 'high',   label: 'High',   sub: '0.95' },
-                { value: 'medium', label: 'Medium', sub: '0.80' },
-                { value: 'low',    label: 'Low',    sub: '0.60' },
-              ] as { value: ImageQuality; label: string; sub: string }[]).map(({ value, label, sub }) => (
-                <button
-                  key={value}
-                  onClick={() => setSettings({ imageQuality: value })}
-                  className={`flex-1 flex flex-col items-center py-2.5 rounded-sm border-2 transition-all text-sm font-medium ${
-                    settings.imageQuality === value
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-transparent bg-secondary text-foreground hover:border-muted-foreground/30'
-                  }`}
-                >
-                  {label}
-                  <span className="text-[10px] text-muted-foreground mt-0.5">q={sub}</span>
-                </button>
-              ))}
-            </div>
-          </div>
 
           {/* Color Mode */}
           <div className="space-y-2">
@@ -94,6 +81,46 @@ export function SettingsSheet() {
               </SelectContent>
             </Select>
           </div>
+
+          {/* Language */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Language</Label>
+            <div className="flex flex-col gap-1">
+              {LANGUAGES.map((lang) => (
+                <button
+                  key={lang.code}
+                  onClick={() => setLanguage(lang.code as Language)}
+                  className={cn(
+                    'w-full flex items-center justify-between px-3 py-2 rounded-sm text-sm transition-colors',
+                    language === lang.code
+                      ? 'bg-blue-50 text-blue-700 font-semibold'
+                      : 'text-foreground hover:bg-secondary',
+                  )}
+                >
+                  <span>
+                    <span className="font-mono text-xs text-muted-foreground mr-2">{lang.code}</span>
+                    {lang.native}
+                  </span>
+                  {language === lang.code && <Check className="w-3.5 h-3.5 text-blue-500" />}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Display */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Display</Label>
+            <button
+              onClick={toggleDark}
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-sm bg-secondary hover:bg-secondary/80 transition-colors"
+            >
+              <span className="text-sm font-medium">{darkMode ? 'Dark mode' : 'Light mode'}</span>
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                {darkMode ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+              </span>
+            </button>
+          </div>
+
         </div>
       </PopoverContent>
     </Popover>
