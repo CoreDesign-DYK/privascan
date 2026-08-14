@@ -20,12 +20,15 @@ import PreviewScreen from '@/pages/preview';
 import GalleryScreen from '@/pages/gallery';
 import EditScreen from '@/pages/edit';
 import MarkupScreen from '@/pages/markup';
+import HomeScreen from '@/pages/home';
+import PrivacyPolicyScreen from '@/pages/privacy-policy';
+import TermsOfServiceScreen from '@/pages/terms-of-service';
 
 const queryClient = new QueryClient();
 
 function Router() {
   const [location] = useLocation();
-  const hideTopBar = location === '/edit' || location === '/markup';
+  const hideTopBar = ['/edit', '/markup', '/home', '/privacy-policy', '/terms-of-service'].includes(location);
 
   return (
     <RoutedErrorBoundary>
@@ -36,6 +39,9 @@ function Router() {
           <Route path="/gallery" component={GalleryScreen} />
           <Route path="/edit" component={EditScreen} />
           <Route path="/markup" component={MarkupScreen} />
+          <Route path="/home" component={HomeScreen} />
+          <Route path="/privacy-policy" component={PrivacyPolicyScreen} />
+          <Route path="/terms-of-service" component={TermsOfServiceScreen} />
           <Route component={NotFound} />
         </Switch>
         {!hideTopBar && <TopBar />}

@@ -1,16 +1,31 @@
 import { useLocation } from 'wouter';
+import { House } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SettingsSheet } from '@/components/settings-sheet';
 
 const USER_INITIALS = 'DK';
 
 export function TopBar() {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const isScanner = location === '/';
 
   return (
     <div className="fixed top-0 right-0 z-50 flex items-center gap-1 px-4 py-3 pr-8">
       <div className="flex items-center px-1 py-1 gap-0.5">
+
+        {/* Home */}
+        <button
+          onClick={() => setLocation('/home')}
+          className={cn(
+            'w-8 h-8 flex items-center justify-center rounded-full transition-colors',
+            isScanner
+              ? 'text-white/70 hover:bg-white/10'
+              : 'text-gray-500 hover:bg-gray-100',
+          )}
+          aria-label="Home"
+        >
+          <House className="w-4 h-4" />
+        </button>
 
         {/* Settings */}
         <div className={cn('text-white/80', !isScanner && 'text-gray-500')}>
