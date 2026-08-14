@@ -28,7 +28,7 @@ const queryClient = new QueryClient();
 
 function Router() {
   const [location] = useLocation();
-  const hideTopBar = ['/edit', '/markup', '/home', '/privacy-policy', '/terms-of-service'].includes(location);
+  const hideTopBar = ['/', '/edit', '/markup', '/home', '/privacy-policy', '/terms-of-service'].includes(location);
 
   return (
     <RoutedErrorBoundary>
