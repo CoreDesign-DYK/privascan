@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 // Set to true to use mock camera in development (no real camera needed).
-const IS_DEV = false;
+const IS_DEV = true;
 
 export function useCamera() {
   const videoRef = useRef<HTMLVideoElement>(null);
