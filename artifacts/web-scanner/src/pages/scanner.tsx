@@ -779,12 +779,13 @@ export default function ScannerScreen() {
             </div>
           )}
 
-          {/* Book: two portrait frames side by side, each 0.707:1 (width:height) */}
+          {/* Book: two portrait frames side by side, each width:height = 0.707:1 */}
           {scanMode === 'book' && (
-            <div className="absolute pointer-events-none flex items-center justify-center gap-3"
-              style={{ top:'12%', bottom:'32%', left:'5%', right:'5%' }}>
+            <div className="absolute pointer-events-none flex flex-row items-center justify-center"
+              style={{ top:'12%', bottom:'32%', left:'50%', transform:'translateX(-50%)', gap:'12px' }}>
               {(['Left','Right'] as const).map(side => (
-                <div key={side} className="relative" style={{ width:'calc(50% - 6px)', aspectRatio:'0.707/1' }}>
+                <div key={side} className="relative flex-shrink-0"
+                  style={{ width:'40vw', height:'calc(40vw / 0.707)' }}>
                   <div className="absolute top-0 left-0 w-7 h-7 border-t-[3px] border-l-[3px] border-white/55" />
                   <div className="absolute top-0 right-0 w-7 h-7 border-t-[3px] border-r-[3px] border-white/55" />
                   <div className="absolute bottom-0 left-0 w-7 h-7 border-b-[3px] border-l-[3px] border-white/55" />
@@ -793,7 +794,7 @@ export default function ScannerScreen() {
                 </div>
               ))}
               {/* Binding divider */}
-              <div className="absolute top-[10%] bottom-[10%] left-1/2 -translate-x-1/2 w-px bg-white/20" />
+              <div className="absolute inset-y-[8%] w-px bg-white/25" style={{ left:'calc(50% - 6px)' }} />
             </div>
           )}
 
@@ -813,10 +814,11 @@ export default function ScannerScreen() {
 
           {/* ID Cards: two stacked landscape frames (1.585:1) */}
           {scanMode === 'id-cards' && (
-            <div className="absolute pointer-events-none flex flex-col items-center justify-center gap-3"
-              style={{ top:'12%', bottom:'32%', left:'10%', right:'10%' }}>
+            <div className="absolute pointer-events-none flex flex-col items-center justify-center gap-4"
+              style={{ top:'12%', bottom:'32%', left:'50%', transform:'translateX(-50%)' }}>
               {(['front','back'] as const).map((side, idx) => (
-                <div key={side} className="relative w-full" style={{ aspectRatio:'1.585/1', opacity: idStage === side ? 1 : 0.35 }}>
+                <div key={side} className="relative flex-shrink-0"
+                  style={{ width:'72vw', height:'calc(72vw / 1.585)', opacity: idStage === side ? 1 : 0.35 }}>
                   <div className={cn('absolute top-0 left-0 w-7 h-7 border-t-[3px] border-l-[3px]', idStage===side ? 'border-sky-400' : 'border-white/45')} />
                   <div className={cn('absolute top-0 right-0 w-7 h-7 border-t-[3px] border-r-[3px]', idStage===side ? 'border-sky-400' : 'border-white/45')} />
                   <div className={cn('absolute bottom-0 left-0 w-7 h-7 border-b-[3px] border-l-[3px]', idStage===side ? 'border-sky-400' : 'border-white/45')} />
