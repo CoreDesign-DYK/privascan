@@ -755,9 +755,6 @@ export default function ScannerScreen() {
                 </button>
               ))}
             </div>
-            <span className="text-[10px] font-semibold text-white/50 mt-0.5 tracking-wide uppercase select-none">
-              Mode
-            </span>
           </div>
 
         </div>
