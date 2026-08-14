@@ -101,8 +101,8 @@ export function SettingsSheet() {
       >
         {/* Header */}
         <div className="px-5 pt-7 pb-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-          <p className="text-base font-semibold text-white">Scanner Settings</p>
-          <p className="text-xs text-white/35 mt-0.5">Configure your capture defaults.</p>
+          <p className="text-[10px] font-semibold text-white">Scanner Settings</p>
+          <p className="text-[10px] text-white/35 mt-0.5">Configure your capture defaults.</p>
         </div>
 
         {/* Body */}
