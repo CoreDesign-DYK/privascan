@@ -24,7 +24,7 @@ function DarkSelect<T extends string>({
     <div className="relative">
       <button
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-3 py-2.5 rounded-sm border border-white/10 bg-white/5 hover:bg-white/10 transition-colors text-[10px] text-white font-semibold"
+        className="w-full flex items-center justify-between px-3 py-2.5 rounded-[1px] border border-white/10 bg-white/5 hover:bg-white/10 transition-colors text-[10px] text-white font-semibold"
       >
         <span>{renderLabel ? renderLabel(value) : value}</span>
         <ChevronDown className={cn('w-4 h-4 text-white/40 transition-transform', open && 'rotate-180')} />
@@ -117,7 +117,7 @@ export function SettingsSheet() {
                   key={mode}
                   onClick={() => setSettings({ colorMode: mode })}
                   className={cn(
-                    'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-sm border text-[10px] font-semibold transition-all',
+                    'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-[1px] border text-[10px] font-semibold transition-all',
                     settings.colorMode === mode
                       ? 'border-sky-400 bg-sky-400/10 text-sky-400'
                       : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10',
@@ -164,7 +164,7 @@ export function SettingsSheet() {
             <p className="text-[10px] font-bold tracking-widest text-white/35 uppercase">Display</p>
             <button
               onClick={toggleDark}
-              className="w-full flex items-center justify-between px-3 py-2.5 rounded-sm border border-white/10 bg-white/5 hover:bg-white/10 transition-colors"
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-[1px] border border-white/10 bg-white/5 hover:bg-white/10 transition-colors"
             >
               <span className="text-[10px] text-white/80 font-semibold">
                 {darkMode ? 'Dark mode' : 'Light mode'}
