@@ -11,7 +11,7 @@
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocation } from 'wouter';
-import { FolderOpen, Zap, ChevronRight, Smartphone, Edit2, ScanLine } from 'lucide-react';
+import { FolderOpen, Zap, ZapOff, ChevronRight, Smartphone, Edit2, ScanLine } from 'lucide-react';
 import { useCamera } from '@/hooks/use-camera';
 import { useScannerContext } from '@/contexts/scanner-context';
 import { SettingsSheet } from '@/components/settings-sheet';
@@ -129,6 +129,10 @@ export default function ScannerScreen() {
   const [capturedLabel,  setCapturedLabel]  = useState<number | null>(null);
   const [selectedThumb,  setSelectedThumb]  = useState(-1);
 
+  type FlashMode = 'off' | 'on' | 'auto';
+  const [flashMode, setFlashMode] = useState<FlashMode>('auto');
+  const [flashOpen, setFlashOpen] = useState(false);
+
   const lastThumbRef     = useRef<HTMLButtonElement>(null);
   const modeRef          = useRef(mode);
   const pagesLenRef      = useRef(pages.length);
@@ -140,6 +144,17 @@ export default function ScannerScreen() {
   useEffect(() => { modeRef.current     = mode;         }, [mode]);
   useEffect(() => { pagesLenRef.current = pages.length; }, [pages.length]);
   useEffect(() => { settingsRef.current = settings;     }, [settings]);
+
+  // Apply torch / flash to camera track when flashMode changes
+  useEffect(() => {
+    if (!videoRef.current) return;
+    const stream = videoRef.current.srcObject as MediaStream | null;
+    const track  = stream?.getVideoTracks?.()[0];
+    if (!track) return;
+    try {
+      track.applyConstraints({ advanced: [{ torch: flashMode === 'on' } as any] });
+    } catch { /* torch not supported on this device — silently ignore */ }
+  }, [flashMode, videoRef]);
 
   // Auto-select & scroll to newest thumbnail
   useEffect(() => {
@@ -314,48 +329,101 @@ export default function ScannerScreen() {
           className="absolute inset-0 w-full h-full object-cover z-0" />
       )}
 
-      {/* ── H: Top bar — DocScan wordmark + controls ── */}
-      <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between px-4 pt-4 pb-6"
-        style={{ background: 'linear-gradient(to bottom, rgba(13,13,20,0.85) 0%, transparent 100%)' }}>
-
-        {/* Left: PrivaScan brand logo */}
+      {/* ── H: Top bar — logo · flash · done ── */}
+      <div
+        className="absolute top-0 inset-x-0 z-20 grid grid-cols-3 items-start px-4 pt-4 pb-6"
+        style={{ background: 'linear-gradient(to bottom, rgba(13,13,20,0.88) 0%, transparent 100%)' }}
+      >
+        {/* Col 1 — Left: PrivaScan brand logo */}
         <div className="flex items-center gap-2.5">
-          {/* Icon — document + scanner brackets (SVG, 20% larger than prev 24px) */}
           <svg width="30" height="30" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-            {/* Blue corner brackets — frame spans (2,2)→(46,46), centre = (24,24) */}
             <path d="M2,12 L2,2 L12,2"    stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
             <path d="M36,2 L46,2 L46,12"  stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
             <path d="M2,36 L2,46 L12,46"  stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
             <path d="M46,36 L46,46 L36,46" stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
-            {/* Document body — centred: x=13 (24-11), y=9 (24-15), w=22, h=30 */}
             <rect x="13" y="9" width="22" height="30" rx="1.5" fill="white" opacity="0.92"/>
-            {/* Folded top-right corner at (29,9)→(35,15) */}
             <path d="M29,9 L35,15 L29,15 Z" fill="#cbd5e1"/>
             <path d="M29,9 L35,9 L35,15 Z" fill="white" opacity="0.92"/>
-            {/* Content lines (all shifted +3x, +2y from before) */}
             <line x1="17" y1="20" x2="31" y2="20" stroke="#334155" strokeWidth="2"   strokeLinecap="round"/>
             <line x1="17" y1="24" x2="29" y2="24" stroke="#334155" strokeWidth="1.8" strokeLinecap="round"/>
             <line x1="17" y1="28" x2="31" y2="28" stroke="#334155" strokeWidth="1.8" strokeLinecap="round"/>
             <line x1="17" y1="32" x2="26" y2="32" stroke="#334155" strokeWidth="1.6" strokeLinecap="round"/>
-            {/* Blue scan line across the full bracket frame */}
-            <line x1="7" y1="24" x2="41" y2="24" stroke="#38bdf8" strokeWidth="2" strokeLinecap="round" opacity="0.9"/>
+            <line x1="7"  y1="24" x2="41" y2="24" stroke="#38bdf8" strokeWidth="2"  strokeLinecap="round" opacity="0.9"/>
           </svg>
-
-          {/* Wordmark: "Priva" white + "Scan" blue */}
           <span className="font-bold tracking-tight" style={{ fontSize: '1.2rem', lineHeight: 1 }}>
             <span className="text-white">Priva</span><span style={{ color: '#38bdf8' }}>Scan</span>
           </span>
         </div>
 
-        {/* Right: Done / spacer */}
-        {mode === 'auto' && pages.length > 0 ? (
+        {/* Col 2 — Center: Flash toggle */}
+        <div className="flex flex-col items-center">
+          {/* Flash icon button */}
           <button
-            onClick={() => setLocation('/preview')}
-            className="text-sm font-semibold text-white/90 hover:text-white bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1.5 rounded-full transition-all backdrop-blur-sm"
+            onClick={() => setFlashOpen(o => !o)}
+            className={cn(
+              'w-9 h-9 flex items-center justify-center rounded-full transition-all',
+              flashOpen
+                ? 'bg-white/20'
+                : 'hover:bg-white/10',
+              flashMode === 'on'  && 'text-yellow-300',
+              flashMode === 'off' && 'text-white/40',
+              flashMode === 'auto' && 'text-white',
+            )}
+            aria-label="Flash mode"
           >
-            Done ({pages.length})
+            {flashMode === 'off'
+              ? <ZapOff className="w-5 h-5" />
+              : <Zap className={cn('w-5 h-5', flashMode === 'on' && 'fill-yellow-300 text-yellow-300')} />
+            }
           </button>
-        ) : <div className="w-[80px]" />}
+
+          {/* Flash mode label under icon */}
+          <span className="text-[10px] font-semibold text-white/50 mt-0.5 tracking-wide uppercase select-none">
+            {flashMode}
+          </span>
+
+          {/* Popup panel — slides down */}
+          {flashOpen && (
+            <>
+              {/* Invisible backdrop to close on outside tap */}
+              <div
+                className="fixed inset-0 z-30"
+                onClick={() => setFlashOpen(false)}
+              />
+              <div
+                className="absolute top-[52px] z-40 flex items-center gap-1 px-2 py-2 rounded-2xl"
+                style={{ background: 'rgba(28,28,32,0.96)', backdropFilter: 'blur(12px)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }}
+              >
+                {(['off', 'on', 'auto'] as const).map(m => (
+                  <button
+                    key={m}
+                    onClick={(e) => { e.stopPropagation(); setFlashMode(m); setFlashOpen(false); }}
+                    className={cn(
+                      'px-5 py-2 rounded-xl text-sm font-semibold capitalize transition-all select-none',
+                      flashMode === m
+                        ? 'bg-white/15 text-[#2dd4bf]'
+                        : 'text-white/70 hover:text-white hover:bg-white/8',
+                    )}
+                  >
+                    {m.charAt(0).toUpperCase() + m.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Col 3 — Right: Done / spacer */}
+        <div className="flex justify-end">
+          {mode === 'auto' && pages.length > 0 ? (
+            <button
+              onClick={() => setLocation('/preview')}
+              className="text-sm font-semibold text-white/90 hover:text-white bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1.5 rounded-full transition-all backdrop-blur-sm"
+            >
+              Done ({pages.length})
+            </button>
+          ) : <div className="w-[80px]" />}
+        </div>
       </div>
 
       {/* ── Main viewfinder ── */}
