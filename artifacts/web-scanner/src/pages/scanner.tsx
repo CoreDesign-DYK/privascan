@@ -508,7 +508,7 @@ export default function ScannerScreen() {
                         )}
                       >
                         <span className={cn(
-                          'text-sm font-semibold',
+                          'text-[10px] font-semibold',
                           settings.imageQuality === key ? 'text-sky-400' : 'text-white/80',
                         )}>
                           {label}
