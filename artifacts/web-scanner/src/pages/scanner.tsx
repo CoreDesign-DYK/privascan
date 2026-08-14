@@ -11,11 +11,13 @@
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocation } from 'wouter';
-import { FolderOpen, Zap, ZapOff, ChevronRight, Smartphone, Edit2, ScanLine } from 'lucide-react';
+import { Zap, ZapOff, ChevronRight, Smartphone, Edit2, ScanLine, FileText } from 'lucide-react';
 import { useCamera } from '@/hooks/use-camera';
 import { useScannerContext } from '@/contexts/scanner-context';
 import { SettingsSheet } from '@/components/settings-sheet';
 import { RadialMenu } from '@/components/radial-menu';
+import { GallerySheet } from '@/components/gallery-sheet';
+import { useLocalScans } from '@/hooks/use-local-scans';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -245,6 +247,10 @@ export default function ScannerScreen() {
 
   const [scanMode,    setScanMode]    = useState<ScanMode>('document');
   const [radialOpen,  setRadialOpen]  = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+
+  const { data: localScans = [] } = useLocalScans();
+  const lastScan = localScans[0] ?? null;
   const [idStage,  setIdStage]  = useState<'front' | 'back'>('front');
   const idFrontRef = useRef<string | null>(null);
 
@@ -1020,12 +1026,27 @@ export default function ScannerScreen() {
         {/* Controls row */}
         <div className="flex items-center justify-between">
 
-          {/* Gallery */}
+          {/* Gallery thumbnail button — iOS camera style */}
           <button
-            onClick={() => setLocation('/gallery')}
-            className="w-12 h-12 rounded-full flex items-center justify-center text-white/70 hover:text-white bg-white/8 hover:bg-white/15 border border-white/15 transition-all backdrop-blur-sm"
+            onClick={() => setGalleryOpen(true)}
+            className="relative w-12 h-12 rounded-xl overflow-hidden border-2 border-white/25 hover:border-white/50 transition-all active:scale-95 shrink-0 bg-white/8"
           >
-            <FolderOpen className="w-5 h-5" />
+            {lastScan?.thumbnail ? (
+              <img
+                src={lastScan.thumbnail}
+                alt="Last scan"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                <FileText className="w-5 h-5 text-white/40" />
+              </div>
+            )}
+            {localScans.length > 0 && (
+              <span className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-sky-500 text-white text-[9px] font-bold leading-4 text-center">
+                {localScans.length > 99 ? '99+' : localScans.length}
+              </span>
+            )}
           </button>
 
           {/* ── F: iOS-style capture button with progress ring ── */}
@@ -1151,6 +1172,9 @@ export default function ScannerScreen() {
         </div>
 
       </div>
+
+      {/* Gallery bottom sheet */}
+      <GallerySheet open={galleryOpen} onClose={() => setGalleryOpen(false)} />
     </div>
   );
 }
