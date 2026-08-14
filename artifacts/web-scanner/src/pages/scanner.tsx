@@ -110,6 +110,62 @@ function CornerBrackets({ color }: { color: string }) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
+/*  Quality gauge SVG icon                                                       */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+function QualityGaugeIcon({ quality }: { quality: 'high' | 'medium' | 'low' }) {
+  const cx = 20, cy = 21, rO = 17, rI = 10;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const pt = (deg: number, r: number) => ({
+    x: cx + r * Math.cos(toRad(deg)),
+    y: cy - r * Math.sin(toRad(deg)),
+  });
+  const f = (n: number) => n.toFixed(2);
+
+  // Arc path for a donut segment from a1→a2 (angles in standard-math convention)
+  const arcPath = (a1: number, a2: number) => {
+    const { x: ox1, y: oy1 } = pt(a1, rO);
+    const { x: ox2, y: oy2 } = pt(a2, rO);
+    const { x: ix2, y: iy2 } = pt(a2, rI);
+    const { x: ix1, y: iy1 } = pt(a1, rI);
+    // sweep-flag=0 outer (counterclockwise in SVG = right-to-left along top)
+    // sweep-flag=1 inner (clockwise in SVG = back left-to-right)
+    return `M${f(ox1)},${f(oy1)} A${rO},${rO},0,0,0,${f(ox2)},${f(oy2)} L${f(ix2)},${f(iy2)} A${rI},${rI},0,0,1,${f(ix1)},${f(iy1)}Z`;
+  };
+
+  const SEGS = [
+    { a1: 177, a2: 151, fill: '#bae6fd' },
+    { a1: 149, a2: 123, fill: '#7dd3fc' },
+    { a1: 121, a2: 95,  fill: '#38bdf8' },
+    { a1: 93,  a2: 67,  fill: '#0ea5e9' },
+    { a1: 65,  a2: 39,  fill: '#0284c7' },
+    { a1: 37,  a2: 11,  fill: '#0369a1' },
+  ];
+
+  const activeCount = quality === 'high' ? 6 : quality === 'medium' ? 3 : 1;
+  const needleAngle = quality === 'high' ? 24 : quality === 'medium' ? 94 : 164;
+  const tip = pt(needleAngle, rO - 2);
+
+  return (
+    <svg width="36" height="20" viewBox="2 3 36 19">
+      {SEGS.map((s, i) => (
+        <path
+          key={i}
+          d={arcPath(s.a1, s.a2)}
+          fill={i < activeCount ? s.fill : 'rgba(255,255,255,0.18)'}
+        />
+      ))}
+      {/* Needle */}
+      <line
+        x1={cx} y1={cy} x2={f(tip.x)} y2={f(tip.y)}
+        stroke="white" strokeWidth="1.6" strokeLinecap="round" opacity="0.9"
+      />
+      <circle cx={cx} cy={cy} r="1.8" fill="white" opacity="0.85" />
+    </svg>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
 /*  Component                                                                   */
 /* ─────────────────────────────────────────────────────────────────────────── */
 
@@ -117,7 +173,7 @@ export default function ScannerScreen() {
   const [, setLocation] = useLocation();
   const { videoRef, startCamera, stopCamera, hasPermission, isMockMode } = useCamera();
   const {
-    mode, setMode, pages, addPage, settings,
+    mode, setMode, pages, addPage, settings, setSettings,
     setPendingPage, setDetectedCorners,
   } = useScannerContext();
 
@@ -130,8 +186,9 @@ export default function ScannerScreen() {
   const [selectedThumb,  setSelectedThumb]  = useState(-1);
 
   type FlashMode = 'off' | 'on' | 'auto';
-  const [flashMode, setFlashMode] = useState<FlashMode>('auto');
-  const [flashOpen, setFlashOpen] = useState(false);
+  const [flashMode,   setFlashMode]   = useState<FlashMode>('auto');
+  const [flashOpen,   setFlashOpen]   = useState(false);
+  const [qualityOpen, setQualityOpen] = useState(false);
 
   const lastThumbRef     = useRef<HTMLButtonElement>(null);
   const modeRef          = useRef(mode);
@@ -355,62 +412,117 @@ export default function ScannerScreen() {
           </span>
         </div>
 
-        {/* Col 2 — Center: Flash toggle */}
-        <div className="flex flex-col items-center">
-          {/* Flash icon button */}
-          <button
-            onClick={() => setFlashOpen(o => !o)}
-            className={cn(
-              'w-9 h-9 flex items-center justify-center rounded-full transition-all',
-              flashOpen
-                ? 'bg-white/20'
-                : 'hover:bg-white/10',
-              flashMode === 'on'  && 'text-yellow-300',
-              flashMode === 'off' && 'text-white/40',
-              flashMode === 'auto' && 'text-white',
+        {/* Col 2 — Center: Flash + Quality */}
+        <div className="flex justify-center items-start gap-5">
+
+          {/* ── Flash ── */}
+          <div className="relative flex flex-col items-center">
+            <button
+              onClick={() => { setFlashOpen(o => !o); setQualityOpen(false); }}
+              className={cn(
+                'w-9 h-9 flex items-center justify-center rounded-full transition-all',
+                flashOpen ? 'bg-white/20' : 'hover:bg-white/10',
+                flashMode === 'on'   && 'text-yellow-300',
+                flashMode === 'off'  && 'text-white/40',
+                flashMode === 'auto' && 'text-white',
+              )}
+              aria-label="Flash mode"
+            >
+              {flashMode === 'off'
+                ? <ZapOff className="w-5 h-5" />
+                : <Zap className={cn('w-5 h-5', flashMode === 'on' && 'fill-yellow-300 text-yellow-300')} />
+              }
+            </button>
+            <span className="text-[10px] font-semibold text-white/50 mt-0.5 tracking-wide uppercase select-none">
+              {flashMode}
+            </span>
+
+            {flashOpen && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setFlashOpen(false)} />
+                <div
+                  className="absolute top-[52px] z-40 flex items-center gap-1 px-2 py-2 rounded-2xl"
+                  style={{ background: 'rgba(28,28,32,0.96)', backdropFilter: 'blur(12px)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }}
+                >
+                  {(['off', 'on', 'auto'] as const).map(m => (
+                    <button
+                      key={m}
+                      onClick={(e) => { e.stopPropagation(); setFlashMode(m); setFlashOpen(false); }}
+                      className={cn(
+                        'px-5 py-2 rounded-xl text-sm font-semibold capitalize transition-all select-none',
+                        flashMode === m ? 'bg-white/15 text-[#2dd4bf]' : 'text-white/70 hover:text-white hover:bg-white/8',
+                      )}
+                    >
+                      {m.charAt(0).toUpperCase() + m.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
-            aria-label="Flash mode"
-          >
-            {flashMode === 'off'
-              ? <ZapOff className="w-5 h-5" />
-              : <Zap className={cn('w-5 h-5', flashMode === 'on' && 'fill-yellow-300 text-yellow-300')} />
-            }
-          </button>
+          </div>
 
-          {/* Flash mode label under icon */}
-          <span className="text-[10px] font-semibold text-white/50 mt-0.5 tracking-wide uppercase select-none">
-            {flashMode}
-          </span>
+          {/* ── Quality ── */}
+          <div className="relative flex flex-col items-center">
+            <button
+              onClick={() => { setQualityOpen(o => !o); setFlashOpen(false); }}
+              className={cn(
+                'w-9 h-9 flex items-center justify-center rounded-full transition-all',
+                qualityOpen ? 'bg-white/20' : 'hover:bg-white/10',
+              )}
+              aria-label="Scan quality"
+            >
+              <QualityGaugeIcon quality={settings.imageQuality} />
+            </button>
+            <span className="text-[10px] font-semibold text-white/50 mt-0.5 tracking-wide uppercase select-none">
+              {settings.imageQuality}
+            </span>
 
-          {/* Popup panel — slides down */}
-          {flashOpen && (
-            <>
-              {/* Invisible backdrop to close on outside tap */}
-              <div
-                className="fixed inset-0 z-30"
-                onClick={() => setFlashOpen(false)}
-              />
-              <div
-                className="absolute top-[52px] z-40 flex items-center gap-1 px-2 py-2 rounded-2xl"
-                style={{ background: 'rgba(28,28,32,0.96)', backdropFilter: 'blur(12px)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }}
-              >
-                {(['off', 'on', 'auto'] as const).map(m => (
-                  <button
-                    key={m}
-                    onClick={(e) => { e.stopPropagation(); setFlashMode(m); setFlashOpen(false); }}
-                    className={cn(
-                      'px-5 py-2 rounded-xl text-sm font-semibold capitalize transition-all select-none',
-                      flashMode === m
-                        ? 'bg-white/15 text-[#2dd4bf]'
-                        : 'text-white/70 hover:text-white hover:bg-white/8',
-                    )}
-                  >
-                    {m.charAt(0).toUpperCase() + m.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+            {qualityOpen && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setQualityOpen(false)} />
+                <div
+                  className="absolute top-[52px] z-40 px-3 pt-3 pb-2 rounded-2xl min-w-[260px]"
+                  style={{ background: 'rgba(28,28,32,0.96)', backdropFilter: 'blur(12px)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }}
+                >
+                  <p className="text-[10px] font-bold tracking-widest text-white/40 uppercase mb-2 px-1">
+                    Scan Quality
+                  </p>
+                  <div className="flex gap-2">
+                    {([
+                      { key: 'high',   label: 'High',   q: '0.95' },
+                      { key: 'medium', label: 'Medium', q: '0.80' },
+                      { key: 'low',    label: 'Low',    q: '0.60' },
+                    ] as const).map(({ key, label, q }) => (
+                      <button
+                        key={key}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSettings({ imageQuality: key });
+                          setQualityOpen(false);
+                        }}
+                        className={cn(
+                          'flex-1 flex flex-col items-center py-2.5 rounded-xl border transition-all select-none',
+                          settings.imageQuality === key
+                            ? 'border-sky-400 bg-sky-400/10'
+                            : 'border-white/10 bg-white/5 hover:bg-white/10',
+                        )}
+                      >
+                        <span className={cn(
+                          'text-sm font-semibold',
+                          settings.imageQuality === key ? 'text-sky-400' : 'text-white/80',
+                        )}>
+                          {label}
+                        </span>
+                        <span className="text-[10px] text-white/35 mt-0.5 font-mono">
+                          q={q}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Col 3 — Right: Done / spacer */}
