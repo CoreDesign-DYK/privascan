@@ -620,7 +620,7 @@ export default function ScannerScreen() {
         </div>
 
         {/* Col 2 — Center: Flash + Quality + Auto/Manual */}
-        <div className="flex justify-center items-start gap-3">
+        <div className="flex justify-center items-start gap-6">
 
           {/* ── Flash ── */}
           <div className="relative flex flex-col items-center">
