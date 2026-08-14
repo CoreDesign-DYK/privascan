@@ -818,8 +818,8 @@ export default function ScannerScreen() {
         {/* Presentation: wide 16:9 */}
         {scanMode === 'presentation' && (
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center"
-            style={{ top:'12%', bottom:'32%', left:'5%', right:'5%' }}>
-            <div className="relative" style={{ width:'100%', aspectRatio:'16/9', maxHeight:'100%' }}>
+            style={{ top:'12%', bottom:'32%' }}>
+            <div className="relative flex-shrink-0" style={{ width:'80vw', maxWidth:'360px', aspectRatio:'16/9' }}>
               <div className="absolute top-0 left-0 w-8 h-8 border-t-[3px] border-l-[3px] border-white/55" />
               <div className="absolute top-0 right-0 w-8 h-8 border-t-[3px] border-r-[3px] border-white/55" />
               <div className="absolute bottom-0 left-0 w-8 h-8 border-b-[3px] border-l-[3px] border-white/55" />
