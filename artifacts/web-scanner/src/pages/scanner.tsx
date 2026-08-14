@@ -785,7 +785,7 @@ export default function ScannerScreen() {
             style={{ top:'12%', bottom:'32%', gap:'12px' }}>
             {(['Left','Right'] as const).map(side => (
               <div key={side} className="relative flex-shrink-0"
-                style={{ width:'42vw', maxWidth:'200px', aspectRatio:'0.707/1' }}>
+                style={{ width:'46vw', maxWidth:'220px', aspectRatio:'0.707/1' }}>
                 <div className="absolute top-0 left-0 w-7 h-7 border-t-[3px] border-l-[3px] border-white/55" />
                 <div className="absolute top-0 right-0 w-7 h-7 border-t-[3px] border-r-[3px] border-white/55" />
                 <div className="absolute bottom-0 left-0 w-7 h-7 border-b-[3px] border-l-[3px] border-white/55" />
