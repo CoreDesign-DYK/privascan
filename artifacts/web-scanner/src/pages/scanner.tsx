@@ -594,7 +594,8 @@ export default function ScannerScreen() {
 
       {/* ── H: Top bar — logo · flash · done ── */}
       <div
-        className="absolute top-0 inset-x-0 z-20 grid grid-cols-3 items-start px-4 pt-4 pb-6"
+        className="absolute top-0 inset-x-0 z-20 grid items-start px-4 pt-4 pb-6"
+        style={{ gridTemplateColumns: 'auto 1fr auto' }}
         style={{ background: 'linear-gradient(to bottom, rgba(13,13,20,0.88) 0%, transparent 100%)' }}
       >
         {/* Col 1 — Left: PrivaScan brand logo */}
@@ -618,8 +619,8 @@ export default function ScannerScreen() {
           </span>
         </div>
 
-        {/* Col 2 — Center: Flash + Quality */}
-        <div className="flex justify-center items-start gap-5">
+        {/* Col 2 — Center: Flash + Quality + Auto/Manual */}
+        <div className="flex justify-center items-start gap-3">
 
           {/* ── Flash ── */}
           <div className="relative flex flex-col items-center">
@@ -729,6 +730,36 @@ export default function ScannerScreen() {
               </>
             )}
           </div>
+
+          {/* ── Auto / Manual toggle ── */}
+          <div className="flex flex-col items-center">
+            <div className="relative flex items-center bg-white/10 border border-white/15 rounded-full p-[3px]">
+              {/* Sliding pill */}
+              <div
+                className="absolute top-[3px] bottom-[3px] rounded-full bg-white shadow-sm transition-all duration-300 ease-out"
+                style={{
+                  width: 'calc(50% - 3px)',
+                  left: mode === 'auto' ? '3px' : 'calc(50%)',
+                }}
+              />
+              {(['auto', 'manual'] as const).map(m => (
+                <button
+                  key={m}
+                  onClick={() => setMode(m)}
+                  className={cn(
+                    'relative z-10 px-3 py-0.5 rounded-full text-[10px] font-semibold transition-colors duration-200 capitalize select-none',
+                    mode === m ? 'text-gray-900' : 'text-white/60 hover:text-white/90',
+                  )}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+            <span className="text-[10px] font-semibold text-white/50 mt-0.5 tracking-wide uppercase select-none">
+              Mode
+            </span>
+          </div>
+
         </div>
 
         {/* Col 3 — Right: Done / spacer */}
@@ -1126,31 +1157,6 @@ export default function ScannerScreen() {
           )}
         </div>
 
-        {/* ── I: Sliding mode toggle — below capture button ── */}
-        <div className="flex justify-center pb-1">
-          <div className="relative flex items-center bg-white/10 border border-white/15 rounded-full p-1 backdrop-blur-sm">
-            {/* Sliding pill */}
-            <div
-              className="absolute top-1 bottom-1 rounded-full bg-white shadow-sm transition-all duration-300 ease-out"
-              style={{
-                width: 'calc(50% - 4px)',
-                left: mode === 'auto' ? '4px' : 'calc(50%)',
-              }}
-            />
-            {(['auto', 'manual'] as const).map(m => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                className={cn(
-                  'relative z-10 px-5 py-1 rounded-full text-xs font-semibold transition-colors duration-200 capitalize',
-                  mode === m ? 'text-gray-900' : 'text-white/60 hover:text-white/90',
-                )}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   );
