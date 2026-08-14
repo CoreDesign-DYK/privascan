@@ -2,6 +2,7 @@
  *  only exports React components/hooks (Fast Refresh compatible). */
 
 export type ScanType     = 'document' | 'photo';
+export type ScanMode     = 'document' | 'book' | 'presentation' | 'id-cards';
 export type ColorMode    = 'color' | 'greyscale';
 export type ImageQuality = 'high' | 'medium' | 'low';
 

@@ -20,8 +20,8 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { detectDocumentCorners, defaultCorners } from '@/lib/edge-detection';
-import { type Point } from '@/lib/perspective';
-import { type ScannerSettings, QUALITY_VALUES } from '@/lib/scanner-types';
+import { type Point, warpPerspective } from '@/lib/perspective';
+import { type ScannerSettings, QUALITY_VALUES, type ScanMode } from '@/lib/scanner-types';
 
 const EDGE_INTERVAL_MS = 200;
 const STABLE_TARGET = 8;
@@ -61,6 +61,59 @@ function generateMockPage(pageNum: number, settings: ScannerSettings): string {
     'dolor in reprehenderit in voluptate velit esse.',
   ].forEach((line, i) => ctx.fillText(line, 80, 240 + i * 46));
 
+  return canvas.toDataURL('image/jpeg', QUALITY_VALUES[settings.imageQuality]);
+}
+
+/* ── Mock generators for special scan modes ───────────────────────────────── */
+function generateMockBookHalf(side: 'left' | 'right', pageNum: number, settings: ScannerSettings): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = 877; canvas.height = 1240; // 0.707 ratio
+  const ctx = canvas.getContext('2d')!;
+  const bg  = settings.colorMode === 'greyscale' ? '#f0f0f0' : '#fafaf8';
+  const ink = settings.colorMode === 'greyscale' ? '#222' : '#1a1a2e';
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = ink; ctx.font = 'bold 42px sans-serif';
+  ctx.fillText(`${side === 'left' ? '← Left' : 'Right →'} — Page ${pageNum}`, 60, 110);
+  ctx.font = '26px sans-serif'; ctx.fillStyle = '#888';
+  ctx.fillText('Book Scan · Binding Corrected', 60, 160);
+  ctx.fillStyle = ink;
+  for (let i = 0; i < 14; i++) {
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fillRect(60, 220 + i * 64, (canvas.width - 120) * (0.55 + (i % 3) * 0.15), 18);
+  }
+  return canvas.toDataURL('image/jpeg', QUALITY_VALUES[settings.imageQuality]);
+}
+
+function generateMockPresentation(pageNum: number, settings: ScannerSettings): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1920; canvas.height = 1080;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = settings.colorMode === 'greyscale' ? '#f0f0f0' : '#1e3a5f';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = settings.colorMode === 'greyscale' ? '#222' : '#ffffff';
+  ctx.font = 'bold 96px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText(`Slide ${pageNum}`, canvas.width / 2, canvas.height / 2 - 40);
+  ctx.font = '42px sans-serif'; ctx.globalAlpha = 0.55;
+  ctx.fillText('Presentation · Perspective Corrected', canvas.width / 2, canvas.height / 2 + 60);
+  ctx.globalAlpha = 1;
+  return canvas.toDataURL('image/jpeg', QUALITY_VALUES[settings.imageQuality]);
+}
+
+function generateMockIdComposite(settings: ScannerSettings): string {
+  const cw = 1004, ch = 633; // ≈ 85.6×54 mm at 300 dpi equivalent
+  const canvas = document.createElement('canvas');
+  canvas.width = cw; canvas.height = ch * 2 + 24;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#e8e8e8'; ctx.fillRect(0, 0, cw, canvas.height);
+  const colors = settings.colorMode === 'greyscale'
+    ? ['#bbbbbb', '#999999']
+    : ['#1e3a5f', '#2d5486'];
+  [0, 1].forEach(i => {
+    ctx.fillStyle = colors[i];
+    ctx.fillRect(0, i * (ch + 24), cw, ch);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 64px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(i === 0 ? 'FRONT' : 'BACK', cw / 2, i * (ch + 24) + ch / 2 + 22);
+  });
   return canvas.toDataURL('image/jpeg', QUALITY_VALUES[settings.imageQuality]);
 }
 
@@ -173,7 +226,7 @@ export default function ScannerScreen() {
   const [, setLocation] = useLocation();
   const { videoRef, startCamera, stopCamera, hasPermission, isMockMode } = useCamera();
   const {
-    mode, setMode, pages, addPage, settings, setSettings,
+    mode, setMode, pages, addPage, removePage, clearPages, settings, setSettings,
     setPendingPage, setDetectedCorners,
   } = useScannerContext();
 
@@ -190,6 +243,10 @@ export default function ScannerScreen() {
   const [flashOpen,   setFlashOpen]   = useState(false);
   const [qualityOpen, setQualityOpen] = useState(false);
 
+  const [scanMode, setScanMode] = useState<ScanMode>('document');
+  const [idStage,  setIdStage]  = useState<'front' | 'back'>('front');
+  const idFrontRef = useRef<string | null>(null);
+
   const lastThumbRef     = useRef<HTMLButtonElement>(null);
   const modeRef          = useRef(mode);
   const pagesLenRef      = useRef(pages.length);
@@ -197,10 +254,14 @@ export default function ScannerScreen() {
   const edgeTimerRef     = useRef<ReturnType<typeof setInterval> | null>(null);
   const stableFrames     = useRef(0);
   const captureAutoRef   = useRef<() => void>(() => {});
+  const scanModeRef      = useRef<ScanMode>('document');
 
-  useEffect(() => { modeRef.current     = mode;         }, [mode]);
-  useEffect(() => { pagesLenRef.current = pages.length; }, [pages.length]);
-  useEffect(() => { settingsRef.current = settings;     }, [settings]);
+  useEffect(() => { modeRef.current      = mode;     }, [mode]);
+  useEffect(() => { pagesLenRef.current  = pages.length; }, [pages.length]);
+  useEffect(() => { settingsRef.current  = settings; }, [settings]);
+  useEffect(() => { scanModeRef.current  = scanMode; }, [scanMode]);
+  // Reset ID card stage when switching scan modes
+  useEffect(() => { setIdStage('front'); idFrontRef.current = null; }, [scanMode]);
 
   // Apply torch / flash to camera track when flashMode changes
   useEffect(() => {
@@ -326,11 +387,156 @@ export default function ScannerScreen() {
     }
   }, [isMockMode, videoRef, edgeCorners, setPendingPage, setDetectedCorners, setLocation, triggerCaptureEffects]);
 
+  /* ── Book capture ───────────────────────────────────────────────────────── */
+  const bookCapture = useCallback(() => {
+    triggerCaptureEffects();
+    const q    = QUALITY_VALUES[settingsRef.current.imageQuality];
+    const grey = settingsRef.current.colorMode === 'greyscale';
+    const base = pagesLenRef.current;
+
+    if (isMockMode || !videoRef.current) {
+      addPage(generateMockBookHalf('left',  base + 1, settingsRef.current));
+      addPage(generateMockBookHalf('right', base + 2, settingsRef.current));
+    } else {
+      const video = videoRef.current;
+      const vw = video.videoWidth, vh = video.videoHeight;
+      const half = Math.floor(vw / 2);
+      const pull = Math.floor(vh * 0.025); // 2.5% trapezoid correction at binding edge
+
+      // Capture full frame
+      const full = document.createElement('canvas');
+      full.width = vw; full.height = vh;
+      const fctx = full.getContext('2d')!;
+      if (grey) fctx.filter = 'grayscale(100%)';
+      fctx.drawImage(video, 0, 0);
+
+      // Left page: binding on the right side → right edge pulled inward
+      const leftCorners: [Point, Point, Point, Point] = [
+        { x: 0,        y: 0          },
+        { x: half - 1, y: pull        },
+        { x: half - 1, y: vh - pull   },
+        { x: 0,        y: vh - 1     },
+      ];
+      const leftOut = warpPerspective(full, leftCorners, half, vh);
+
+      // Right page: binding on the left side → left edge pulled inward
+      const rightCorners: [Point, Point, Point, Point] = [
+        { x: half,     y: pull        },
+        { x: vw - 1,   y: 0          },
+        { x: vw - 1,   y: vh - 1     },
+        { x: half,     y: vh - pull   },
+      ];
+      const rightOut = warpPerspective(full, rightCorners, half, vh);
+
+      addPage(leftOut.toDataURL('image/jpeg', q));
+      addPage(rightOut.toDataURL('image/jpeg', q));
+    }
+
+    setCapturedLabel(base + 2);
+    setTimeout(() => setCapturedLabel(null), 1800);
+  }, [isMockMode, videoRef, addPage, triggerCaptureEffects]);
+
+  /* ── Presentation capture ───────────────────────────────────────────────── */
+  const presentationCapture = useCallback(() => {
+    triggerCaptureEffects();
+    const q    = QUALITY_VALUES[settingsRef.current.imageQuality];
+    const grey = settingsRef.current.colorMode === 'greyscale';
+    const pageNum = pagesLenRef.current + 1;
+
+    if (isMockMode || !videoRef.current) {
+      addPage(generateMockPresentation(pageNum, settingsRef.current));
+    } else {
+      const video = videoRef.current;
+      const vw = video.videoWidth, vh = video.videoHeight;
+      const src = document.createElement('canvas');
+      src.width = vw; src.height = vh;
+      const sctx = src.getContext('2d')!;
+      if (grey) sctx.filter = 'grayscale(100%)';
+      sctx.drawImage(video, 0, 0);
+      // Use detected edge corners or full frame; output 16:9
+      const corners: [Point, Point, Point, Point] = edgeCorners ?? [
+        { x: 0,      y: 0      }, { x: vw - 1, y: 0      },
+        { x: vw - 1, y: vh - 1 }, { x: 0,      y: vh - 1 },
+      ];
+      const outW = Math.max(vw, 1280);
+      const outH = Math.round(outW * 9 / 16);
+      addPage(warpPerspective(src, corners, outW, outH).toDataURL('image/jpeg', q));
+    }
+
+    setCapturedLabel(pageNum);
+    setTimeout(() => setCapturedLabel(null), 1800);
+  }, [isMockMode, videoRef, addPage, edgeCorners, triggerCaptureEffects]);
+
+  /* ── ID Cards capture (2-stage) ─────────────────────────────────────────── */
+  const idCardsCapture = useCallback(() => {
+    triggerCaptureEffects();
+    const q    = QUALITY_VALUES[settingsRef.current.imageQuality];
+    const grey = settingsRef.current.colorMode === 'greyscale';
+
+    const captureCardDataUrl = (): string => {
+      if (isMockMode || !videoRef.current) return 'mock';
+      const video = videoRef.current;
+      const vw = video.videoWidth, vh = video.videoHeight;
+      const src = document.createElement('canvas');
+      src.width = vw; src.height = vh;
+      const sctx = src.getContext('2d')!;
+      if (grey) sctx.filter = 'grayscale(100%)';
+      sctx.drawImage(video, 0, 0);
+      const corners: [Point, Point, Point, Point] = edgeCorners ?? [
+        { x: 0, y: 0 }, { x: vw - 1, y: 0 },
+        { x: vw - 1, y: vh - 1 }, { x: 0, y: vh - 1 },
+      ];
+      const outW = Math.min(vw, 1004);
+      const outH = Math.round(outW / 1.585); // ID card aspect ratio
+      return warpPerspective(src, corners, outW, outH).toDataURL('image/jpeg', q);
+    };
+
+    if (idStage === 'front') {
+      idFrontRef.current = captureCardDataUrl();
+      setIdStage('back');
+      toast('Front captured — flip the card and shoot the back');
+    } else {
+      const frontData = idFrontRef.current;
+      if (!frontData) { setIdStage('front'); return; }
+
+      if (isMockMode) {
+        addPage(generateMockIdComposite(settingsRef.current));
+      } else {
+        const backData = captureCardDataUrl();
+        const fImg = new Image(), bImg = new Image();
+        fImg.src = frontData; bImg.src = backData;
+        Promise.all([
+          new Promise<void>(r => { fImg.onload = () => r(); }),
+          new Promise<void>(r => { bImg.onload = () => r(); }),
+        ]).then(() => {
+          const cw = Math.max(fImg.width, bImg.width);
+          const composite = document.createElement('canvas');
+          composite.width = cw; composite.height = fImg.height + bImg.height + 20;
+          const cctx = composite.getContext('2d')!;
+          cctx.fillStyle = '#e8e8e8'; cctx.fillRect(0, 0, cw, composite.height);
+          cctx.drawImage(fImg, 0, 0);
+          cctx.drawImage(bImg, 0, fImg.height + 20);
+          addPage(composite.toDataURL('image/jpeg', q));
+          toast.success('ID Card saved — front & back combined');
+        });
+      }
+
+      idFrontRef.current = null;
+      setIdStage('front');
+      setCapturedLabel(pagesLenRef.current + 1);
+      setTimeout(() => setCapturedLabel(null), 1800);
+    }
+  }, [isMockMode, videoRef, addPage, edgeCorners, idStage, triggerCaptureEffects]);
+
   /* ── Capture button handler ─────────────────────────────────────────────── */
   const handleCaptureButton = useCallback(() => {
-    if (mode === 'auto') autoCaptureFrame();
-    else manualCaptureFrame();
-  }, [mode, autoCaptureFrame, manualCaptureFrame]);
+    const sm = scanModeRef.current;
+    if      (sm === 'book')         bookCapture();
+    else if (sm === 'presentation') presentationCapture();
+    else if (sm === 'id-cards')     idCardsCapture();
+    else if (mode === 'auto')       autoCaptureFrame();
+    else                            manualCaptureFrame();
+  }, [mode, autoCaptureFrame, manualCaptureFrame, bookCapture, presentationCapture, idCardsCapture]);
 
   /* ── Permission error ───────────────────────────────────────────────────── */
   if (hasPermission === false) {
@@ -560,29 +766,69 @@ export default function ScannerScreen() {
           </div>
         )}
 
-        {/* ── A: Guide brackets — A4 portrait (0.707), top/bottom anchored ── */}
-        {(!edgeCorners || isMockMode) && (
-          <div
-            className="absolute pointer-events-none"
-            style={{
-              top: '12%',          // below top bar
-              bottom: '32%',       // above bottom controls + toggle
-              left: '50%',
-              transform: 'translateX(-50%)',
-              aspectRatio: '0.707 / 1',
-              maxHeight: '100%',
-            }}
-          >
-            {/* TL */}
-            <div className="absolute top-0 left-0 w-8 h-8 border-t-[3px] border-l-[3px] border-white/55" />
-            {/* TR */}
-            <div className="absolute top-0 right-0 w-8 h-8 border-t-[3px] border-r-[3px] border-white/55" />
-            {/* BL */}
-            <div className="absolute bottom-0 left-0 w-8 h-8 border-b-[3px] border-l-[3px] border-white/55" />
-            {/* BR */}
-            <div className="absolute bottom-0 right-0 w-8 h-8 border-b-[3px] border-r-[3px] border-white/55" />
-          </div>
-        )}
+        {/* ── A: Guide brackets — mode-specific ── */}
+        {(!edgeCorners || isMockMode) && (<>
+
+          {/* Document: A4 portrait 0.707:1 */}
+          {scanMode === 'document' && (
+            <div className="absolute pointer-events-none" style={{ top:'12%', bottom:'32%', left:'50%', transform:'translateX(-50%)', aspectRatio:'0.707/1', maxHeight:'100%' }}>
+              <div className="absolute top-0 left-0 w-8 h-8 border-t-[3px] border-l-[3px] border-white/55" />
+              <div className="absolute top-0 right-0 w-8 h-8 border-t-[3px] border-r-[3px] border-white/55" />
+              <div className="absolute bottom-0 left-0 w-8 h-8 border-b-[3px] border-l-[3px] border-white/55" />
+              <div className="absolute bottom-0 right-0 w-8 h-8 border-b-[3px] border-r-[3px] border-white/55" />
+            </div>
+          )}
+
+          {/* Book: two portrait frames side by side, each 0.707:1 (width:height) */}
+          {scanMode === 'book' && (
+            <div className="absolute pointer-events-none flex items-center justify-center gap-3"
+              style={{ top:'12%', bottom:'32%', left:'5%', right:'5%' }}>
+              {(['Left','Right'] as const).map(side => (
+                <div key={side} className="relative" style={{ width:'calc(50% - 6px)', aspectRatio:'0.707/1' }}>
+                  <div className="absolute top-0 left-0 w-7 h-7 border-t-[3px] border-l-[3px] border-white/55" />
+                  <div className="absolute top-0 right-0 w-7 h-7 border-t-[3px] border-r-[3px] border-white/55" />
+                  <div className="absolute bottom-0 left-0 w-7 h-7 border-b-[3px] border-l-[3px] border-white/55" />
+                  <div className="absolute bottom-0 right-0 w-7 h-7 border-b-[3px] border-r-[3px] border-white/55" />
+                  <span className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[9px] font-semibold text-white/40 uppercase tracking-widest">{side}</span>
+                </div>
+              ))}
+              {/* Binding divider */}
+              <div className="absolute top-[10%] bottom-[10%] left-1/2 -translate-x-1/2 w-px bg-white/20" />
+            </div>
+          )}
+
+          {/* Presentation: wide 16:9 */}
+          {scanMode === 'presentation' && (
+            <div className="absolute pointer-events-none flex items-center justify-center"
+              style={{ top:'12%', bottom:'32%', left:'5%', right:'5%' }}>
+              <div className="relative w-full" style={{ aspectRatio:'16/9', maxHeight:'100%' }}>
+                <div className="absolute top-0 left-0 w-8 h-8 border-t-[3px] border-l-[3px] border-white/55" />
+                <div className="absolute top-0 right-0 w-8 h-8 border-t-[3px] border-r-[3px] border-white/55" />
+                <div className="absolute bottom-0 left-0 w-8 h-8 border-b-[3px] border-l-[3px] border-white/55" />
+                <div className="absolute bottom-0 right-0 w-8 h-8 border-b-[3px] border-r-[3px] border-white/55" />
+                <span className="absolute top-2 left-1/2 -translate-x-1/2 text-[9px] font-semibold text-white/35 uppercase tracking-widest">16:9 · Perspective Auto-Correct</span>
+              </div>
+            </div>
+          )}
+
+          {/* ID Cards: two stacked landscape frames (1.585:1) */}
+          {scanMode === 'id-cards' && (
+            <div className="absolute pointer-events-none flex flex-col items-center justify-center gap-3"
+              style={{ top:'12%', bottom:'32%', left:'10%', right:'10%' }}>
+              {(['front','back'] as const).map((side, idx) => (
+                <div key={side} className="relative w-full" style={{ aspectRatio:'1.585/1', opacity: idStage === side ? 1 : 0.35 }}>
+                  <div className={cn('absolute top-0 left-0 w-7 h-7 border-t-[3px] border-l-[3px]', idStage===side ? 'border-sky-400' : 'border-white/45')} />
+                  <div className={cn('absolute top-0 right-0 w-7 h-7 border-t-[3px] border-r-[3px]', idStage===side ? 'border-sky-400' : 'border-white/45')} />
+                  <div className={cn('absolute bottom-0 left-0 w-7 h-7 border-b-[3px] border-l-[3px]', idStage===side ? 'border-sky-400' : 'border-white/45')} />
+                  <div className={cn('absolute bottom-0 right-0 w-7 h-7 border-b-[3px] border-r-[3px]', idStage===side ? 'border-sky-400' : 'border-white/45')} />
+                  <span className={cn('absolute top-2 left-3 text-[9px] font-bold uppercase tracking-widest', idStage===side ? 'text-sky-400' : 'text-white/35')}>
+                    {idx + 1}. {side === 'front' ? 'Front' : 'Back'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>)}
 
         {/* ── B: Dynamic SVG overlay — only for detected document (Method B) ── */}
         {!isMockMode && edgeCorners && (
@@ -710,6 +956,42 @@ export default function ScannerScreen() {
                 </div>
               </button>
             ))}
+          </div>
+        )}
+
+        {/* ── Scan mode tabs ── */}
+        <div className="flex justify-center">
+          <div className="flex items-center gap-0 bg-white/8 border border-white/10 rounded-full px-1 py-1">
+            {([
+              { id: 'document',     label: 'Document'     },
+              { id: 'book',         label: 'Book'         },
+              { id: 'presentation', label: 'Presentation' },
+              { id: 'id-cards',     label: 'ID Cards'     },
+            ] as { id: ScanMode; label: string }[]).map(({ id, label }) => (
+              <button
+                key={id}
+                onClick={() => setScanMode(id)}
+                className={cn(
+                  'px-3 py-1 rounded-full text-[10px] font-semibold transition-all select-none',
+                  scanMode === id
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-white/50 hover:text-white/80',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ID Cards stage indicator */}
+        {scanMode === 'id-cards' && (
+          <div className="flex justify-center -mt-2">
+            <span className="text-[10px] font-semibold text-sky-400">
+              {idStage === 'front'
+                ? '① Shoot front — tap capture'
+                : '② Flip card · Shoot back — tap capture'}
+            </span>
           </div>
         )}
 
