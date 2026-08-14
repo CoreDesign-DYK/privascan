@@ -984,7 +984,7 @@ export default function ScannerScreen() {
               { id: 'document',     label: 'Document'     },
               { id: 'book',         label: 'Book'         },
               { id: 'presentation', label: 'Presentation' },
-              { id: 'id-cards',     label: 'ID Cards'     },
+              { id: 'id-cards',     label: 'ID Card'      },
             ] as { id: ScanMode; label: string }[]).map(({ id, label }) => (
               <button
                 key={id}
