@@ -24,7 +24,7 @@ function DarkSelect<T extends string>({
     <div className="relative">
       <button
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-3 py-2.5 rounded-md border border-white/10 bg-white/5 hover:bg-white/10 transition-colors text-sm text-white"
+        className="w-full flex items-center justify-between px-3 py-2.5 rounded-md border border-white/10 bg-white/5 hover:bg-white/10 transition-colors text-[10px] text-white font-semibold"
       >
         <span>{renderLabel ? renderLabel(value) : value}</span>
         <ChevronDown className={cn('w-4 h-4 text-white/40 transition-transform', open && 'rotate-180')} />
@@ -40,9 +40,9 @@ function DarkSelect<T extends string>({
               <button
                 key={opt}
                 onClick={() => { onChange(opt); setOpen(false); }}
-                className="w-full flex items-center justify-between px-3 py-2 text-sm transition-colors hover:bg-white/8 text-left"
+                className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-semibold transition-colors hover:bg-white/8 text-left"
               >
-                <span className={cn(value === opt ? 'text-sky-400 font-semibold' : 'text-white/80')}>
+                <span className={cn(value === opt ? 'text-sky-400' : 'text-white/80')}>
                   {renderLabel ? renderLabel(opt) : opt}
                 </span>
                 {value === opt && <Check className="w-3.5 h-3.5 text-sky-400" />}
@@ -117,7 +117,7 @@ export function SettingsSheet() {
                   key={mode}
                   onClick={() => setSettings({ colorMode: mode })}
                   className={cn(
-                    'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-md border text-sm font-medium transition-all',
+                    'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-md border text-[10px] font-semibold transition-all',
                     settings.colorMode === mode
                       ? 'border-sky-400 bg-sky-400/10 text-sky-400'
                       : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10',
@@ -166,7 +166,7 @@ export function SettingsSheet() {
               onClick={toggleDark}
               className="w-full flex items-center justify-between px-3 py-2.5 rounded-md border border-white/10 bg-white/5 hover:bg-white/10 transition-colors"
             >
-              <span className="text-sm text-white/80 font-medium">
+              <span className="text-[10px] text-white/80 font-semibold">
                 {darkMode ? 'Dark mode' : 'Light mode'}
               </span>
               {darkMode
