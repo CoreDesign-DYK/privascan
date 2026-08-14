@@ -594,9 +594,8 @@ export default function ScannerScreen() {
 
       {/* ── H: Top bar — logo · flash · done ── */}
       <div
-        className="absolute top-0 inset-x-0 z-20 grid items-start px-4 pt-4 pb-6"
-        style={{ gridTemplateColumns: 'auto 1fr auto' }}
-        style={{ background: 'linear-gradient(to bottom, rgba(13,13,20,0.88) 0%, transparent 100%)' }}
+        className="absolute top-0 inset-x-0 z-20 grid items-center px-4 pt-4 pb-6"
+        style={{ gridTemplateColumns: 'auto 1fr auto', background: 'linear-gradient(to bottom, rgba(13,13,20,0.88) 0%, transparent 100%)' }}
       >
         {/* Col 1 — Left: PrivaScan brand logo */}
         <div className="flex items-center gap-2.5">
@@ -620,10 +619,10 @@ export default function ScannerScreen() {
         </div>
 
         {/* Col 2 — Center: Flash + Quality + Auto/Manual */}
-        <div className="flex justify-center items-start gap-6">
+        <div className="flex justify-center items-center gap-6">
 
           {/* ── Flash ── */}
-          <div className="relative flex flex-col items-center">
+          <div className="relative flex items-center">
             <button
               onClick={() => { setFlashOpen(o => !o); setQualityOpen(false); }}
               className={cn(
@@ -640,9 +639,6 @@ export default function ScannerScreen() {
                 : <Zap className={cn('w-5 h-5', flashMode === 'on' && 'fill-yellow-300 text-yellow-300')} />
               }
             </button>
-            <span className="text-[10px] font-semibold text-white/50 mt-0.5 tracking-wide uppercase select-none">
-              {flashMode}
-            </span>
 
             {flashOpen && (
               <>
@@ -669,7 +665,7 @@ export default function ScannerScreen() {
           </div>
 
           {/* ── Quality ── */}
-          <div className="relative flex flex-col items-center">
+          <div className="relative flex items-center">
             <button
               onClick={() => { setQualityOpen(o => !o); setFlashOpen(false); }}
               className={cn(
@@ -680,9 +676,6 @@ export default function ScannerScreen() {
             >
               <QualityGaugeIcon quality={settings.imageQuality} />
             </button>
-            <span className="text-[10px] font-semibold text-white/50 mt-0.5 tracking-wide uppercase select-none">
-              {settings.imageQuality}
-            </span>
 
             {qualityOpen && (
               <>
@@ -732,8 +725,7 @@ export default function ScannerScreen() {
           </div>
 
           {/* ── Auto / Manual toggle ── */}
-          <div className="flex flex-col items-center">
-            <div className="relative flex items-center h-9 bg-white/10 border border-white/15 rounded-full px-[3px]">
+          <div className="relative flex items-center h-9 bg-white/10 border border-white/15 rounded-full px-[3px]">
               {/* Sliding pill */}
               <div
                 className="absolute top-[3px] bottom-[3px] rounded-full bg-white shadow-sm transition-all duration-300 ease-out"
@@ -754,7 +746,6 @@ export default function ScannerScreen() {
                   {m}
                 </button>
               ))}
-            </div>
           </div>
 
         </div>
