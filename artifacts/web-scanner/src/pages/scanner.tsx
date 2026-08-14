@@ -449,7 +449,7 @@ export default function ScannerScreen() {
                       key={m}
                       onClick={(e) => { e.stopPropagation(); setFlashMode(m); setFlashOpen(false); }}
                       className={cn(
-                        'px-5 py-2 rounded-xl text-sm font-semibold capitalize transition-all select-none',
+                        'px-5 py-2 rounded-xl text-[10px] font-semibold uppercase transition-all select-none',
                         flashMode === m ? 'bg-white/15 text-[#2dd4bf]' : 'text-white/70 hover:text-white hover:bg-white/8',
                       )}
                     >
