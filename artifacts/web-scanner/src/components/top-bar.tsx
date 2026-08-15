@@ -15,7 +15,7 @@ export function TopBar() {
 
         {/* Home */}
         <button
-          onClick={() => setLocation('/home')}
+          onClick={() => setLocation('/')}
           className={cn(
             'w-8 h-8 flex items-center justify-center rounded-full transition-colors',
             isScanner

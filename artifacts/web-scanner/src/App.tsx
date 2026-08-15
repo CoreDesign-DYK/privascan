@@ -39,7 +39,7 @@ function Router() {
           <Route path="/gallery" component={GalleryScreen} />
           <Route path="/edit" component={EditScreen} />
           <Route path="/markup" component={MarkupScreen} />
-          <Route path="/home" component={HomeScreen} />
+          <Route path="/home">{() => { window.location.replace('/'); return null; }}</Route>
           <Route path="/privacy-policy" component={PrivacyPolicyScreen} />
           <Route path="/terms-of-service" component={TermsOfServiceScreen} />
           <Route component={NotFound} />

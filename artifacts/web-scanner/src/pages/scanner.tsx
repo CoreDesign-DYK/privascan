@@ -15,6 +15,7 @@ import { Zap, ZapOff, ChevronRight, Smartphone, Edit2, ScanLine, FileText, House
 import { useCamera } from '@/hooks/use-camera';
 import { useScannerContext } from '@/contexts/scanner-context';
 import { SettingsSheet } from '@/components/settings-sheet';
+import { HomePopup } from '@/components/home-popup';
 import { RadialMenu } from '@/components/radial-menu';
 import { GallerySheet } from '@/components/gallery-sheet';
 import { useLocalScans } from '@/hooks/use-local-scans';
@@ -248,6 +249,7 @@ export default function ScannerScreen() {
   const [scanMode,    setScanMode]    = useState<ScanMode>('document');
   const [radialOpen,  setRadialOpen]  = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [homeOpen,    setHomeOpen]    = useState(false);
 
   const { data: localScans = [] } = useLocalScans();
   const lastScan = localScans[0] ?? null;
@@ -768,7 +770,7 @@ export default function ScannerScreen() {
             </button>
           )}
           <button
-            onClick={() => setLocation('/home')}
+            onClick={() => setHomeOpen(true)}
             className="w-9 h-9 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 transition-all"
             aria-label="Home"
           >
@@ -1185,6 +1187,7 @@ export default function ScannerScreen() {
 
       {/* Gallery bottom sheet */}
       <GallerySheet open={galleryOpen} onClose={() => setGalleryOpen(false)} />
+      {homeOpen && <HomePopup onClose={() => setHomeOpen(false)} />}
     </div>
   );
 }
