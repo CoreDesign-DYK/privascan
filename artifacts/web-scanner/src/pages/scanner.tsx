@@ -604,8 +604,8 @@ export default function ScannerScreen() {
         className="absolute top-0 inset-x-0 z-20 grid items-center px-4 pt-4 pb-6"
         style={{ gridTemplateColumns: '1fr auto 1fr', background: 'linear-gradient(to bottom, rgba(13,13,20,0.88) 0%, transparent 100%)' }}
       >
-        {/* Col 1 — Left: icon only (text removed to allow true centering) */}
-        <div className="flex items-center">
+        {/* Col 1 — Left: PrivaScan brand */}
+        <div className="flex items-center gap-2">
           <svg width="28" height="28" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M2,12 L2,2 L12,2"    stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
             <path d="M36,2 L46,2 L46,12"  stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
@@ -620,6 +620,9 @@ export default function ScannerScreen() {
             <line x1="17" y1="32" x2="26" y2="32" stroke="#334155" strokeWidth="1.6" strokeLinecap="round"/>
             <line x1="7"  y1="24" x2="41" y2="24" stroke="#38bdf8" strokeWidth="2"  strokeLinecap="round" opacity="0.9"/>
           </svg>
+          <span className="font-bold tracking-tight" style={{ fontSize: '1.1rem', lineHeight: 1 }}>
+            <span className="text-white">Priva</span><span style={{ color: '#38bdf8' }}>Scan</span>
+          </span>
         </div>
 
         {/* Col 2 — Center: Flash + Quality + Auto/Manual */}
