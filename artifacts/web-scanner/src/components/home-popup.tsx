@@ -57,9 +57,10 @@ export function HomePopup({ onClose }: Props) {
       >
         {/* Header */}
         <div className="flex flex-col items-center pt-7 pb-5 px-3 border-b border-gray-100">
-          {/* App icon */}
-          <div className="w-14 h-14 rounded-2xl border border-gray-200 bg-white flex items-center justify-center shadow-sm mb-2">
-            <svg width="24" height="24" viewBox="0 0 48 48" fill="none">
+          {/* App icon + name row */}
+          <div className="flex items-center gap-3 mb-1">
+          <div className="w-14 h-14 rounded-2xl border border-gray-200 bg-white flex items-center justify-center shadow-sm shrink-0">
+            <svg width="44" height="44" viewBox="0 0 48 48" fill="none">
               <path d="M2,12 L2,2 L12,2"     stroke="#38bdf8" strokeWidth="3.5" fill="none" strokeLinecap="square"/>
               <path d="M36,2 L46,2 L46,12"   stroke="#38bdf8" strokeWidth="3.5" fill="none" strokeLinecap="square"/>
               <path d="M2,36 L2,46 L12,46"   stroke="#38bdf8" strokeWidth="3.5" fill="none" strokeLinecap="square"/>
@@ -74,12 +75,15 @@ export function HomePopup({ onClose }: Props) {
               <line x1="7"  y1="24" x2="41" y2="24" stroke="#38bdf8" strokeWidth="2"  strokeLinecap="round" opacity="0.9"/>
             </svg>
           </div>
-          <p className="font-bold text-[17px] tracking-tight text-gray-900 leading-none">
-            Priva<span className="text-sky-400">Scan</span>
-          </p>
-          <p className="text-[11px] text-gray-400 mt-1 text-center leading-tight">
-            Sign in to access more features
-          </p>
+          <div>
+            <p className="font-bold text-[18px] tracking-tight text-gray-900 leading-none">
+              Priva<span className="text-sky-400">Scan</span>
+            </p>
+            <p className="text-[11px] text-gray-400 mt-1 leading-tight">
+              Sign in to access<br/>more features
+            </p>
+          </div>
+          </div>
 
           {/* Provider icons */}
           <div className="flex items-center gap-2.5 mt-3">
