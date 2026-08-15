@@ -216,7 +216,8 @@ export function HomePopup({ onClose }: Props) {
                   key={m.id}
                   onClick={() => goTerms(m.id)}
                   className={cn(
-                    'w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[13px] font-semibold text-white transition-opacity active:opacity-80',
+                    'w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[13px] font-semibold transition-opacity active:opacity-80',
+                    m.id === 'google' ? 'text-gray-800' : 'text-white',
                     m.bg,
                   )}
                 >
