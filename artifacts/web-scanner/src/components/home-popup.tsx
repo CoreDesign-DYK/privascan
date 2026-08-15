@@ -25,7 +25,7 @@ const MENU_ITEMS = [
   { icon: <FileText  className="w-4 h-4" />, label: 'Document Settings', action: null },
 ];
 const BOTTOM_ITEMS = [
-  { icon: <Settings   className="w-4 h-4" />, label: 'More Settings', action: null },
+  { icon: <Settings   className="w-4 h-4" />, label: 'Settings', action: null },
   { icon: <HelpCircle className="w-4 h-4" />, label: 'Help',          action: 'help' as const },
 ];
 
