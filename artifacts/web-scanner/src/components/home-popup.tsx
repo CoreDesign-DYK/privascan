@@ -166,7 +166,7 @@ export function HomePopup({ onClose }: Props) {
                 {SIGN_IN_METHODS.map(m => (
                   <button key={m.id} onClick={goSignIn} className={cn(
                     'rounded-full flex items-center justify-center shadow-sm transition-opacity active:opacity-70',
-                    m.id === 'google' ? 'w-11 h-11 bg-white border-2 border-gray-300' :
+                    m.id === 'google' ? 'w-9 h-9 bg-white border-2 border-gray-300' :
                     m.id === 'apple'  ? 'w-9 h-9 bg-black' :
                     m.id === 'phone'  ? 'w-9 h-9 bg-blue-500' : 'w-9 h-9 bg-emerald-500',
                   )}>
