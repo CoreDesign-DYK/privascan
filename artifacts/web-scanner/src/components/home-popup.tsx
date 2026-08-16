@@ -68,12 +68,6 @@ const SIGN_IN_METHODS: { id: Provider; label: string; bg: string; iconEl: React.
   },
 ];
 
-const TERMS_ITEMS = [
-  { id: 'age',     label: "I'm at least 14 years old" },
-  { id: 'terms',   label: "I agree to PrivaScan's Terms of Service" },
-  { id: 'privacy', label: "I agree to PrivaScan's Privacy Policy" },
-  { id: 'data',    label: "I agree to PrivaScan's Consent to collection of data" },
-];
 
 /* Mock Google account */
 const MOCK_ACCOUNT = { name: 'DY Kim', email: 'yessirh.kim0616@gmail.com', initials: 'DK' };
@@ -283,10 +277,9 @@ type LegalDocKey = keyof typeof LEGAL_DOCS;
 export function HomePopup({ onClose }: Props) {
   const [, setLocation] = useLocation();
 
-  // 0 main | 1 login | 2 google-choose | 3 google-perms | 4 terms
+  // 0 main | 1 login | 2 google-choose | 3 google-perms (+ consent)
   const [page,         setPage]         = useState(0);
   const [provider,     setProvider]     = useState<Provider | null>(null);
-  const [checked,      setChecked]      = useState<Record<string, boolean>>({});
   const [email,        setEmail]        = useState('');
   const [password,     setPassword]     = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -296,7 +289,7 @@ export function HomePopup({ onClose }: Props) {
   const [legalDoc, setLegalDoc]         = useState<LegalDocKey | null>(null);
 
   // back-navigation map: which page to return to from each page
-  const BACK: Record<number, number> = { 1: 0, 2: 1, 3: 2, 4: 1 };
+  const BACK: Record<number, number> = { 1: 0, 2: 1, 3: 2 };
   function goBack() { setPage(p => BACK[p] ?? 0); }
 
   function goLogin()        { setPage(1); }
@@ -305,7 +298,8 @@ export function HomePopup({ onClose }: Props) {
   function goTerms(p: Provider) {
     setProvider(p);
     if (p === 'google') { goGoogleChoose(); return; }
-    setPage(4);
+    // Non-google providers: consent already implied from login page; proceed directly
+    handleAgree();
   }
 
   function handleAgree() {
@@ -319,10 +313,8 @@ export function HomePopup({ onClose }: Props) {
     if (action === 'help')   { window.open('mailto:support@privascan.app'); return; }
   }
 
-  const allChecked = TERMS_ITEMS.every(i => checked[i.id]);
-
-  /* 5 pages → 500% track, each panel 20% */
-  const TOTAL_PAGES = 5;
+  /* 4 pages → 400% track, each panel 25% */
+  const TOTAL_PAGES = 4;
   const CARD_STYLE: React.CSSProperties = { width: '60vw', minWidth: 220, maxWidth: 360 };
 
   return (
@@ -601,7 +593,7 @@ export function HomePopup({ onClose }: Props) {
               </button>
               <button
                 disabled={!page3Checked}
-                onClick={() => setPage(4)}
+                onClick={handleAgree}
                 className={cn(
                   'flex-1 py-2 rounded-full text-[12px] font-semibold transition-colors',
                   page3Checked
@@ -610,60 +602,6 @@ export function HomePopup({ onClose }: Props) {
                 )}
               >
                 Continue
-              </button>
-            </div>
-          </div>
-
-          {/* ════ Page 4 — Terms agreement ════ */}
-          <div className="flex flex-col" style={{ width: `${100 / TOTAL_PAGES}%` }}>
-            <div className="flex items-center gap-2 px-4 pt-5 pb-3 border-b border-gray-100">
-              <button onClick={goBack} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors shrink-0">
-                <ChevronLeft className="w-4 h-4 text-gray-500" />
-              </button>
-              <p className="font-semibold text-[15px] text-gray-900">Accept terms</p>
-            </div>
-
-            <p className="text-[11px] text-gray-500 text-center px-4 pt-4 pb-2 leading-snug">
-              I'm at least 14 years old, I agree to PrivaScan's{' '}
-              <span className="text-emerald-600 underline">Terms of Service</span>,{' '}
-              <span className="text-emerald-600 underline">Privacy Policy</span>,{' '}
-              Consent to collection of data
-            </p>
-
-            <div className="flex flex-col gap-3 px-4 py-3">
-              {TERMS_ITEMS.map(item => (
-                <button
-                  key={item.id}
-                  onClick={() => setChecked(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
-                  className="flex items-start gap-2.5 text-left"
-                >
-                  <span className={cn(
-                    'mt-0.5 w-4 h-4 rounded-full border-2 shrink-0 transition-colors',
-                    checked[item.id] ? 'border-emerald-500 bg-emerald-500' : 'border-gray-300 bg-white',
-                  )} />
-                  <span className="text-[12px] text-gray-700 leading-snug">{item.label}</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="px-4 pb-5 pt-2 flex flex-col gap-2">
-              <button
-                disabled={!allChecked}
-                onClick={handleAgree}
-                className={cn(
-                  'w-full py-3 rounded-xl text-[13px] font-semibold transition-colors',
-                  allChecked
-                    ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed',
-                )}
-              >
-                Agree and continue
-              </button>
-              <button
-                onClick={goBack}
-                className="w-full py-2.5 rounded-xl text-[13px] font-medium text-gray-500 hover:bg-gray-50 transition-colors"
-              >
-                Cancel
               </button>
             </div>
           </div>
