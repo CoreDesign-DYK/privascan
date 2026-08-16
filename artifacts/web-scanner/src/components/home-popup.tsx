@@ -126,6 +126,111 @@ function Avatar({ initials, size = 'w-10 h-10', text = 'text-sm' }: { initials: 
   );
 }
 
+/* ── Legal document content ───────────────────────────────────────────────── */
+const LEGAL_DOCS = {
+  terms: {
+    title: 'Terms of Service',
+    sections: [
+      {
+        heading: '1. Acceptance of Terms',
+        body: 'By creating an account or using PrivaScan, you agree to these Terms of Service. If you do not agree, please do not use the app.',
+      },
+      {
+        heading: '2. Subscription & Billing',
+        body: 'PrivaScan offers a paid subscription at €0.99/month (or local equivalent). Subscriptions auto-renew unless cancelled at least 24 hours before the renewal date through your App Store or Google Play account settings.',
+      },
+      {
+        heading: '3. Permitted Use',
+        body: 'You may use PrivaScan solely for lawful personal or business document scanning. You may not scan, store, or distribute content that is illegal, harmful, or violates third-party rights.',
+      },
+      {
+        heading: '4. Age Requirement',
+        body: 'You must be at least 14 years old to use PrivaScan. By accepting these terms you confirm you meet this requirement.',
+      },
+      {
+        heading: '5. Intellectual Property',
+        body: 'All content, design, and software within PrivaScan is the property of PrivaScan Inc. and protected by applicable copyright and trademark laws.',
+      },
+      {
+        heading: '6. Disclaimer & Liability',
+        body: 'PrivaScan is provided "as is" without warranties of any kind. To the maximum extent permitted by law, PrivaScan Inc. is not liable for any indirect, incidental, or consequential damages.',
+      },
+      {
+        heading: '7. Changes to Terms',
+        body: 'We may update these Terms at any time. Continued use after changes constitutes acceptance of the new Terms.',
+      },
+      {
+        heading: '8. Contact',
+        body: 'For questions about these Terms, contact us at: support@privascan.app',
+      },
+    ],
+  },
+  privacy: {
+    title: 'Privacy Policy',
+    sections: [
+      {
+        heading: '1. Data We Collect',
+        body: 'We collect your name, email address, and profile picture when you sign in via a third-party provider (e.g. Google). We also store scanned documents you choose to save, locally on your device or in your personal cloud storage.',
+      },
+      {
+        heading: '2. How We Use Your Data',
+        body: 'Your data is used solely to provide and improve PrivaScan features — authentication, document storage, and sync. We do not sell or share your data with third parties for advertising.',
+      },
+      {
+        heading: '3. Data Storage & Security',
+        body: 'Documents saved locally remain on your device and are never transmitted to our servers without your explicit action. We use industry-standard encryption (TLS 1.2+) for any data in transit.',
+      },
+      {
+        heading: '4. Data Retention & Deletion',
+        body: 'You may delete your account and all associated data at any time from Settings → Account → Delete Account. Data is permanently removed within 30 days of deletion.',
+      },
+      {
+        heading: '5. Third-Party Services',
+        body: 'PrivaScan uses Google Sign-In and Apple Sign-In. These services are governed by their respective privacy policies. We do not control their data practices.',
+      },
+      {
+        heading: '6. Children\'s Privacy',
+        body: 'PrivaScan is not directed at children under 14. We do not knowingly collect personal information from children under 14.',
+      },
+      {
+        heading: '7. Contact',
+        body: 'For privacy-related inquiries, contact our Data Protection Officer at: privacy@privascan.app',
+      },
+    ],
+  },
+  consent: {
+    title: 'Consent to Collection of Data',
+    sections: [
+      {
+        heading: 'What We Collect',
+        body: 'With your consent, PrivaScan collects: (1) Account information — name and email provided at sign-in. (2) Device identifiers — for crash reporting and analytics. (3) App usage data — features used, session duration, error logs.',
+      },
+      {
+        heading: 'Purpose of Collection',
+        body: 'Data is collected to: authenticate your account, improve app stability and performance, and provide personalised features such as document sync.',
+      },
+      {
+        heading: 'No Third-Party Advertising',
+        body: 'We do not share your personal data with advertisers or data brokers. Analytics data is anonymised before processing.',
+      },
+      {
+        heading: 'Your Rights',
+        body: 'You have the right to access, correct, or delete your personal data at any time. You may also withdraw this consent by deleting your account. Withdrawal does not affect the lawfulness of processing before withdrawal.',
+      },
+      {
+        heading: 'Retention Period',
+        body: 'Personal data is retained for the duration of your active account plus 30 days after account deletion, unless a longer retention period is required by law.',
+      },
+      {
+        heading: 'Contact',
+        body: 'To exercise your data rights or ask questions: privacy@privascan.app',
+      },
+    ],
+  },
+} as const;
+
+type LegalDocKey = keyof typeof LEGAL_DOCS;
+
 /* ── Main ─────────────────────────────────────────────────────────────────── */
 export function HomePopup({ onClose }: Props) {
   const [, setLocation] = useLocation();
@@ -137,6 +242,10 @@ export function HomePopup({ onClose }: Props) {
   const [email,        setEmail]        = useState('');
   const [password,     setPassword]     = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  // Page 3 single-checkbox consent
+  const [page3Checked, setPage3Checked] = useState(false);
+  // Legal doc overlay: null = hidden, key = which doc to show
+  const [legalDoc, setLegalDoc]         = useState<LegalDocKey | null>(null);
 
   // back-navigation map: which page to return to from each page
   const BACK: Record<number, number> = { 1: 0, 2: 1, 3: 2, 4: 1 };
@@ -401,12 +510,44 @@ export function HomePopup({ onClose }: Props) {
               </div>
             </div>
 
-            {/* Legal notice */}
-            <p className="text-[10px] text-gray-400 px-4 pb-3 leading-relaxed border-t border-gray-100 pt-3">
-              Review PrivaScan's{' '}
-              <span className="text-blue-500 underline">privacy policy</span> and{' '}
-              <span className="text-blue-500 underline">Terms of Service</span> to understand how PrivaScan will process and protect your data.
-            </p>
+            {/* Single-checkbox consent row */}
+            <div className="border-t border-gray-100 pt-3 px-4 pb-3">
+              <button
+                onClick={() => setPage3Checked(v => !v)}
+                className="flex items-start gap-2.5 text-left w-full"
+              >
+                {/* checkbox */}
+                <span className={cn(
+                  'mt-0.5 w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center transition-colors',
+                  page3Checked ? 'border-blue-500 bg-blue-500' : 'border-gray-400 bg-white',
+                )}>
+                  {page3Checked && (
+                    <svg viewBox="0 0 12 10" className="w-2.5 h-2.5" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="1.5,5 4.5,8 10.5,1.5" />
+                    </svg>
+                  )}
+                </span>
+                {/* text */}
+                <span className="text-[10px] text-gray-600 leading-relaxed">
+                  I'm at least 14 years old, and I agree to PrivaScan's{' '}
+                  <span
+                    className="text-blue-500 underline font-medium"
+                    onClick={e => { e.stopPropagation(); setLegalDoc('terms'); }}
+                  >Terms of Service</span>
+                  {', '}
+                  <span
+                    className="text-blue-500 underline font-medium"
+                    onClick={e => { e.stopPropagation(); setLegalDoc('privacy'); }}
+                  >Privacy policy</span>
+                  {', '}
+                  <span
+                    className="text-blue-500 underline font-medium"
+                    onClick={e => { e.stopPropagation(); setLegalDoc('consent'); }}
+                  >consent to collection of data</span>
+                  .
+                </span>
+              </button>
+            </div>
 
             {/* Cancel / Continue */}
             <div className="flex gap-2 px-4 pb-4">
@@ -417,8 +558,14 @@ export function HomePopup({ onClose }: Props) {
                 Cancel
               </button>
               <button
+                disabled={!page3Checked}
                 onClick={() => setPage(4)}
-                className="flex-1 py-2 rounded-full border border-blue-500 text-[12px] font-semibold text-blue-600 hover:bg-blue-50 transition-colors"
+                className={cn(
+                  'flex-1 py-2 rounded-full text-[12px] font-semibold transition-colors',
+                  page3Checked
+                    ? 'border border-blue-500 text-blue-600 hover:bg-blue-50'
+                    : 'border border-gray-200 text-gray-300 cursor-not-allowed bg-gray-50',
+                )}
               >
                 Continue
               </button>
@@ -480,7 +627,57 @@ export function HomePopup({ onClose }: Props) {
           </div>
 
         </div>{/* /sliding track */}
+
+        {/* ════ Legal document overlay ════ */}
+        {legalDoc && (() => {
+          const doc = LEGAL_DOCS[legalDoc];
+          return (
+            <div
+              className="absolute inset-0 bg-white z-10 flex flex-col"
+              style={{ animation: 'slideUpIn 0.25s ease' }}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-gray-100 shrink-0">
+                <p className="font-bold text-[14px] text-gray-900">{doc.title}</p>
+                <button
+                  onClick={() => setLegalDoc(null)}
+                  className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors"
+                >
+                  <X className="w-4 h-4 text-gray-500" />
+                </button>
+              </div>
+
+              {/* Scrollable content */}
+              <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-4">
+                {doc.sections.map((s, i) => (
+                  <div key={i}>
+                    <p className="text-[11px] font-bold text-gray-800 mb-1">{s.heading}</p>
+                    <p className="text-[10px] text-gray-600 leading-relaxed">{s.body}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Close button at bottom */}
+              <div className="px-4 pb-4 pt-2 shrink-0 border-t border-gray-100">
+                <button
+                  onClick={() => setLegalDoc(null)}
+                  className="w-full py-2.5 rounded-xl border border-gray-300 text-[12px] font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+
       </div>
+
+      <style>{`
+        @keyframes slideUpIn {
+          from { transform: translateY(100%); opacity: 0; }
+          to   { transform: translateY(0);    opacity: 1; }
+        }
+      `}</style>
     </>
   );
 }
