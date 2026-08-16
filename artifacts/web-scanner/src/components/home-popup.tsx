@@ -3,13 +3,19 @@
  * Multi-page popup floating over the scanner hero screen.
  * Pages slide left/right within the same fixed-size card.
  *
- * Pages: 0 = main menu  |  1 = sign-in options  |  2 = terms agreement
+ * Pages:
+ *   0 = main menu
+ *   1 = login form (email/pw + provider icons)
+ *   2 = Google — Choose an account
+ *   3 = Google — Permissions confirmation
+ *   4 = terms agreement
  */
 import { useState } from 'react';
 import { useLocation } from 'wouter';
 import {
   User, RefreshCw, ScanLine, FileText,
-  Settings, HelpCircle, ChevronRight, ChevronLeft, Eye, EyeOff,
+  Settings, HelpCircle, ChevronRight, ChevronLeft, Eye, EyeOff, X,
+  UserCircle2, Mail,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -26,21 +32,24 @@ const MENU_ITEMS = [
 ];
 const BOTTOM_ITEMS = [
   { icon: <Settings   className="w-4 h-4" />, label: 'Settings', action: null },
-  { icon: <HelpCircle className="w-4 h-4" />, label: 'Help',          action: 'help' as const },
+  { icon: <HelpCircle className="w-4 h-4" />, label: 'Help',     action: 'help' as const },
 ];
+
+/* Google G icon */
+const GoogleIcon = ({ size = 'w-5 h-5' }: { size?: string }) => (
+  <svg viewBox="0 0 24 24" className={`${size} shrink-0`}>
+    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+  </svg>
+);
 
 const SIGN_IN_METHODS: { id: Provider; label: string; bg: string; iconEl: React.ReactNode }[] = [
   {
     id: 'google', label: 'Continue with Google',
     bg: 'bg-white border border-gray-300 hover:bg-gray-50',
-    iconEl: (
-      <svg viewBox="0 0 24 24" className="w-5 h-5 shrink-0">
-        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
-        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-      </svg>
-    ),
+    iconEl: <GoogleIcon />,
   },
   {
     id: 'apple', label: 'Continue with Apple',
@@ -66,10 +75,13 @@ const TERMS_ITEMS = [
   { id: 'data',    label: "I agree to PrivaScan's Consent to collection of data" },
 ];
 
+/* Mock Google account */
+const MOCK_ACCOUNT = { name: 'DY Kim', email: 'yessirh.kim0616@gmail.com', initials: 'DK' };
+
 /* ── App logo SVG ─────────────────────────────────────────────────────────── */
-function AppLogo() {
+function AppLogo({ size = 'w-14 h-14' }: { size?: string }) {
   return (
-    <div className="w-14 h-14 rounded-2xl border border-gray-200 bg-white flex items-center justify-center shadow-sm shrink-0">
+    <div className={`${size} rounded-2xl border border-gray-200 bg-white flex items-center justify-center shadow-sm shrink-0`}>
       <svg width="44" height="44" viewBox="0 0 48 48" fill="none">
         <path d="M2,12 L2,2 L12,2"     stroke="#38bdf8" strokeWidth="3.5" fill="none" strokeLinecap="square"/>
         <path d="M36,2 L46,2 L46,12"   stroke="#38bdf8" strokeWidth="3.5" fill="none" strokeLinecap="square"/>
@@ -88,40 +100,73 @@ function AppLogo() {
   );
 }
 
+/* ── Google-style URL bar ─────────────────────────────────────────────────── */
+function GoogleUrlBar({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 bg-gray-50">
+      <button onClick={onClose} className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-700">
+        <X className="w-4 h-4" />
+      </button>
+      <span className="text-[11px] text-gray-500 font-medium">accounts.google.com</span>
+      <div className="w-6 h-6 flex items-center justify-center">
+        <svg viewBox="0 0 24 24" className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+/* ── Avatar circle ────────────────────────────────────────────────────────── */
+function Avatar({ initials, size = 'w-10 h-10', text = 'text-sm' }: { initials: string; size?: string; text?: string }) {
+  return (
+    <div className={`${size} rounded-full bg-blue-600 flex items-center justify-center shrink-0`}>
+      <span className={`${text} font-bold text-white`}>{initials}</span>
+    </div>
+  );
+}
+
 /* ── Main ─────────────────────────────────────────────────────────────────── */
 export function HomePopup({ onClose }: Props) {
   const [, setLocation] = useLocation();
-  const [page, setPage]             = useState(0);           // 0 main | 1 login | 2 terms
-  const [provider, setProvider]     = useState<Provider | null>(null);
-  const [checked, setChecked]       = useState<Record<string, boolean>>({});
+
+  // 0 main | 1 login | 2 google-choose | 3 google-perms | 4 terms
+  const [page,         setPage]         = useState(0);
+  const [provider,     setProvider]     = useState<Provider | null>(null);
+  const [checked,      setChecked]      = useState<Record<string, boolean>>({});
   const [email,        setEmail]        = useState('');
   const [password,     setPassword]     = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  function goSignIn() { setPage(1); }
-  function goTerms(p: Provider) { setProvider(p); setPage(2); }
-  function goBack() { setPage(p => p - 1); }
+  // back-navigation map: which page to return to from each page
+  const BACK: Record<number, number> = { 1: 0, 2: 1, 3: 2, 4: 1 };
+  function goBack() { setPage(p => BACK[p] ?? 0); }
+
+  function goLogin()        { setPage(1); }
+  function goGoogleChoose() { setProvider('google'); setPage(2); }
+  function goGooglePerms()  { setPage(3); }
+  function goTerms(p: Provider) {
+    setProvider(p);
+    if (p === 'google') { goGoogleChoose(); return; }
+    setPage(4);
+  }
 
   function handleAgree() {
-    // TODO: trigger real OAuth flow for `provider`
     onClose();
     setLocation('/');
   }
 
   function handleMenu(action: 'signin' | 'scan' | 'help' | null) {
-    if (action === 'signin') { goSignIn(); return; }
-    if (action === 'scan')   { onClose();  return; }
+    if (action === 'signin') { goLogin(); return; }
+    if (action === 'scan')   { onClose(); return; }
     if (action === 'help')   { window.open('mailto:support@privascan.app'); return; }
   }
 
   const allChecked = TERMS_ITEMS.every(i => checked[i.id]);
 
-  /* card style — same size for all pages */
-  const CARD_STYLE: React.CSSProperties = {
-    width: '60vw',
-    minWidth: 220,
-    maxWidth: 360,
-  };
+  /* 5 pages → 500% track, each panel 20% */
+  const TOTAL_PAGES = 5;
+  const CARD_STYLE: React.CSSProperties = { width: '60vw', minWidth: 220, maxWidth: 360 };
 
   return (
     <>
@@ -132,25 +177,24 @@ export function HomePopup({ onClose }: Props) {
         onClick={onClose}
       />
 
-      {/* Card wrapper — overflow hidden so slides don't bleed out */}
+      {/* Card wrapper */}
       <div
         className="fixed z-[90] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-2xl shadow-2xl overflow-hidden bg-white"
         style={CARD_STYLE}
         onClick={e => e.stopPropagation()}
       >
-        {/* ── Sliding track: 3 pages side by side ── */}
+        {/* ── Sliding track: 5 pages side by side ── */}
         <div
           className="flex"
           style={{
-            width: '300%',
-            transform: `translateX(${-page * (100 / 3)}%)`,
+            width: `${TOTAL_PAGES * 100}%`,
+            transform: `translateX(${-page * (100 / TOTAL_PAGES)}%)`,
             transition: 'transform 0.32s cubic-bezier(0.4, 0, 0.2, 1)',
           }}
         >
 
           {/* ════ Page 0 — Main menu ════ */}
-          <div className="flex flex-col" style={{ width: '33.333%' }}>
-            {/* Header */}
+          <div className="flex flex-col" style={{ width: `${100 / TOTAL_PAGES}%` }}>
             <div className="flex flex-col items-center pt-7 pb-5 px-3 border-b border-gray-100">
               <div className="flex items-center gap-3 mb-1">
                 <AppLogo />
@@ -163,15 +207,13 @@ export function HomePopup({ onClose }: Props) {
                   </p>
                 </div>
               </div>
-
-              {/* Provider icon row */}
               <div className="flex items-center gap-2.5 mt-3">
                 {SIGN_IN_METHODS.map(m => (
-                  <button key={m.id} onClick={() => setPage(1)} className={cn(
-                    'rounded-full flex items-center justify-center shadow-sm transition-opacity active:opacity-70',
-                    m.id === 'google' ? 'w-9 h-9 bg-white border-2 border-gray-300' :
-                    m.id === 'apple'  ? 'w-9 h-9 bg-black' :
-                    m.id === 'phone'  ? 'w-9 h-9 bg-blue-500' : 'w-9 h-9 bg-emerald-500',
+                  <button key={m.id} onClick={goLogin} className={cn(
+                    'w-9 h-9 rounded-full flex items-center justify-center shadow-sm transition-opacity active:opacity-70',
+                    m.id === 'google' ? 'bg-white border-2 border-gray-300' :
+                    m.id === 'apple'  ? 'bg-black' :
+                    m.id === 'phone'  ? 'bg-blue-500' : 'bg-emerald-500',
                   )}>
                     {m.iconEl}
                   </button>
@@ -179,7 +221,6 @@ export function HomePopup({ onClose }: Props) {
               </div>
             </div>
 
-            {/* Main menu rows */}
             {MENU_ITEMS.map((item, i) => (
               <button key={i} onClick={() => handleMenu(item.action)}
                 className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors border-b border-gray-100">
@@ -204,8 +245,7 @@ export function HomePopup({ onClose }: Props) {
           </div>
 
           {/* ════ Page 1 — Login form ════ */}
-          <div className="flex flex-col" style={{ width: '33.333%' }}>
-            {/* Header */}
+          <div className="flex flex-col" style={{ width: `${100 / TOTAL_PAGES}%` }}>
             <div className="flex items-center gap-2 px-4 pt-5 pb-3 border-b border-gray-100">
               <button onClick={goBack} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors shrink-0">
                 <ChevronLeft className="w-4 h-4 text-gray-500" />
@@ -214,7 +254,6 @@ export function HomePopup({ onClose }: Props) {
             </div>
 
             <div className="px-4 pt-4 pb-5 flex flex-col gap-3">
-              {/* Subtitle */}
               <p className="text-[11px] text-gray-400 leading-snug">
                 Sign in to&nbsp;<span className="font-semibold text-gray-700">access more features</span>
               </p>
@@ -233,55 +272,35 @@ export function HomePopup({ onClose }: Props) {
                 ))}
               </div>
 
-              {/* Email */}
               <div>
                 <label className="block text-[11px] font-semibold text-gray-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  placeholder="your@email.com"
-                  value={email}
+                <input type="email" placeholder="your@email.com" value={email}
                   onChange={e => setEmail(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-gray-100 text-gray-900 placeholder-gray-400 text-[12px] focus:outline-none focus:ring-2 focus:ring-blue-400"
-                />
+                  className="w-full px-3 py-2.5 rounded-xl bg-gray-100 text-gray-900 placeholder-gray-400 text-[12px] focus:outline-none focus:ring-2 focus:ring-blue-400" />
               </div>
 
-              {/* Password */}
               <div>
                 <label className="block text-[11px] font-semibold text-gray-700 mb-1">Password</label>
                 <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="••••••••"
-                    value={password}
+                  <input type={showPassword ? 'text' : 'password'} placeholder="••••••••" value={password}
                     onChange={e => setPassword(e.target.value)}
-                    className="w-full px-3 py-2.5 pr-9 rounded-xl bg-gray-100 text-gray-900 placeholder-gray-400 text-[12px] focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(v => !v)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
+                    className="w-full px-3 py-2.5 pr-9 rounded-xl bg-gray-100 text-gray-900 placeholder-gray-400 text-[12px] focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  <button type="button" onClick={() => setShowPassword(v => !v)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
 
-              {/* Forgot */}
               <div className="flex justify-end -mt-1">
-                <button className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors">
-                  Forgot your password?
-                </button>
+                <button className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors">Forgot your password?</button>
               </div>
 
-              {/* Sign In */}
-              <button
-                onClick={() => {/* TODO: auth */}}
-                className="w-full py-2.5 rounded-xl bg-[#1e3a5f] hover:bg-[#162d4a] text-white font-bold text-[13px] transition-colors shadow-sm"
-              >
+              <button onClick={() => {/* TODO: email auth */}}
+                className="w-full py-2.5 rounded-xl bg-[#1e3a5f] hover:bg-[#162d4a] text-white font-bold text-[13px] transition-colors shadow-sm">
                 Sign In
               </button>
 
-              {/* Sign up */}
               <p className="text-center text-[11px] text-gray-400">
                 Don't have an account?{' '}
                 <button className="text-blue-500 font-semibold hover:underline">Sign up</button>
@@ -289,9 +308,125 @@ export function HomePopup({ onClose }: Props) {
             </div>
           </div>
 
-          {/* ════ Page 2 — Terms agreement ════ */}
-          <div className="flex flex-col" style={{ width: '33.333%' }}>
-            {/* Header */}
+          {/* ════ Page 2 — Google: Choose an account ════ */}
+          <div className="flex flex-col" style={{ width: `${100 / TOTAL_PAGES}%` }}>
+            <GoogleUrlBar onClose={goBack} />
+
+            {/* Google branding */}
+            <div className="flex items-center gap-2 px-4 pt-4 pb-2">
+              <GoogleIcon size="w-5 h-5" />
+              <span className="text-[12px] text-gray-700 font-medium">Sign in with Google</span>
+            </div>
+
+            {/* App info */}
+            <div className="flex items-center gap-2.5 px-4 py-3 border-b border-gray-100">
+              <AppLogo size="w-9 h-9" />
+              <div>
+                <p className="text-[12px] font-bold text-gray-900 leading-none">
+                  Priva<span className="text-sky-400">Scan</span>
+                </p>
+                <p className="text-[10px] text-gray-400 mt-0.5">Sign in to access more features</p>
+              </div>
+            </div>
+
+            <div className="px-4 pt-4 pb-2">
+              <p className="text-[15px] font-bold text-gray-900">Choose an account</p>
+              <p className="text-[11px] text-gray-500 mt-0.5">to continue to <span className="font-semibold">PrivaScan</span></p>
+            </div>
+
+            {/* Mock account row */}
+            <button
+              onClick={goGooglePerms}
+              className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors border-b border-gray-100"
+            >
+              <Avatar initials={MOCK_ACCOUNT.initials} size="w-9 h-9" text="text-sm" />
+              <div className="text-left">
+                <p className="text-[13px] font-semibold text-gray-900">{MOCK_ACCOUNT.name}</p>
+                <p className="text-[11px] text-gray-500">{MOCK_ACCOUNT.email}</p>
+              </div>
+            </button>
+
+            {/* Use another account */}
+            <button className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-100">
+              <div className="w-9 h-9 rounded-full border-2 border-gray-300 flex items-center justify-center shrink-0">
+                <UserCircle2 className="w-5 h-5 text-gray-400" />
+              </div>
+              <p className="text-[13px] text-gray-700 font-medium">Use another account</p>
+            </button>
+
+            {/* Footer notice */}
+            <p className="text-[10px] text-gray-400 px-4 py-4 leading-relaxed">
+              Before using this app, you can review{' '}
+              <span className="text-blue-500 underline">PrivaScan's Privacy Policy</span> and{' '}
+              <span className="text-blue-500 underline">Terms of Service</span>.
+            </p>
+          </div>
+
+          {/* ════ Page 3 — Google: Permissions confirmation ════ */}
+          <div className="flex flex-col" style={{ width: `${100 / TOTAL_PAGES}%` }}>
+            <GoogleUrlBar onClose={goBack} />
+
+            <div className="px-4 pt-4 pb-3 border-b border-gray-100">
+              <p className="text-[15px] font-bold text-gray-900">Sign in to PrivaScan</p>
+
+              {/* Selected email chip */}
+              <div className="flex items-center gap-1.5 mt-3 px-2.5 py-1.5 rounded-full border border-gray-200 bg-gray-50 w-fit">
+                <Avatar initials={MOCK_ACCOUNT.initials} size="w-5 h-5" text="text-[8px]" />
+                <span className="text-[11px] text-gray-700">{MOCK_ACCOUNT.email}</span>
+                <ChevronRight className="w-3 h-3 text-gray-400 rotate-90" />
+              </div>
+            </div>
+
+            <div className="px-4 pt-3 pb-2">
+              <p className="text-[11px] text-gray-700 font-semibold leading-snug">
+                Google will allow PrivaScan to access this info about you
+              </p>
+            </div>
+
+            {/* Permission items */}
+            <div className="px-4 pb-3 flex flex-col gap-3">
+              <div className="flex items-start gap-2.5">
+                <UserCircle2 className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-[12px] font-medium text-gray-800">{MOCK_ACCOUNT.name}</p>
+                  <p className="text-[10px] text-gray-500">Name and profile picture</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2.5">
+                <Mail className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-[12px] font-medium text-gray-800">{MOCK_ACCOUNT.email}</p>
+                  <p className="text-[10px] text-gray-500">Email address</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Legal notice */}
+            <p className="text-[10px] text-gray-400 px-4 pb-3 leading-relaxed border-t border-gray-100 pt-3">
+              Review PrivaScan's{' '}
+              <span className="text-blue-500 underline">privacy policy</span> and{' '}
+              <span className="text-blue-500 underline">Terms of Service</span> to understand how PrivaScan will process and protect your data.
+            </p>
+
+            {/* Cancel / Continue */}
+            <div className="flex gap-2 px-4 pb-4">
+              <button
+                onClick={goBack}
+                className="flex-1 py-2 rounded-full border border-gray-300 text-[12px] font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => setPage(4)}
+                className="flex-1 py-2 rounded-full border border-blue-500 text-[12px] font-semibold text-blue-600 hover:bg-blue-50 transition-colors"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+
+          {/* ════ Page 4 — Terms agreement ════ */}
+          <div className="flex flex-col" style={{ width: `${100 / TOTAL_PAGES}%` }}>
             <div className="flex items-center gap-2 px-4 pt-5 pb-3 border-b border-gray-100">
               <button onClick={goBack} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors shrink-0">
                 <ChevronLeft className="w-4 h-4 text-gray-500" />
