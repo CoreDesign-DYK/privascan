@@ -463,12 +463,6 @@ export function HomePopup({ onClose }: Props) {
               <p className="text-[13px] text-gray-700 font-medium">Use another account</p>
             </button>
 
-            {/* Footer notice */}
-            <p className="text-[10px] text-gray-400 px-4 py-4 leading-relaxed">
-              Before using this app, you can review{' '}
-              <span className="text-blue-500 underline">PrivaScan's Privacy Policy</span> and{' '}
-              <span className="text-blue-500 underline">Terms of Service</span>.
-            </p>
           </div>
 
           {/* ════ Page 3 — Google: Permissions confirmation ════ */}
