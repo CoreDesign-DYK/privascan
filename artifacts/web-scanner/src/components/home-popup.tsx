@@ -133,35 +133,59 @@ const LEGAL_DOCS = {
     sections: [
       {
         heading: '1. Acceptance of Terms',
-        body: 'By creating an account or using PrivaScan, you agree to these Terms of Service. If you do not agree, please do not use the app.',
+        body: 'By installing, creating an account, or using PrivaScan, you agree to be bound by these Terms of Service ("Terms"). If you do not agree, you must not use the app. By using PrivaScan you confirm that you are of legal age or have obtained parental or guardian consent to enter into these Terms.',
       },
       {
-        heading: '2. Subscription & Billing',
-        body: 'PrivaScan offers a paid subscription at €0.99/month (or local equivalent). Subscriptions auto-renew unless cancelled at least 24 hours before the renewal date through your App Store or Google Play account settings.',
+        heading: '2. Updates to Terms',
+        body: 'We may update these Terms from time to time. If we make important changes, we will notify you in-app or by email before they take effect. Changes will not apply retroactively to disputes that arose before the update date. If you do not agree to the amended Terms, you must stop using PrivaScan and cancel your subscription.',
       },
       {
-        heading: '3. Permitted Use',
-        body: 'You may use PrivaScan solely for lawful personal or business document scanning. You may not scan, store, or distribute content that is illegal, harmful, or violates third-party rights.',
+        heading: '3. License Grant',
+        body: 'Subject to your compliance with these Terms, PrivaScan grants you a non-exclusive, limited, revocable, non-transferable right to install and use the app for your personal or business document scanning. This license is for one person and cannot be shared or transferred.',
       },
       {
-        heading: '4. Age Requirement',
-        body: 'You must be at least 14 years old to use PrivaScan. By accepting these terms you confirm you meet this requirement.',
+        heading: '4. Your Content & Ownership',
+        body: 'You own the documents and images you scan ("Content"). PrivaScan does not claim any ownership over your Content. We do not scan, review, or access Content stored locally on your device. If you choose to enable cloud sync, only the minimum data necessary to provide the sync service is transferred, and we do not use your Content to train AI models or for advertising purposes.',
       },
       {
-        heading: '5. Intellectual Property',
-        body: 'All content, design, and software within PrivaScan is the property of PrivaScan Inc. and protected by applicable copyright and trademark laws.',
+        heading: '5. Subscription & Billing',
+        body: 'PrivaScan offers a subscription at €0.99/month (or the local currency equivalent). Subscriptions auto-renew unless cancelled at least 24 hours before the renewal date through your App Store or Google Play account settings. You are also responsible for any applicable taxes, VAT, mobile carrier fees, or other third-party charges associated with your purchase.',
       },
       {
-        heading: '6. Disclaimer & Liability',
-        body: 'PrivaScan is provided "as is" without warranties of any kind. To the maximum extent permitted by law, PrivaScan Inc. is not liable for any indirect, incidental, or consequential damages.',
+        heading: '6. Permitted Use & Prohibited Conduct',
+        body: 'You may use PrivaScan only for lawful purposes. You must not: (a) scan or distribute illegal, harmful, or privacy-violating content; (b) reverse-engineer, decompile, or disassemble the app; (c) use automated tools to access or scrape PrivaScan; (d) resell or sublicense the app or its output; (e) impersonate another person or entity; (f) violate any applicable local, national, or international law or regulation.',
       },
       {
-        heading: '7. Changes to Terms',
-        body: 'We may update these Terms at any time. Continued use after changes constitutes acceptance of the new Terms.',
+        heading: '7. Privacy',
+        body: 'Your use of PrivaScan is also governed by our Privacy Policy, which is incorporated into these Terms by reference. By using PrivaScan you acknowledge that you have read and understood the Privacy Policy.',
       },
       {
-        heading: '8. Contact',
-        body: 'For questions about these Terms, contact us at: support@privascan.app',
+        heading: '8. Age Requirement',
+        body: 'You must be at least 14 years old to use PrivaScan. By accepting these Terms you confirm that you meet this age requirement. If we become aware that a user is under 14, we will immediately delete their account and data.',
+      },
+      {
+        heading: '9. Intellectual Property',
+        body: "All software, design, trademarks, logos, and branding within PrivaScan are the property of PrivaScan Inc. and are protected by applicable intellectual property laws. Nothing in these Terms grants you any right to use PrivaScan\u2019s trademarks or branding.",
+      },
+      {
+        heading: '10. Warranty & Indemnification',
+        body: 'You warrant that (a) you have all necessary rights and permissions to scan and store any Content you process through PrivaScan, and (b) your use of PrivaScan will not violate any law or third-party rights. You agree to indemnify and hold PrivaScan Inc. harmless from any claims, damages, or costs (including reasonable legal fees) arising from your Content or your violation of these Terms.',
+      },
+      {
+        heading: '11. Disclaimer & Limitation of Liability',
+        body: 'PrivaScan is provided "as is" and "as available" without warranties of any kind, express or implied. To the maximum extent permitted by applicable law, PrivaScan Inc. is not liable for any indirect, incidental, special, consequential, or punitive damages. Our total liability to you for any claim arising under these Terms shall not exceed the amount you paid us in the 12 months preceding the claim.',
+      },
+      {
+        heading: '12. Termination',
+        body: 'You may delete your account at any time from Settings → Account → Delete Account. PrivaScan may suspend or terminate your account if you violate these Terms, engage in fraudulent activity, or fail to pay subscription fees. Upon termination, your license to use the app ends immediately and your data will be deleted within 30 days.',
+      },
+      {
+        heading: '13. Governing Law',
+        body: 'If you reside in the European Economic Area (EEA) or United Kingdom, these Terms are governed by the laws of Ireland. If you reside outside the EEA and UK, these Terms are governed by the laws of the State of California, USA, without regard to conflict of law principles. Disputes will be resolved by the courts of the applicable jurisdiction.',
+      },
+      {
+        heading: '14. Contact',
+        body: 'For questions about these Terms, contact us at: legal@privascan.app\n\nPrivaScan Inc., support@privascan.app',
       },
     ],
   },
