@@ -277,19 +277,25 @@ type LegalDocKey = keyof typeof LEGAL_DOCS;
 export function HomePopup({ onClose }: Props) {
   const [, setLocation] = useLocation();
 
-  // 0 main | 1 login | 2 google-choose | 3 google-perms (+ consent)
-  const [page,         setPage]         = useState(0);
-  const [provider,     setProvider]     = useState<Provider | null>(null);
-  const [email,        setEmail]        = useState('');
-  const [password,     setPassword]     = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  // 0 main | 1 login | 2 google-choose | 3 google-perms (+ consent) | 4 sign-up
+  const [page,           setPage]           = useState(0);
+  const [provider,       setProvider]       = useState<Provider | null>(null);
+  const [email,          setEmail]          = useState('');
+  const [password,       setPassword]       = useState('');
+  const [showPassword,   setShowPassword]   = useState(false);
+  // Page 4 sign-up fields
+  const [suName,         setSuName]         = useState('');
+  const [suEmail,        setSuEmail]        = useState('');
+  const [suPassword,     setSuPassword]     = useState('');
+  const [showSuPassword, setShowSuPassword] = useState(false);
+  const [suChecked,      setSuChecked]      = useState(false);
   // Page 3 single-checkbox consent
   const [page3Checked, setPage3Checked] = useState(false);
   // Legal doc overlay: null = hidden, key = which doc to show
   const [legalDoc, setLegalDoc]         = useState<LegalDocKey | null>(null);
 
   // back-navigation map: which page to return to from each page
-  const BACK: Record<number, number> = { 1: 0, 2: 1, 3: 2 };
+  const BACK: Record<number, number> = { 1: 0, 2: 1, 3: 2, 4: 1 };
   function goBack() { setPage(p => BACK[p] ?? 0); }
 
   function goLogin()        { setPage(1); }
@@ -313,8 +319,8 @@ export function HomePopup({ onClose }: Props) {
     if (action === 'help')   { window.open('mailto:support@privascan.app'); return; }
   }
 
-  /* 4 pages → 400% track, each panel 25% */
-  const TOTAL_PAGES = 4;
+  /* 5 pages → 500% track, each panel 20% */
+  const TOTAL_PAGES = 5;
   const CARD_STYLE: React.CSSProperties = { width: '60vw', minWidth: 220, maxWidth: 360 };
 
   return (
@@ -452,7 +458,7 @@ export function HomePopup({ onClose }: Props) {
 
               <p className="text-center text-[11px] text-gray-400">
                 Don't have an account?{' '}
-                <button className="text-blue-500 font-semibold hover:underline">Sign up</button>
+                <button onClick={() => setPage(4)} className="text-blue-500 font-semibold hover:underline">Sign up</button>
               </p>
             </div>
           </div>
@@ -603,6 +609,98 @@ export function HomePopup({ onClose }: Props) {
               >
                 Continue
               </button>
+            </div>
+          </div>
+
+          {/* ════ Page 4 — Sign Up ════ */}
+          <div className="flex flex-col" style={{ width: `${100 / TOTAL_PAGES}%` }}>
+            <div className="flex items-center gap-2 px-4 pt-5 pb-3 border-b border-gray-100">
+              <button onClick={goBack} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors shrink-0">
+                <ChevronLeft className="w-4 h-4 text-gray-500" />
+              </button>
+              <p className="font-semibold text-[15px] text-gray-900">Create account</p>
+            </div>
+
+            <div className="flex flex-col gap-3 px-4 py-4">
+              {/* Name */}
+              <div>
+                <label className="block text-[11px] font-semibold text-gray-700 mb-1">Full name</label>
+                <input
+                  type="text"
+                  placeholder="Jane Doe"
+                  value={suName}
+                  onChange={e => setSuName(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl bg-gray-100 text-gray-900 placeholder-gray-400 text-[12px] focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+              </div>
+
+              {/* Email */}
+              <div>
+                <label className="block text-[11px] font-semibold text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  placeholder="jane@example.com"
+                  value={suEmail}
+                  onChange={e => setSuEmail(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl bg-gray-100 text-gray-900 placeholder-gray-400 text-[12px] focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+              </div>
+
+              {/* Password */}
+              <div>
+                <label className="block text-[11px] font-semibold text-gray-700 mb-1">Password</label>
+                <div className="relative">
+                  <input
+                    type={showSuPassword ? 'text' : 'password'}
+                    placeholder="Min. 8 characters"
+                    value={suPassword}
+                    onChange={e => setSuPassword(e.target.value)}
+                    className="w-full px-3 py-2.5 pr-9 rounded-xl bg-gray-100 text-gray-900 placeholder-gray-400 text-[12px] focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                  <button type="button" onClick={() => setShowSuPassword(v => !v)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                    {showSuPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Consent checkbox */}
+              <button
+                onClick={() => setSuChecked(v => !v)}
+                className="flex items-start gap-2 text-left mt-1"
+              >
+                <span className={cn(
+                  'mt-0.5 w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center transition-colors',
+                  suChecked ? 'border-blue-500 bg-blue-500' : 'border-gray-300 bg-white',
+                )}>
+                  {suChecked && <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                </span>
+                <span className="text-[11px] text-gray-600 leading-snug">
+                  I'm at least 14 years old and I agree to PrivaScan's{' '}
+                  <span className="text-blue-500 underline" onClick={e => { e.stopPropagation(); setLegalDoc('terms'); }}>Terms of Service</span>
+                  {' '}and{' '}
+                  <span className="text-blue-500 underline" onClick={e => { e.stopPropagation(); setLegalDoc('privacy'); }}>Privacy Policy</span>.
+                </span>
+              </button>
+
+              {/* Create Account button */}
+              <button
+                disabled={!suName.trim() || !suEmail.trim() || suPassword.length < 8 || !suChecked}
+                onClick={() => {/* TODO: email sign-up */ handleAgree(); }}
+                className={cn(
+                  'w-full py-2.5 rounded-xl text-[13px] font-semibold transition-colors shadow-sm mt-1',
+                  suName.trim() && suEmail.trim() && suPassword.length >= 8 && suChecked
+                    ? 'bg-[#1e3a5f] hover:bg-[#162d4a] text-white'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed',
+                )}
+              >
+                Create Account
+              </button>
+
+              <p className="text-center text-[11px] text-gray-400">
+                Already have an account?{' '}
+                <button onClick={() => setPage(1)} className="text-blue-500 font-semibold hover:underline">Sign in</button>
+              </p>
             </div>
           </div>
 
