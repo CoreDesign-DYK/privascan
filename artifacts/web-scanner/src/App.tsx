@@ -23,12 +23,13 @@ import MarkupScreen from '@/pages/markup';
 import HomeScreen from '@/pages/home';
 import PrivacyPolicyScreen from '@/pages/privacy-policy';
 import TermsOfServiceScreen from '@/pages/terms-of-service';
+import LoginScreen from '@/pages/login';
 
 const queryClient = new QueryClient();
 
 function Router() {
   const [location] = useLocation();
-  const hideTopBar = ['/', '/edit', '/markup', '/home', '/privacy-policy', '/terms-of-service'].includes(location);
+  const hideTopBar = ['/', '/edit', '/markup', '/home', '/privacy-policy', '/terms-of-service', '/login'].includes(location);
 
   return (
     <RoutedErrorBoundary>
@@ -42,6 +43,7 @@ function Router() {
           <Route path="/home">{() => { window.location.replace('/'); return null; }}</Route>
           <Route path="/privacy-policy" component={PrivacyPolicyScreen} />
           <Route path="/terms-of-service" component={TermsOfServiceScreen} />
+          <Route path="/login" component={LoginScreen} />
           <Route component={NotFound} />
         </Switch>
         {!hideTopBar && <TopBar />}

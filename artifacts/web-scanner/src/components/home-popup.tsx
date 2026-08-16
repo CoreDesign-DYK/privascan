@@ -164,7 +164,7 @@ export function HomePopup({ onClose }: Props) {
               {/* Provider icon row */}
               <div className="flex items-center gap-2.5 mt-3">
                 {SIGN_IN_METHODS.map(m => (
-                  <button key={m.id} onClick={goSignIn} className={cn(
+                  <button key={m.id} onClick={() => { onClose(); setLocation('/login'); }} className={cn(
                     'rounded-full flex items-center justify-center shadow-sm transition-opacity active:opacity-70',
                     m.id === 'google' ? 'w-9 h-9 bg-white border-2 border-gray-300' :
                     m.id === 'apple'  ? 'w-9 h-9 bg-black' :
