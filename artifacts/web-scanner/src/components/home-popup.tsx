@@ -193,32 +193,56 @@ const LEGAL_DOCS = {
     title: 'Privacy Policy',
     sections: [
       {
-        heading: '1. Data We Collect',
-        body: 'We collect your name, email address, and profile picture when you sign in via a third-party provider (e.g. Google). We also store scanned documents you choose to save, locally on your device or in your personal cloud storage.',
+        heading: 'Data Controller',
+        body: 'PrivaScan is operated by CLASSIC LEGEND ("we", "us", "our"). CLASSIC LEGEND is the data controller responsible for your personal information. If you reside in the European Economic Area (EEA) or UK, the laws of Ireland apply to the processing of your data. If you reside elsewhere, the laws of California, USA apply.',
       },
       {
-        heading: '2. How We Use Your Data',
-        body: 'Your data is used solely to provide and improve PrivaScan features — authentication, document storage, and sync. We do not sell or share your data with third parties for advertising.',
+        heading: '1. What Data We Collect',
+        body: 'We collect the following categories of personal data:\n\n• Account data: name, email address, and profile picture provided when you sign in via Google, Apple, phone, or email.\n• Device & technical data: device model, operating system version, app version, unique device identifier, IP address, and language settings — collected for crash reporting and diagnostics.\n• Usage data: features you use, session duration, scan counts, and error logs — collected to improve app stability and performance.\n• Payment data: subscription status and transaction identifiers. Full payment details (card numbers, etc.) are handled exclusively by the App Store or Google Play and are never transmitted to us.',
       },
       {
-        heading: '3. Data Storage & Security',
-        body: 'Documents saved locally remain on your device and are never transmitted to our servers without your explicit action. We use industry-standard encryption (TLS 1.2+) for any data in transit.',
+        heading: '2. Legal Basis for Processing',
+        body: 'We process your personal data on the following legal grounds:\n\n• Contract performance: to provide you with the PrivaScan service you have subscribed to.\n• Legitimate interests: to maintain security, prevent fraud, diagnose technical issues, and improve the app — where these interests are not overridden by your rights.\n• Consent: for optional analytics and usage data collection. You may withdraw consent at any time from Settings → Privacy.\n• Legal obligation: where required by applicable law.',
       },
       {
-        heading: '4. Data Retention & Deletion',
-        body: 'You may delete your account and all associated data at any time from Settings → Account → Delete Account. Data is permanently removed within 30 days of deletion.',
+        heading: '3. How We Use Your Data',
+        body: 'Your personal data is used to: (a) authenticate your account and provide access to PrivaScan features; (b) process your subscription and manage billing through the App Store or Google Play; (c) diagnose crashes, fix bugs, and improve app performance; (d) send you important service notifications (e.g. policy changes, security alerts). We do not use your data for advertising, and we do not sell your personal data to any third party.',
       },
       {
-        heading: '5. Third-Party Services',
-        body: 'PrivaScan uses Google Sign-In and Apple Sign-In. These services are governed by their respective privacy policies. We do not control their data practices.',
+        heading: '4. Your Scanned Documents',
+        body: 'Documents and images you scan are stored locally on your device only. We do not upload, access, review, or process your scanned content on our servers unless you explicitly enable a cloud sync feature. We do not use your document content to train AI or machine learning models.',
       },
       {
-        heading: '6. Children\'s Privacy',
-        body: 'PrivaScan is not directed at children under 14. We do not knowingly collect personal information from children under 14.',
+        heading: '5. Third-Party Processors',
+        body: 'We use a limited number of trusted third-party service providers to operate PrivaScan:\n\n• Google LLC — sign-in authentication (Google Sign-In). Governed by Google\'s Privacy Policy.\n• Apple Inc. — sign-in authentication (Sign in with Apple) and App Store payments. Governed by Apple\'s Privacy Policy.\n• Crash & analytics SDK — anonymised diagnostic data only; no personal content is shared.\n\nWe maintain data processing agreements with all processors and remain responsible if they fail to meet their obligations.',
       },
       {
-        heading: '7. Contact',
-        body: 'For privacy-related inquiries, contact our Data Protection Officer at: privacy@privascan.app',
+        heading: '6. Data Security',
+        body: 'We implement appropriate technical and organisational measures to protect your personal data, including: TLS 1.3 encryption for all data in transit; encryption at rest for any account data stored on our systems; access controls limiting who within CLASSIC LEGEND can access your data; regular security reviews. No method of transmission or storage is 100% secure. If a data breach occurs that affects your rights, we will notify you as required by applicable law.',
+      },
+      {
+        heading: '7. International Data Transfers',
+        body: 'Your personal data may be transferred to and processed in countries outside your country of residence, including countries that may not provide the same level of data protection as your home country. Where we transfer data from the EEA or UK, we ensure appropriate safeguards are in place (such as Standard Contractual Clauses approved by the European Commission).',
+      },
+      {
+        heading: '8. Your Rights',
+        body: 'Depending on your location, you may have the following rights regarding your personal data:\n\n• Access: request a copy of the personal data we hold about you.\n• Rectification: ask us to correct inaccurate or incomplete data.\n• Erasure: request deletion of your personal data ("right to be forgotten").\n• Restriction: ask us to pause processing your data in certain circumstances.\n• Portability: receive your data in a structured, machine-readable format.\n• Objection: object to processing based on legitimate interests.\n• Withdraw consent: withdraw any consent you have given at any time, without affecting the lawfulness of prior processing.\n\nTo exercise these rights, contact: privacy@privascan.app. We will respond within 30 days.',
+      },
+      {
+        heading: '9. Data Retention',
+        body: 'We retain your personal data for as long as your account is active. Specific retention periods:\n\n• Account data: retained until you delete your account, then permanently removed within 30 days.\n• Crash & diagnostic logs: retained for 90 days, then automatically deleted.\n• Payment transaction records: retained for 7 years as required by tax and accounting laws.\n\nAfter the retention period expires, your data is securely deleted or anonymised.',
+      },
+      {
+        heading: '10. Children\'s Privacy',
+        body: 'PrivaScan is not directed at children under 14 years of age. We do not knowingly collect personal information from anyone under 14. If we become aware that we have inadvertently collected such data, we will delete it immediately. If you believe a child under 14 has provided us with personal information, please contact privacy@privascan.app.',
+      },
+      {
+        heading: '11. Changes to This Policy',
+        body: 'We may update this Privacy Policy from time to time. When we make significant changes, we will notify you via an in-app notification or email at least 14 days before the changes take effect. The "Last updated" date at the top of this policy will always reflect the most recent version. Continued use of PrivaScan after changes take effect constitutes your acceptance of the updated policy.',
+      },
+      {
+        heading: '12. Contact & Data Protection Officer',
+        body: 'For privacy questions, data rights requests, or concerns:\n\nEmail: privacy@privascan.app\nOperator: CLASSIC LEGEND\nGeneral support: support@privascan.app\n\nIf you are located in the EEA and believe we have not adequately addressed your concern, you have the right to lodge a complaint with your local data protection authority.',
       },
     ],
   },
