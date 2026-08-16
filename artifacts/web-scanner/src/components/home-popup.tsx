@@ -149,7 +149,7 @@ const LEGAL_DOCS = {
       },
       {
         heading: '5. Subscription & Billing',
-        body: 'PrivaScan offers a subscription at €0.99/month (or the local currency equivalent). Subscriptions auto-renew unless cancelled at least 24 hours before the renewal date through your App Store or Google Play account settings. You are also responsible for any applicable taxes, VAT, mobile carrier fees, or other third-party charges associated with your purchase.',
+        body: 'PrivaScan offers a paid monthly subscription. Pricing varies by region and is displayed in your local currency at the time of purchase (e.g. €0.99/month in the EU; pricing for Asia, North America, and other regions is set separately and shown in the App Store or Google Play before you subscribe). Subscriptions auto-renew unless cancelled at least 24 hours before the renewal date through your App Store or Google Play account settings. You are also responsible for any applicable taxes, VAT, mobile carrier fees, or other third-party charges associated with your purchase.',
       },
       {
         heading: '6. Permitted Use & Prohibited Conduct',
