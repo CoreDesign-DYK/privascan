@@ -165,15 +165,15 @@ const LEGAL_DOCS = {
       },
       {
         heading: '9. Intellectual Property',
-        body: "All software, design, trademarks, logos, and branding within PrivaScan are the property of PrivaScan Inc. and are protected by applicable intellectual property laws. Nothing in these Terms grants you any right to use PrivaScan\u2019s trademarks or branding.",
+        body: "All software, design, trademarks, logos, and branding within PrivaScan are the property of CLASSIC LEGEND and are protected by applicable intellectual property laws. Nothing in these Terms grants you any right to use PrivaScan\u2019s trademarks or branding.",
       },
       {
         heading: '10. Warranty & Indemnification',
-        body: 'You warrant that (a) you have all necessary rights and permissions to scan and store any Content you process through PrivaScan, and (b) your use of PrivaScan will not violate any law or third-party rights. You agree to indemnify and hold PrivaScan Inc. harmless from any claims, damages, or costs (including reasonable legal fees) arising from your Content or your violation of these Terms.',
+        body: 'You warrant that (a) you have all necessary rights and permissions to scan and store any Content you process through PrivaScan, and (b) your use of PrivaScan will not violate any law or third-party rights. You agree to indemnify and hold CLASSIC LEGEND harmless from any claims, damages, or costs (including reasonable legal fees) arising from your Content or your violation of these Terms.',
       },
       {
         heading: '11. Disclaimer & Limitation of Liability',
-        body: 'PrivaScan is provided "as is" and "as available" without warranties of any kind, express or implied. To the maximum extent permitted by applicable law, PrivaScan Inc. is not liable for any indirect, incidental, special, consequential, or punitive damages. Our total liability to you for any claim arising under these Terms shall not exceed the amount you paid us in the 12 months preceding the claim.',
+        body: 'PrivaScan is provided "as is" and "as available" without warranties of any kind, express or implied. To the maximum extent permitted by applicable law, CLASSIC LEGEND is not liable for any indirect, incidental, special, consequential, or punitive damages. Our total liability to you for any claim arising under these Terms shall not exceed the amount you paid us in the 12 months preceding the claim.',
       },
       {
         heading: '12. Termination',
@@ -185,7 +185,7 @@ const LEGAL_DOCS = {
       },
       {
         heading: '14. Contact',
-        body: 'For questions about these Terms, contact us at: legal@privascan.app\n\nPrivaScan Inc., support@privascan.app',
+        body: 'For questions about these Terms, contact us at: legal@privascan.app\n\nCLASSIC LEGEND, support@privascan.app',
       },
     ],
   },
