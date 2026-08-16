@@ -5,11 +5,11 @@
  *
  * Pages: 0 = main menu  |  1 = sign-in options  |  2 = terms agreement
  */
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useLocation } from 'wouter';
 import {
   User, RefreshCw, ScanLine, FileText,
-  Settings, HelpCircle, ChevronRight, ChevronLeft,
+  Settings, HelpCircle, ChevronRight, ChevronLeft, Eye, EyeOff,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -91,9 +91,12 @@ function AppLogo() {
 /* ── Main ─────────────────────────────────────────────────────────────────── */
 export function HomePopup({ onClose }: Props) {
   const [, setLocation] = useLocation();
-  const [page, setPage]             = useState(0);           // 0 main | 1 sign-in | 2 terms
+  const [page, setPage]             = useState(0);           // 0 main | 1 login | 2 terms
   const [provider, setProvider]     = useState<Provider | null>(null);
   const [checked, setChecked]       = useState<Record<string, boolean>>({});
+  const [email,        setEmail]        = useState('');
+  const [password,     setPassword]     = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   function goSignIn() { setPage(1); }
   function goTerms(p: Provider) { setProvider(p); setPage(2); }
@@ -164,7 +167,7 @@ export function HomePopup({ onClose }: Props) {
               {/* Provider icon row */}
               <div className="flex items-center gap-2.5 mt-3">
                 {SIGN_IN_METHODS.map(m => (
-                  <button key={m.id} onClick={() => { onClose(); setLocation('/login'); }} className={cn(
+                  <button key={m.id} onClick={() => setPage(1)} className={cn(
                     'rounded-full flex items-center justify-center shadow-sm transition-opacity active:opacity-70',
                     m.id === 'google' ? 'w-9 h-9 bg-white border-2 border-gray-300' :
                     m.id === 'apple'  ? 'w-9 h-9 bg-black' :
@@ -200,38 +203,90 @@ export function HomePopup({ onClose }: Props) {
             <p className="text-center text-gray-300 text-[10px] py-3">v1.0.0</p>
           </div>
 
-          {/* ════ Page 1 — Sign-in options ════ */}
+          {/* ════ Page 1 — Login form ════ */}
           <div className="flex flex-col" style={{ width: '33.333%' }}>
             {/* Header */}
             <div className="flex items-center gap-2 px-4 pt-5 pb-3 border-b border-gray-100">
               <button onClick={goBack} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors shrink-0">
                 <ChevronLeft className="w-4 h-4 text-gray-500" />
               </button>
-              <p className="font-semibold text-[15px] text-gray-900">Sign in</p>
+              <p className="font-semibold text-[15px] text-gray-900">Login</p>
             </div>
 
-            <div className="flex flex-col gap-2.5 px-4 py-5">
-              {SIGN_IN_METHODS.map(m => (
-                <button
-                  key={m.id}
-                  onClick={() => goTerms(m.id)}
-                  className={cn(
-                    'w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[13px] font-semibold transition-opacity active:opacity-80',
-                    m.id === 'google' ? 'text-gray-800' : 'text-white',
-                    m.bg,
-                  )}
-                >
-                  {m.iconEl}
-                  {m.label}
+            <div className="px-4 pt-4 pb-5 flex flex-col gap-3">
+              {/* Subtitle */}
+              <p className="text-[11px] text-gray-400 leading-snug">
+                Sign in to&nbsp;<span className="font-semibold text-gray-700">access more features</span>
+              </p>
+
+              {/* Provider icon row */}
+              <div className="flex items-center gap-2 pb-1">
+                {SIGN_IN_METHODS.map(m => (
+                  <button key={m.id} onClick={() => goTerms(m.id)} className={cn(
+                    'w-9 h-9 rounded-full flex items-center justify-center shadow-sm transition-opacity active:opacity-70 shrink-0',
+                    m.id === 'google' ? 'bg-white border-2 border-gray-300' :
+                    m.id === 'apple'  ? 'bg-black' :
+                    m.id === 'phone'  ? 'bg-blue-500' : 'bg-emerald-500',
+                  )}>
+                    {m.iconEl}
+                  </button>
+                ))}
+              </div>
+
+              {/* Email */}
+              <div>
+                <label className="block text-[11px] font-semibold text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  placeholder="your@email.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl bg-gray-100 text-gray-900 placeholder-gray-400 text-[12px] focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+              </div>
+
+              {/* Password */}
+              <div>
+                <label className="block text-[11px] font-semibold text-gray-700 mb-1">Password</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    className="w-full px-3 py-2.5 pr-9 rounded-xl bg-gray-100 text-gray-900 placeholder-gray-400 text-[12px] focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(v => !v)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Forgot */}
+              <div className="flex justify-end -mt-1">
+                <button className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors">
+                  Forgot your password?
                 </button>
-              ))}
-            </div>
+              </div>
 
-            <p className="text-[10px] text-gray-400 text-center px-4 pb-5 leading-relaxed">
-              By signing in you agree to PrivaScan's{' '}
-              <span className="underline">Terms of Service</span> and{' '}
-              <span className="underline">Privacy Policy</span>.
-            </p>
+              {/* Sign In */}
+              <button
+                onClick={() => {/* TODO: auth */}}
+                className="w-full py-2.5 rounded-xl bg-[#1e3a5f] hover:bg-[#162d4a] text-white font-bold text-[13px] transition-colors shadow-sm"
+              >
+                Sign In
+              </button>
+
+              {/* Sign up */}
+              <p className="text-center text-[11px] text-gray-400">
+                Don't have an account?{' '}
+                <button className="text-blue-500 font-semibold hover:underline">Sign up</button>
+              </p>
+            </div>
           </div>
 
           {/* ════ Page 2 — Terms agreement ════ */}
