@@ -309,7 +309,6 @@ export function HomePopup({ onClose }: Props) {
   const [password,       setPassword]       = useState('');
   const [showPassword,   setShowPassword]   = useState(false);
   // Page 4 sign-up fields
-  const [suName,         setSuName]         = useState('');
   const [suEmail,        setSuEmail]        = useState('');
   const [suPassword,     setSuPassword]     = useState('');
   const [showSuPassword, setShowSuPassword] = useState(false);
@@ -339,9 +338,8 @@ export function HomePopup({ onClose }: Props) {
     if (provider === 'google') {
       newUser = { name: MOCK_ACCOUNT.name, email: MOCK_ACCOUNT.email, initials: MOCK_ACCOUNT.initials, provider: 'google', joinedAt: new Date().toISOString() };
     } else if (provider === 'email' && suEmail.trim()) {
-      const parts = suName.trim().split(' ');
-      const initials = parts.length >= 2 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() : (suName.trim().slice(0, 2).toUpperCase());
-      newUser = { name: suName.trim() || suEmail, email: suEmail.trim(), initials, provider: 'email', joinedAt: new Date().toISOString() };
+      const initials = suEmail.trim().slice(0, 2).toUpperCase();
+      newUser = { name: suEmail.trim(), email: suEmail.trim(), initials, provider: 'email', joinedAt: new Date().toISOString() };
     } else {
       newUser = { name: 'PrivaScan User', email: '', initials: 'PS', provider: provider ?? 'email', joinedAt: new Date().toISOString() };
     }
@@ -708,18 +706,6 @@ export function HomePopup({ onClose }: Props) {
             </div>
 
             <div className="flex flex-col gap-3 px-5 py-4">
-              {/* Name */}
-              <div>
-                <label className="block text-[11px] font-semibold text-gray-700 mb-1">Full name</label>
-                <input
-                  type="text"
-                  placeholder="Jane Doe"
-                  value={suName}
-                  onChange={e => setSuName(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-gray-100 text-gray-900 placeholder-gray-400 text-[12px] focus:outline-none focus:ring-2 focus:ring-blue-400"
-                />
-              </div>
-
               {/* Email */}
               <div>
                 <label className="block text-[11px] font-semibold text-gray-700 mb-1">Email</label>
@@ -771,11 +757,11 @@ export function HomePopup({ onClose }: Props) {
 
               {/* Create Account button */}
               <button
-                disabled={!suName.trim() || !suEmail.trim() || suPassword.length < 8 || !suChecked}
+                disabled={!suEmail.trim() || suPassword.length < 8 || !suChecked}
                 onClick={() => {/* TODO: email sign-up */ handleAgree(); }}
                 className={cn(
                   'w-full py-2.5 rounded-xl text-[13px] font-semibold transition-colors shadow-sm mt-1',
-                  suName.trim() && suEmail.trim() && suPassword.length >= 8 && suChecked
+                  suEmail.trim() && suPassword.length >= 8 && suChecked
                     ? 'bg-[#1e3a5f] hover:bg-[#162d4a] text-white'
                     : 'bg-gray-100 text-gray-400 cursor-not-allowed',
                 )}
