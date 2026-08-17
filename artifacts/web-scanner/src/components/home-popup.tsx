@@ -308,6 +308,14 @@ const LEGAL_DOCS = {
 
 type LegalDocKey = keyof typeof LEGAL_DOCS;
 
+/** Masks an email: yessirh.kim0616@gmail.com → yes***@gmail.com */
+function maskEmail(email: string): string {
+  const [local, domain] = email.split('@');
+  if (!domain) return email;
+  const visible = local.slice(0, 3);
+  return `${visible}***@${domain}`;
+}
+
 /* ── Main ─────────────────────────────────────────────────────────────────── */
 export function HomePopup({ onClose }: Props) {
   const [, setLocation] = useLocation();
@@ -319,6 +327,8 @@ export function HomePopup({ onClose }: Props) {
   // Page 7 account state
   const [notifEnabled, setNotifEnabled] = useState(true);
   const [showTypePicker, setShowTypePicker] = useState(false);
+  // Page 8 account detail state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // 0 main | 1 login | 2 google-choose | 3 google-perms | 4 sign-up | 5 about | 6 app-pin | 7 account
   const [page,           setPage]           = useState(0);
@@ -442,7 +452,7 @@ export function HomePopup({ onClose }: Props) {
   }
 
   // back-navigation map
-  const BACK: Record<number, number> = { 1: 0, 2: 1, 3: 2, 4: 1, 5: 0, 6: 0, 7: 0 };
+  const BACK: Record<number, number> = { 1: 0, 2: 1, 3: 2, 4: 1, 5: 0, 6: 0, 7: 0, 8: 7 };
   function goBack() {
     if (pinMode !== 'none') { setPinMode('none'); setPinInput(''); return; }
     setPage(p => BACK[p] ?? 0);
@@ -498,7 +508,7 @@ export function HomePopup({ onClose }: Props) {
     if (action === 'legal-consent') { setLegalDoc('consent'); return; }
   }
 
-  const TOTAL_PAGES = 8;
+  const TOTAL_PAGES = 9;
   const CARD_STYLE: React.CSSProperties = {
     width: '66vw', minWidth: 264, maxWidth: 396,
     height: 'min(78vh, 580px)',
@@ -1158,12 +1168,18 @@ export function HomePopup({ onClose }: Props) {
             <div className="flex-1 overflow-y-auto min-h-0 px-5 flex flex-col">
 
               {/* Account Detail */}
-              <div className="flex items-center justify-between py-4 border-b border-gray-100 -mx-1 px-1 rounded-xl hover:bg-sky-50 transition-colors cursor-default">
+              <button
+                onClick={() => setPage(8)}
+                className="flex items-center justify-between py-4 border-b border-gray-100 -mx-1 px-1 rounded-xl hover:bg-sky-50 transition-colors w-full text-left"
+              >
                 <span className="text-[15px] text-gray-500 font-medium">Account Detail</span>
-                <span className="text-[13px] text-gray-800 font-medium truncate max-w-[55%] text-right">
-                  {user?.email || '—'}
-                </span>
-              </div>
+                <div className="flex items-center gap-1 min-w-0">
+                  <span className="text-[13px] text-gray-800 font-medium truncate max-w-[48%]">
+                    {user?.email ? maskEmail(user.email) : '—'}
+                  </span>
+                  <ChevronRight className="w-3.5 h-3.5 text-gray-300 shrink-0" />
+                </div>
+              </button>
 
               {/* Account Type */}
               <button
@@ -1223,7 +1239,131 @@ export function HomePopup({ onClose }: Props) {
             </div>
           </div>
 
+          {/* ════ Page 8 — Account Detail ════ */}
+          <div className="flex flex-col h-full" style={{ width: `${100 / TOTAL_PAGES}%` }}>
+            {/* Header */}
+            <div className="flex items-center gap-3 px-4 pt-6 pb-4 border-b border-gray-100 shrink-0">
+              <button onClick={goBack} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors shrink-0">
+                <ChevronLeft className="w-5 h-5 text-gray-500" />
+              </button>
+              <p className="font-semibold text-[17px] text-gray-900 flex-1 text-center pr-8">Account Name</p>
+            </div>
+
+            {/* Link rows */}
+            <div className="flex-1 overflow-y-auto min-h-0">
+              {/* By SMS */}
+              <button className="w-full flex items-center justify-between px-5 py-4 border-b border-gray-100 hover:bg-gray-50 transition-colors text-left">
+                <span className="text-[15px] text-gray-800">By SMS</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[14px] text-gray-400">Add</span>
+                  <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
+                </div>
+              </button>
+
+              {/* Email */}
+              <button className="w-full flex items-center justify-between px-5 py-4 border-b border-gray-100 hover:bg-gray-50 transition-colors text-left">
+                <span className="text-[15px] text-gray-800">Email</span>
+                <div className="flex items-center gap-1.5">
+                  {user?.provider === 'email' && user.email ? (
+                    <span className="text-[14px] text-gray-500">{maskEmail(user.email)}</span>
+                  ) : (
+                    <span className="text-[14px] text-gray-400">Add</span>
+                  )}
+                  <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
+                </div>
+              </button>
+
+              {/* Apple ID */}
+              <button className="w-full flex items-center justify-between px-5 py-4 border-b border-gray-100 hover:bg-gray-50 transition-colors text-left">
+                <span className="text-[15px] text-gray-800">Apple ID</span>
+                <div className="flex items-center gap-1.5">
+                  {user?.provider === 'apple' ? (
+                    <span className="text-[14px] text-gray-500">Remove</span>
+                  ) : (
+                    <span className="text-[14px] text-gray-400">Add</span>
+                  )}
+                  <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
+                </div>
+              </button>
+
+              {/* Google Account */}
+              <button className="w-full flex items-center justify-between px-5 py-4 border-b border-gray-100 hover:bg-gray-50 transition-colors text-left">
+                <span className="text-[15px] text-gray-800">Google Account</span>
+                <div className="flex items-center gap-1.5">
+                  {user?.provider === 'google' ? (
+                    <span className="text-[14px] text-gray-500">Remove</span>
+                  ) : (
+                    <span className="text-[14px] text-gray-400">Add</span>
+                  )}
+                  <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
+                </div>
+              </button>
+
+              {/* Divider */}
+              <div className="h-2.5 bg-gray-50 border-y border-gray-100 my-1" />
+
+              {/* Delete Account */}
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="w-full flex items-center justify-between px-5 py-4 hover:bg-red-50 transition-colors text-left group"
+              >
+                <div className="flex-1 pr-3">
+                  <p className="text-[15px] text-gray-800 group-hover:text-red-600 transition-colors">Delete Account</p>
+                  <p className="text-[12px] text-gray-400 mt-0.5 leading-snug">
+                    Deleting your account is irreversible. Please proceed with caution.
+                  </p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
+              </button>
+            </div>
+          </div>
+
         </div>{/* /sliding track */}
+
+        {/* ════ Delete Account confirmation ════ */}
+        {showDeleteConfirm && (
+          <>
+            <div
+              className="absolute inset-0 z-20"
+              style={{ background: 'rgba(0,0,0,0.35)' }}
+              onClick={() => setShowDeleteConfirm(false)}
+            />
+            <div
+              className="absolute bottom-0 left-0 right-0 z-30 bg-white rounded-t-2xl"
+              style={{ animation: 'slideUpIn 0.22s ease' }}
+            >
+              <div className="flex justify-center pt-3 pb-1">
+                <div className="w-10 h-1 rounded-full bg-gray-200" />
+              </div>
+              {/* Warning icon */}
+              <div className="flex flex-col items-center px-6 pt-4 pb-3 text-center">
+                <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mb-3">
+                  <svg className="w-7 h-7 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                  </svg>
+                </div>
+                <p className="text-[16px] font-bold text-gray-900 mb-1">Delete Account?</p>
+                <p className="text-[12px] text-gray-500 leading-relaxed">
+                  This action is permanent and cannot be undone.{'\n'}All your data will be deleted.
+                </p>
+              </div>
+              <div className="px-5 pb-6 pt-2 flex flex-col gap-2.5">
+                <button
+                  onClick={() => { setShowDeleteConfirm(false); handleSignOut(); }}
+                  className="w-full py-3.5 rounded-xl bg-red-500 text-white text-[14px] font-bold hover:bg-red-600 transition-colors active:scale-[0.98]"
+                >
+                  Delete My Account
+                </button>
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="w-full py-3.5 rounded-xl bg-gray-100 text-gray-700 text-[14px] font-semibold hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* ════ PIN entry overlay (inside card) ════ */}
         {pinMode !== 'none' && (() => {
