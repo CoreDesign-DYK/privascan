@@ -269,6 +269,10 @@ const LEGAL_DOCS = {
         heading: '12. Contact & Data Protection Officer',
         body: 'For privacy questions, data rights requests, or concerns:\n\nEmail: privacy@privascan.app\nOperator: CLASSIC LEGEND\nGeneral support: support@privascan.app\n\nIf you are located in the EEA and believe we have not adequately addressed your concern, you have the right to lodge a complaint with your local data protection authority.',
       },
+      {
+        heading: 'Language',
+        body: 'This Privacy Policy is provided in English. If you require a translation into your local language, please contact us at info@classic-legend.de and we will do our best to assist you.',
+      },
     ],
   },
   consent: {
