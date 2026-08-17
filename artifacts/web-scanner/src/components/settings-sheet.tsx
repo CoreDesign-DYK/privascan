@@ -4,7 +4,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Button } from '@/components/ui/button';
 import { useScannerContext } from '@/contexts/scanner-context';
 import { PAPER_SIZES, type PaperSize } from '@/lib/scanner-types';
-import { useLanguage, LANGUAGES, type Language } from '@/contexts/language-context';
 import { cn } from '@/lib/utils';
 
 /* ── Light select ─────────────────────────────────────────────────────────── */
@@ -58,7 +57,6 @@ function LightSelect<T extends string>({
 /* ── Main component ──────────────────────────────────────────────────────── */
 export function SettingsSheet() {
   const { settings, setSettings } = useScannerContext();
-  const { language, setLanguage } = useLanguage();
   const [darkMode, setDarkMode] = useState(false);
 
   const toggleDark = () => {
@@ -67,16 +65,6 @@ export function SettingsSheet() {
       document.documentElement.classList.toggle('dark', next);
       return next;
     });
-  };
-
-  const langLabel = (code: string) => {
-    const l = LANGUAGES.find(l => l.code === code);
-    return (
-      <span className="flex items-center gap-2">
-        <span className="font-mono text-[10px] text-gray-400">{code}</span>
-        <span>{l?.native ?? code}</span>
-      </span>
-    );
   };
 
   return (
@@ -138,17 +126,6 @@ export function SettingsSheet() {
               value={settings.paperSize}
               options={[...PAPER_SIZES] as PaperSize[]}
               onChange={(val: PaperSize) => setSettings({ paperSize: val })}
-            />
-          </div>
-
-          {/* Language */}
-          <div className="space-y-2">
-            <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">Language</p>
-            <LightSelect
-              value={language}
-              options={LANGUAGES.map(l => l.code) as Language[]}
-              onChange={(val: Language) => setLanguage(val)}
-              renderLabel={langLabel}
             />
           </div>
 
