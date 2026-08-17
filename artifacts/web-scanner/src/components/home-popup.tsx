@@ -375,7 +375,7 @@ export function HomePopup({ onClose }: Props) {
   /* 5 pages → 500% track, each panel 20% */
   const TOTAL_PAGES = 5;
   const CARD_STYLE: React.CSSProperties = {
-    width: '60vw', minWidth: 240, maxWidth: 360,
+    width: '66vw', minWidth: 264, maxWidth: 396,
     height: 'min(78vh, 580px)',
     display: 'flex', flexDirection: 'column',
   };
@@ -408,7 +408,7 @@ export function HomePopup({ onClose }: Props) {
           {/* ════ Page 0 — Main menu ════ */}
           <div className="flex flex-col h-full" style={{ width: `${100 / TOTAL_PAGES}%` }}>
             {/* ── Header: logo+name LEFT, avatar RIGHT ── */}
-            <div className="flex items-center justify-between px-4 pt-5 pb-4 border-b border-gray-100 shrink-0">
+            <div className="flex items-center justify-between px-5 pt-7 pb-5 border-b border-gray-100 shrink-0">
               <div className="flex items-center gap-2.5">
                 <AppLogo size="w-11 h-11" />
                 <div>
@@ -451,7 +451,7 @@ export function HomePopup({ onClose }: Props) {
               {/* Section 1 */}
               {MAIN_ITEMS.map((item, i) => (
                 <button key={i} onClick={() => handleMenu(item.action)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors border-b border-gray-100">
+                  className="w-full flex items-center gap-3 px-5 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors border-b border-gray-100">
                   <span className="text-gray-400 shrink-0">{item.icon}</span>
                   <span className="flex-1 text-left text-[13px] text-gray-700 font-medium">{item.label}</span>
                   <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
@@ -464,7 +464,7 @@ export function HomePopup({ onClose }: Props) {
               {/* Section 2 */}
               {MORE_ITEMS.map((item, i) => (
                 <button key={i} onClick={() => handleMenu(item.action)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors border-b border-gray-100">
+                  className="w-full flex items-center gap-3 px-5 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors border-b border-gray-100">
                   <span className="text-gray-400 shrink-0">{item.icon}</span>
                   <span className="flex-1 text-left text-[13px] text-gray-700 font-medium">{item.label}</span>
                   <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
@@ -475,7 +475,7 @@ export function HomePopup({ onClose }: Props) {
               <div className="h-2 bg-gray-50 border-y border-gray-100" />
 
               {/* Legal Entity section */}
-              <div className="px-4 py-2">
+              <div className="px-5 py-2">
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Legal Entity</p>
               </div>
               {LEGAL_ITEMS.map((item, i) => (
@@ -494,14 +494,14 @@ export function HomePopup({ onClose }: Props) {
 
           {/* ════ Page 1 — Login form ════ */}
           <div className="flex flex-col" style={{ width: `${100 / TOTAL_PAGES}%` }}>
-            <div className="flex items-center gap-2 px-4 pt-5 pb-3 border-b border-gray-100">
+            <div className="flex items-center gap-2 px-5 pt-5 pb-3 border-b border-gray-100">
               <button onClick={goBack} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors shrink-0">
                 <ChevronLeft className="w-4 h-4 text-gray-500" />
               </button>
               <p className="font-semibold text-[15px] text-gray-900">Login</p>
             </div>
 
-            <div className="px-4 pt-4 pb-5 flex flex-col gap-3">
+            <div className="px-5 pt-4 pb-5 flex flex-col gap-3">
               <p className="text-[11px] text-gray-400 leading-snug">
                 Sign in to&nbsp;<span className="font-semibold text-gray-700">access more features</span>
               </p>
@@ -561,13 +561,13 @@ export function HomePopup({ onClose }: Props) {
             <GoogleUrlBar onClose={goBack} />
 
             {/* Google branding */}
-            <div className="flex items-center gap-2 px-4 pt-4 pb-2">
+            <div className="flex items-center gap-2 px-5 pt-4 pb-2">
               <GoogleIcon size="w-5 h-5" />
               <span className="text-[12px] text-gray-700 font-medium">Sign in with Google</span>
             </div>
 
             {/* App info */}
-            <div className="flex items-center gap-2.5 px-4 py-3 border-b border-gray-100">
+            <div className="flex items-center gap-2.5 px-5 py-3 border-b border-gray-100">
               <AppLogo size="w-9 h-9" />
               <div>
                 <p className="text-[12px] font-bold text-gray-900 leading-none">
@@ -577,7 +577,7 @@ export function HomePopup({ onClose }: Props) {
               </div>
             </div>
 
-            <div className="px-4 pt-4 pb-2">
+            <div className="px-5 pt-4 pb-2">
               <p className="text-[15px] font-bold text-gray-900">Choose an account</p>
               <p className="text-[11px] text-gray-500 mt-0.5">to continue to <span className="font-semibold">PrivaScan</span></p>
             </div>
@@ -585,7 +585,7 @@ export function HomePopup({ onClose }: Props) {
             {/* Mock account row */}
             <button
               onClick={goGooglePerms}
-              className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors border-b border-gray-100"
+              className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors border-b border-gray-100"
             >
               <Avatar initials={MOCK_ACCOUNT.initials} size="w-9 h-9" text="text-sm" />
               <div className="text-left">
@@ -595,7 +595,7 @@ export function HomePopup({ onClose }: Props) {
             </button>
 
             {/* Use another account */}
-            <button className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-100">
+            <button className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition-colors border-b border-gray-100">
               <div className="w-9 h-9 rounded-full border-2 border-gray-300 flex items-center justify-center shrink-0">
                 <UserCircle2 className="w-5 h-5 text-gray-400" />
               </div>
@@ -608,7 +608,7 @@ export function HomePopup({ onClose }: Props) {
           <div className="flex flex-col" style={{ width: `${100 / TOTAL_PAGES}%` }}>
             <GoogleUrlBar onClose={goBack} />
 
-            <div className="px-4 pt-4 pb-3 border-b border-gray-100">
+            <div className="px-5 pt-4 pb-3 border-b border-gray-100">
               <p className="text-[15px] font-bold text-gray-900">Sign in to PrivaScan</p>
 
               {/* Selected email chip */}
@@ -619,14 +619,14 @@ export function HomePopup({ onClose }: Props) {
               </div>
             </div>
 
-            <div className="px-4 pt-3 pb-2">
+            <div className="px-5 pt-3 pb-2">
               <p className="text-[11px] text-gray-700 font-semibold leading-snug">
                 Google will allow PrivaScan to access this info about you
               </p>
             </div>
 
             {/* Permission items */}
-            <div className="px-4 pb-3 flex flex-col gap-3">
+            <div className="px-5 pb-3 flex flex-col gap-3">
               <div className="flex items-start gap-2.5">
                 <UserCircle2 className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
                 <div>
@@ -644,7 +644,7 @@ export function HomePopup({ onClose }: Props) {
             </div>
 
             {/* Single-checkbox consent row */}
-            <div className="border-t border-gray-100 pt-3 px-4 pb-3">
+            <div className="border-t border-gray-100 pt-3 px-5 pb-3">
               <button
                 onClick={() => setPage3Checked(v => !v)}
                 className="flex items-start gap-2.5 text-left w-full"
@@ -683,7 +683,7 @@ export function HomePopup({ onClose }: Props) {
             </div>
 
             {/* Cancel / Continue */}
-            <div className="flex gap-2 px-4 pb-4">
+            <div className="flex gap-2 px-5 pb-4">
               <button
                 onClick={goBack}
                 className="flex-1 py-2 rounded-full border border-gray-300 text-[12px] font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
@@ -707,14 +707,14 @@ export function HomePopup({ onClose }: Props) {
 
           {/* ════ Page 4 — Sign Up ════ */}
           <div className="flex flex-col" style={{ width: `${100 / TOTAL_PAGES}%` }}>
-            <div className="flex items-center gap-2 px-4 pt-5 pb-3 border-b border-gray-100">
+            <div className="flex items-center gap-2 px-5 pt-5 pb-3 border-b border-gray-100">
               <button onClick={goBack} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors shrink-0">
                 <ChevronLeft className="w-4 h-4 text-gray-500" />
               </button>
               <p className="font-semibold text-[15px] text-gray-900">Create account</p>
             </div>
 
-            <div className="flex flex-col gap-3 px-4 py-4">
+            <div className="flex flex-col gap-3 px-5 py-4">
               {/* Name */}
               <div>
                 <label className="block text-[11px] font-semibold text-gray-700 mb-1">Full name</label>
@@ -806,7 +806,7 @@ export function HomePopup({ onClose }: Props) {
             style={{ animation: 'slideUpIn 0.25s ease' }}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-gray-100 shrink-0">
+            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-gray-100 shrink-0">
               <p className="font-bold text-[15px] text-gray-900">My Profile</p>
               <button
                 onClick={() => setShowProfile(false)}
@@ -817,7 +817,7 @@ export function HomePopup({ onClose }: Props) {
             </div>
 
             {/* Avatar + name block */}
-            <div className="flex flex-col items-center pt-6 pb-4 px-4 gap-2 border-b border-gray-100">
+            <div className="flex flex-col items-center pt-6 pb-4 px-5 gap-2 border-b border-gray-100">
               <div className="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center shadow-md ring-4 ring-blue-100">
                 <span className="text-xl font-bold text-white">{user.initials}</span>
               </div>
@@ -835,21 +835,21 @@ export function HomePopup({ onClose }: Props) {
 
             {/* Info rows */}
             <div className="flex-1 overflow-y-auto">
-              <div className="flex items-center gap-3 px-4 py-3.5 border-b border-gray-100">
+              <div className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-100">
                 <Mail className="w-4 h-4 text-gray-400 shrink-0" />
                 <div>
                   <p className="text-[10px] text-gray-400 font-medium">Email address</p>
                   <p className="text-[12px] text-gray-800 font-semibold">{user.email || '—'}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3 px-4 py-3.5 border-b border-gray-100">
+              <div className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-100">
                 <Shield className="w-4 h-4 text-gray-400 shrink-0" />
                 <div>
                   <p className="text-[10px] text-gray-400 font-medium">Account type</p>
                   <p className="text-[12px] text-gray-800 font-semibold">PrivaScan Free</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3 px-4 py-3.5 border-b border-gray-100">
+              <div className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-100">
                 <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
                 <div>
                   <p className="text-[10px] text-gray-400 font-medium">Member since</p>
@@ -861,7 +861,7 @@ export function HomePopup({ onClose }: Props) {
             </div>
 
             {/* Sign out */}
-            <div className="px-4 pb-5 pt-3 shrink-0 border-t border-gray-100">
+            <div className="px-5 pb-5 pt-3 shrink-0 border-t border-gray-100">
               <button
                 onClick={handleSignOut}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-red-200 text-red-500 hover:bg-red-50 transition-colors text-[13px] font-semibold"
@@ -882,7 +882,7 @@ export function HomePopup({ onClose }: Props) {
               style={{ animation: 'slideUpIn 0.25s ease' }}
             >
               {/* Header */}
-              <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-gray-100 shrink-0">
+              <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-gray-100 shrink-0">
                 <p className="font-bold text-[14px] text-gray-900">{doc.title}</p>
                 <button
                   onClick={() => setLegalDoc(null)}
@@ -893,7 +893,7 @@ export function HomePopup({ onClose }: Props) {
               </div>
 
               {/* Scrollable content */}
-              <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-4">
+              <div className="flex-1 overflow-y-auto px-5 py-3 flex flex-col gap-4">
                 {doc.sections.map((s, i) => (
                   <div key={i}>
                     <p className="text-[11px] font-bold text-gray-800 mb-1">{s.heading}</p>
@@ -903,7 +903,7 @@ export function HomePopup({ onClose }: Props) {
               </div>
 
               {/* Close button at bottom */}
-              <div className="px-4 pb-4 pt-2 shrink-0 border-t border-gray-100">
+              <div className="px-5 pb-4 pt-2 shrink-0 border-t border-gray-100">
                 <button
                   onClick={() => setLegalDoc(null)}
                   className="w-full py-2.5 rounded-xl border border-gray-300 text-[12px] font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
