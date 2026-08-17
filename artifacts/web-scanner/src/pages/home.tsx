@@ -157,7 +157,7 @@ export default function HomeScreen() {
 
       {/* ── Footer ── */}
       <p className="text-center text-gray-300 text-[11px] py-6">
-        © 2026 PrivaScan · v1.0.0
+        © 2026 PrivaScan · v{__APP_VERSION__}
       </p>
 
       {/* ── Sign-in sheet ── */}

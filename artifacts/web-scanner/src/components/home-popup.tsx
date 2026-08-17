@@ -602,7 +602,7 @@ export function HomePopup({ onClose }: Props) {
             </div>
 
             {/* ── Version footer ── */}
-            <p className="text-center text-gray-300 text-[10px] py-2.5 border-t border-gray-100 shrink-0">v1.0.0</p>
+            <p className="text-center text-gray-300 text-[10px] py-2.5 border-t border-gray-100 shrink-0">v{__APP_VERSION__}</p>
           </div>
 
           {/* ════ Page 1 — Login form ════ */}
@@ -916,7 +916,7 @@ export function HomePopup({ onClose }: Props) {
                 <p className="mt-3 font-bold text-[20px] tracking-tight text-gray-900">
                   Priva<span className="text-sky-400">Scan</span>
                 </p>
-                <p className="text-[11px] text-gray-400 mt-0.5">Document Scanner · v1.0.0</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">Document Scanner · v{__APP_VERSION__}</p>
               </div>
 
               {/* Privacy slogan banner */}
