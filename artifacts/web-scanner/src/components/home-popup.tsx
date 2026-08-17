@@ -1148,7 +1148,7 @@ export function HomePopup({ onClose }: Props) {
             <div className="flex-1 overflow-y-auto min-h-0 px-5 flex flex-col">
 
               {/* Account Detail */}
-              <div className="flex items-center justify-between py-4 border-b border-gray-100">
+              <div className="flex items-center justify-between py-4 border-b border-gray-100 -mx-1 px-1 rounded-xl hover:bg-sky-50 transition-colors cursor-default">
                 <span className="text-[15px] text-gray-500 font-medium">Account Detail</span>
                 <span className="text-[13px] text-gray-800 font-medium truncate max-w-[55%] text-right">
                   {user?.email || '—'}
@@ -1156,30 +1156,37 @@ export function HomePopup({ onClose }: Props) {
               </div>
 
               {/* Account Type */}
-              <div className="flex items-center justify-between py-4 border-b border-gray-100">
+              <div className="flex items-center justify-between py-4 border-b border-gray-100 -mx-1 px-1 rounded-xl hover:bg-sky-50 transition-colors cursor-default">
                 <span className="text-[15px] text-gray-500 font-medium">Account Type</span>
                 <span className="text-[13px] text-gray-800 font-medium">Member</span>
               </div>
 
               {/* Notification */}
-              <div className="flex items-center justify-between py-4 border-b border-gray-100">
+              <div
+                onClick={() => setNotifEnabled(v => !v)}
+                className="flex items-center justify-between py-4 border-b border-gray-100 -mx-1 px-1 rounded-xl hover:bg-sky-50 transition-colors cursor-pointer"
+              >
                 <span className="text-[15px] text-gray-500 font-medium">Notification</span>
-                <button
-                  onClick={() => setNotifEnabled(v => !v)}
+                {/* iOS-style toggle */}
+                <div
                   className={cn(
-                    'relative w-12 h-7 rounded-full transition-colors duration-200 shrink-0',
-                    notifEnabled ? 'bg-green-500' : 'bg-gray-300',
+                    'relative flex-none w-[51px] h-[31px] rounded-full transition-colors duration-300',
+                    notifEnabled ? 'bg-[#34C759]' : 'bg-[#D1D1D6]',
                   )}
+                  style={{ boxShadow: 'inset 0 0 0 0.5px rgba(0,0,0,0.08)' }}
                 >
-                  <span className={cn(
-                    'absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200',
-                    notifEnabled ? 'translate-x-6' : 'translate-x-1',
-                  )} />
-                </button>
+                  <span
+                    className={cn(
+                      'absolute top-[2px] w-[27px] h-[27px] rounded-full bg-white transition-transform duration-300',
+                      notifEnabled ? 'translate-x-[20px]' : 'translate-x-[2px]',
+                    )}
+                    style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.22)' }}
+                  />
+                </div>
               </div>
 
               {/* Subscription */}
-              <button className="flex items-center justify-between py-4 border-b border-gray-100 w-full text-left hover:opacity-70 transition-opacity">
+              <button className="flex items-center justify-between py-4 border-b border-gray-100 w-full text-left -mx-1 px-1 rounded-xl hover:bg-sky-50 transition-colors">
                 <span className="text-[15px] text-gray-500 font-medium">Subscription</span>
                 <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
               </button>
@@ -1187,9 +1194,9 @@ export function HomePopup({ onClose }: Props) {
               {/* Sign Out */}
               <button
                 onClick={handleSignOut}
-                className="flex items-center justify-between py-4 w-full text-left hover:opacity-70 transition-opacity"
+                className="flex items-center justify-between py-4 w-full text-left -mx-1 px-1 rounded-xl hover:bg-red-50 transition-colors"
               >
-                <span className="text-[15px] text-gray-500 font-medium">Sign Out</span>
+                <span className="text-[15px] text-gray-500 font-medium hover:text-red-500 transition-colors">Sign Out</span>
               </button>
 
             </div>
