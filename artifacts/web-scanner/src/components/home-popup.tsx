@@ -1207,17 +1207,17 @@ export function HomePopup({ onClose }: Props) {
                 {/* iOS-style toggle */}
                 <div
                   className={cn(
-                    'relative flex-none w-[51px] h-[31px] rounded-full transition-colors duration-300',
+                    'relative flex-none w-[36px] h-[22px] rounded-full transition-colors duration-300',
                     notifEnabled ? 'bg-[#34C759]' : 'bg-[#D1D1D6]',
                   )}
                   style={{ boxShadow: 'inset 0 0 0 0.5px rgba(0,0,0,0.08)' }}
                 >
                   <span
                     className={cn(
-                      'absolute top-[2px] w-[27px] h-[27px] rounded-full bg-white transition-transform duration-300',
-                      notifEnabled ? 'translate-x-[20px]' : 'translate-x-[2px]',
+                      'absolute top-[2px] w-[18px] h-[18px] rounded-full bg-white transition-transform duration-300',
+                      notifEnabled ? 'translate-x-[16px]' : 'translate-x-[2px]',
                     )}
-                    style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.22)' }}
+                    style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.22)' }}
                   />
                 </div>
               </div>
