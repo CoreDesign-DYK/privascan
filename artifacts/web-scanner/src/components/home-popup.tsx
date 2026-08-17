@@ -13,9 +13,10 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import {
-  User, RefreshCw, ScanLine, FileText,
+  User, ScanLine, FileText,
   Settings, HelpCircle, ChevronRight, ChevronLeft, Eye, EyeOff, X,
   UserCircle2, Mail, LogOut, Shield, Calendar,
+  Globe, Lock, Info, Share2, Star, Database,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -39,15 +40,24 @@ interface Props { onClose: () => void }
 type Provider = 'google' | 'apple' | 'phone' | 'email';
 
 /* ── static data ─────────────────────────────────────────────────────────── */
-const MENU_ITEMS = [
-  { icon: <User      className="w-4 h-4" />, label: 'Account',           action: 'signin' as const },
-  { icon: <RefreshCw className="w-4 h-4" />, label: 'Sync',              action: null },
-  { icon: <ScanLine  className="w-4 h-4" />, label: 'Scan',              action: 'scan'   as const },
-  { icon: <FileText  className="w-4 h-4" />, label: 'Document Settings', action: null },
+type MenuAction = 'signin' | 'scan' | 'help' | 'legal-privacy' | 'legal-terms' | 'legal-consent' | null;
+const MAIN_ITEMS: { icon: React.ReactNode; label: string; action: MenuAction }[] = [
+  { icon: <User      className="w-4 h-4" />, label: 'Account',          action: 'signin' },
+  { icon: <ScanLine  className="w-4 h-4" />, label: 'Scan',             action: 'scan'   },
+  { icon: <Globe     className="w-4 h-4" />, label: 'Language',         action: null     },
+  { icon: <Lock      className="w-4 h-4" />, label: 'App PIN',          action: null     },
+  { icon: <Info      className="w-4 h-4" />, label: 'About PrivaScan',  action: null     },
 ];
-const BOTTOM_ITEMS = [
-  { icon: <Settings   className="w-4 h-4" />, label: 'Settings', action: null },
-  { icon: <HelpCircle className="w-4 h-4" />, label: 'Help',     action: 'help' as const },
+const MORE_ITEMS: { icon: React.ReactNode; label: string; action: MenuAction }[] = [
+  { icon: <Settings   className="w-4 h-4" />, label: 'Settings',  action: null   },
+  { icon: <HelpCircle className="w-4 h-4" />, label: 'Help',      action: 'help' },
+  { icon: <Share2     className="w-4 h-4" />, label: 'Share APP', action: null   },
+  { icon: <Star       className="w-4 h-4" />, label: 'Rate APP',  action: null   },
+];
+const LEGAL_ITEMS: { icon: React.ReactNode; label: string; action: MenuAction }[] = [
+  { icon: <Shield   className="w-3.5 h-3.5" />, label: 'Privacy Policy',         action: 'legal-privacy'  },
+  { icon: <FileText className="w-3.5 h-3.5" />, label: 'Terms of Use',           action: 'legal-terms'    },
+  { icon: <Database className="w-3.5 h-3.5" />, label: 'Data Collection Policy', action: 'legal-consent'  },
 ];
 
 /* Google G icon */
@@ -353,15 +363,22 @@ export function HomePopup({ onClose }: Props) {
     setPage(0);
   }
 
-  function handleMenu(action: 'signin' | 'scan' | 'help' | null) {
-    if (action === 'signin') { goLogin(); return; }
-    if (action === 'scan')   { onClose(); return; }
-    if (action === 'help')   { window.open('mailto:support@privascan.app'); return; }
+  function handleMenu(action: MenuAction) {
+    if (action === 'signin')        { goLogin(); return; }
+    if (action === 'scan')          { onClose(); return; }
+    if (action === 'help')          { window.open('mailto:support@privascan.app'); return; }
+    if (action === 'legal-privacy') { setLegalDoc('privacy'); return; }
+    if (action === 'legal-terms')   { setLegalDoc('terms');   return; }
+    if (action === 'legal-consent') { setLegalDoc('consent'); return; }
   }
 
   /* 5 pages → 500% track, each panel 20% */
   const TOTAL_PAGES = 5;
-  const CARD_STYLE: React.CSSProperties = { width: '60vw', minWidth: 220, maxWidth: 360 };
+  const CARD_STYLE: React.CSSProperties = {
+    width: '60vw', minWidth: 240, maxWidth: 360,
+    height: 'min(88vh, 680px)',
+    display: 'flex', flexDirection: 'column',
+  };
 
   return (
     <>
@@ -380,7 +397,7 @@ export function HomePopup({ onClose }: Props) {
       >
         {/* ── Sliding track: 5 pages side by side ── */}
         <div
-          className="flex"
+          className="flex flex-1 min-h-0"
           style={{
             width: `${TOTAL_PAGES * 100}%`,
             transform: `translateX(${-page * (100 / TOTAL_PAGES)}%)`,
@@ -389,10 +406,9 @@ export function HomePopup({ onClose }: Props) {
         >
 
           {/* ════ Page 0 — Main menu ════ */}
-          <div className="flex flex-col" style={{ width: `${100 / TOTAL_PAGES}%` }}>
-            {/* ── Header row: logo+name LEFT, avatar RIGHT ── */}
-            <div className="flex items-center justify-between px-4 pt-5 pb-4 border-b border-gray-100">
-              {/* Left: logo + app name */}
+          <div className="flex flex-col h-full" style={{ width: `${100 / TOTAL_PAGES}%` }}>
+            {/* ── Header: logo+name LEFT, avatar RIGHT ── */}
+            <div className="flex items-center justify-between px-4 pt-5 pb-4 border-b border-gray-100 shrink-0">
               <div className="flex items-center gap-2.5">
                 <AppLogo size="w-11 h-11" />
                 <div>
@@ -406,8 +422,6 @@ export function HomePopup({ onClose }: Props) {
                   )}
                 </div>
               </div>
-
-              {/* Right: avatar (logged-in) or sign-in icons (logged-out) */}
               {user ? (
                 <button
                   onClick={() => setShowProfile(true)}
@@ -432,27 +446,50 @@ export function HomePopup({ onClose }: Props) {
               )}
             </div>
 
-            {MENU_ITEMS.map((item, i) => (
-              <button key={i} onClick={() => handleMenu(item.action)}
-                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors border-b border-gray-100">
-                <span className="text-gray-400 shrink-0">{item.icon}</span>
-                <span className="flex-1 text-left text-[13px] text-gray-700 font-medium">{item.label}</span>
-                <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
-              </button>
-            ))}
+            {/* ── Scrollable menu body ── */}
+            <div className="flex-1 overflow-y-auto min-h-0">
+              {/* Section 1 */}
+              {MAIN_ITEMS.map((item, i) => (
+                <button key={i} onClick={() => handleMenu(item.action)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors border-b border-gray-100">
+                  <span className="text-gray-400 shrink-0">{item.icon}</span>
+                  <span className="flex-1 text-left text-[13px] text-gray-700 font-medium">{item.label}</span>
+                  <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
+                </button>
+              ))}
 
-            <div className="h-2 bg-gray-50 border-y border-gray-100" />
+              {/* Divider */}
+              <div className="h-2 bg-gray-50 border-y border-gray-100" />
 
-            {BOTTOM_ITEMS.map((item, i) => (
-              <button key={i} onClick={() => handleMenu(item.action)}
-                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors border-b border-gray-100 last:border-b-0">
-                <span className="text-gray-400 shrink-0">{item.icon}</span>
-                <span className="flex-1 text-left text-[13px] text-gray-700 font-medium">{item.label}</span>
-                <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
-              </button>
-            ))}
+              {/* Section 2 */}
+              {MORE_ITEMS.map((item, i) => (
+                <button key={i} onClick={() => handleMenu(item.action)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors border-b border-gray-100">
+                  <span className="text-gray-400 shrink-0">{item.icon}</span>
+                  <span className="flex-1 text-left text-[13px] text-gray-700 font-medium">{item.label}</span>
+                  <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
+                </button>
+              ))}
 
-            <p className="text-center text-gray-300 text-[10px] py-3">v1.0.0</p>
+              {/* Divider */}
+              <div className="h-2 bg-gray-50 border-y border-gray-100" />
+
+              {/* Legal Entity section */}
+              <div className="px-4 py-2">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Legal Entity</p>
+              </div>
+              {LEGAL_ITEMS.map((item, i) => (
+                <button key={i} onClick={() => handleMenu(item.action)}
+                  className="w-full flex items-center gap-3 pl-7 pr-4 py-2.5 hover:bg-gray-50 active:bg-gray-100 transition-colors border-b border-gray-100 last:border-b-0">
+                  <span className="text-gray-400 shrink-0">{item.icon}</span>
+                  <span className="flex-1 text-left text-[12px] text-gray-600">{item.label}</span>
+                  <ChevronRight className="w-3.5 h-3.5 text-gray-300 shrink-0" />
+                </button>
+              ))}
+            </div>
+
+            {/* ── Version footer ── */}
+            <p className="text-center text-gray-300 text-[10px] py-2.5 border-t border-gray-100 shrink-0">v1.0.0</p>
           </div>
 
           {/* ════ Page 1 — Login form ════ */}
