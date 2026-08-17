@@ -10,14 +10,29 @@
  *   3 = Google — Permissions confirmation
  *   4 = terms agreement
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import {
   User, RefreshCw, ScanLine, FileText,
   Settings, HelpCircle, ChevronRight, ChevronLeft, Eye, EyeOff, X,
-  UserCircle2, Mail,
+  UserCircle2, Mail, LogOut, Shield, Calendar,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+/* ── Persisted user ───────────────────────────────────────────────────────── */
+const USER_KEY = 'privascan_user';
+interface StoredUser {
+  name: string;
+  email: string;
+  initials: string;
+  provider: 'google' | 'apple' | 'phone' | 'email';
+  joinedAt: string; // ISO date string
+}
+function loadUser(): StoredUser | null {
+  try { return JSON.parse(localStorage.getItem(USER_KEY) || 'null'); } catch { return null; }
+}
+function saveUser(u: StoredUser) { localStorage.setItem(USER_KEY, JSON.stringify(u)); }
+function clearUser() { localStorage.removeItem(USER_KEY); }
 
 interface Props { onClose: () => void }
 
@@ -277,6 +292,11 @@ type LegalDocKey = keyof typeof LEGAL_DOCS;
 export function HomePopup({ onClose }: Props) {
   const [, setLocation] = useLocation();
 
+  // Persisted user
+  const [user, setUser]           = useState<StoredUser | null>(loadUser);
+  const [showProfile, setShowProfile] = useState(false);
+  useEffect(() => { setUser(loadUser()); }, []);
+
   // 0 main | 1 login | 2 google-choose | 3 google-perms (+ consent) | 4 sign-up
   const [page,           setPage]           = useState(0);
   const [provider,       setProvider]       = useState<Provider | null>(null);
@@ -309,8 +329,28 @@ export function HomePopup({ onClose }: Props) {
   }
 
   function handleAgree() {
+    // Persist user based on provider
+    let newUser: StoredUser;
+    if (provider === 'google') {
+      newUser = { name: MOCK_ACCOUNT.name, email: MOCK_ACCOUNT.email, initials: MOCK_ACCOUNT.initials, provider: 'google', joinedAt: new Date().toISOString() };
+    } else if (provider === 'email' && suEmail.trim()) {
+      const parts = suName.trim().split(' ');
+      const initials = parts.length >= 2 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() : (suName.trim().slice(0, 2).toUpperCase());
+      newUser = { name: suName.trim() || suEmail, email: suEmail.trim(), initials, provider: 'email', joinedAt: new Date().toISOString() };
+    } else {
+      newUser = { name: 'PrivaScan User', email: '', initials: 'PS', provider: provider ?? 'email', joinedAt: new Date().toISOString() };
+    }
+    saveUser(newUser);
+    setUser(newUser);
     onClose();
     setLocation('/');
+  }
+
+  function handleSignOut() {
+    clearUser();
+    setUser(null);
+    setShowProfile(false);
+    setPage(0);
   }
 
   function handleMenu(action: 'signin' | 'scan' | 'help' | null) {
@@ -350,30 +390,61 @@ export function HomePopup({ onClose }: Props) {
 
           {/* ════ Page 0 — Main menu ════ */}
           <div className="flex flex-col" style={{ width: `${100 / TOTAL_PAGES}%` }}>
-            <div className="flex flex-col items-center pt-7 pb-5 px-3 border-b border-gray-100">
-              <div className="flex items-center gap-3 mb-1">
-                <AppLogo />
-                <div>
-                  <p className="font-bold text-[18px] tracking-tight text-gray-900 leading-none">
-                    Priva<span className="text-sky-400">Scan</span>
-                  </p>
-                  <p className="text-[11px] text-gray-400 mt-1 leading-tight">
-                    Sign in to access<br />more features
-                  </p>
+            <div className="relative flex flex-col items-center pt-7 pb-5 px-3 border-b border-gray-100">
+              {/* Profile button (top-right corner) — only when logged in */}
+              {user && (
+                <button
+                  onClick={() => setShowProfile(true)}
+                  className="absolute top-3 right-3 flex items-center justify-center"
+                  aria-label="View profile"
+                >
+                  <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center shadow-sm ring-2 ring-white hover:ring-blue-200 transition-all">
+                    <span className="text-[11px] font-bold text-white leading-none">{user.initials}</span>
+                  </div>
+                </button>
+              )}
+
+              {user ? (
+                /* ── Logged-in header ── */
+                <div className="flex items-center gap-3 w-full px-1">
+                  <Avatar initials={user.initials} size="w-12 h-12" text="text-sm" />
+                  <div className="min-w-0">
+                    <p className="font-bold text-[15px] text-gray-900 leading-snug truncate">{user.name}</p>
+                    <p className="text-[11px] text-gray-400 truncate">{user.email || 'No email'}</p>
+                    <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded-full bg-sky-50 border border-sky-200">
+                      {user.provider === 'google' && <GoogleIcon size="w-3 h-3" />}
+                      <span className="text-[9px] font-semibold text-sky-600 capitalize">{user.provider}</span>
+                    </span>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2.5 mt-3">
-                {SIGN_IN_METHODS.map(m => (
-                  <button key={m.id} onClick={goLogin} className={cn(
-                    'w-9 h-9 rounded-full flex items-center justify-center shadow-sm transition-opacity active:opacity-70',
-                    m.id === 'google' ? 'bg-white border-2 border-gray-300' :
-                    m.id === 'apple'  ? 'bg-black' :
-                    m.id === 'phone'  ? 'bg-blue-500' : 'bg-emerald-500',
-                  )}>
-                    {m.iconEl}
-                  </button>
-                ))}
-              </div>
+              ) : (
+                /* ── Logged-out header ── */
+                <>
+                  <div className="flex items-center gap-3 mb-1">
+                    <AppLogo />
+                    <div>
+                      <p className="font-bold text-[18px] tracking-tight text-gray-900 leading-none">
+                        Priva<span className="text-sky-400">Scan</span>
+                      </p>
+                      <p className="text-[11px] text-gray-400 mt-1 leading-tight">
+                        Sign in to access<br />more features
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2.5 mt-3">
+                    {SIGN_IN_METHODS.map(m => (
+                      <button key={m.id} onClick={goLogin} className={cn(
+                        'w-9 h-9 rounded-full flex items-center justify-center shadow-sm transition-opacity active:opacity-70',
+                        m.id === 'google' ? 'bg-white border-2 border-gray-300' :
+                        m.id === 'apple'  ? 'bg-black' :
+                        m.id === 'phone'  ? 'bg-blue-500' : 'bg-emerald-500',
+                      )}>
+                        {m.iconEl}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
 
             {MENU_ITEMS.map((item, i) => (
@@ -705,6 +776,80 @@ export function HomePopup({ onClose }: Props) {
           </div>
 
         </div>{/* /sliding track */}
+
+        {/* ════ User profile overlay ════ */}
+        {showProfile && user && (
+          <div
+            className="absolute inset-0 bg-white z-10 flex flex-col"
+            style={{ animation: 'slideUpIn 0.25s ease' }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-gray-100 shrink-0">
+              <p className="font-bold text-[15px] text-gray-900">My Profile</p>
+              <button
+                onClick={() => setShowProfile(false)}
+                className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors"
+              >
+                <X className="w-4 h-4 text-gray-500" />
+              </button>
+            </div>
+
+            {/* Avatar + name block */}
+            <div className="flex flex-col items-center pt-6 pb-4 px-4 gap-2 border-b border-gray-100">
+              <div className="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center shadow-md ring-4 ring-blue-100">
+                <span className="text-xl font-bold text-white">{user.initials}</span>
+              </div>
+              <p className="text-[16px] font-bold text-gray-900 mt-1">{user.name}</p>
+              {user.email && (
+                <p className="text-[12px] text-gray-500">{user.email}</p>
+              )}
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sky-50 border border-sky-200 mt-0.5">
+                {user.provider === 'google' && <GoogleIcon size="w-3.5 h-3.5" />}
+                <span className="text-[11px] font-semibold text-sky-600 capitalize">
+                  Signed in with {user.provider === 'email' ? 'Email' : user.provider.charAt(0).toUpperCase() + user.provider.slice(1)}
+                </span>
+              </div>
+            </div>
+
+            {/* Info rows */}
+            <div className="flex-1 overflow-y-auto">
+              <div className="flex items-center gap-3 px-4 py-3.5 border-b border-gray-100">
+                <Mail className="w-4 h-4 text-gray-400 shrink-0" />
+                <div>
+                  <p className="text-[10px] text-gray-400 font-medium">Email address</p>
+                  <p className="text-[12px] text-gray-800 font-semibold">{user.email || '—'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 px-4 py-3.5 border-b border-gray-100">
+                <Shield className="w-4 h-4 text-gray-400 shrink-0" />
+                <div>
+                  <p className="text-[10px] text-gray-400 font-medium">Account type</p>
+                  <p className="text-[12px] text-gray-800 font-semibold">PrivaScan Free</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 px-4 py-3.5 border-b border-gray-100">
+                <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
+                <div>
+                  <p className="text-[10px] text-gray-400 font-medium">Member since</p>
+                  <p className="text-[12px] text-gray-800 font-semibold">
+                    {new Date(user.joinedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Sign out */}
+            <div className="px-4 pb-5 pt-3 shrink-0 border-t border-gray-100">
+              <button
+                onClick={handleSignOut}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-red-200 text-red-500 hover:bg-red-50 transition-colors text-[13px] font-semibold"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign Out
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ════ Legal document overlay ════ */}
         {legalDoc && (() => {
