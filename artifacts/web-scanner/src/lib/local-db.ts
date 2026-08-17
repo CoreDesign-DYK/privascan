@@ -79,6 +79,18 @@ export async function deleteScan(id: string): Promise<void> {
   await db.delete('scans', id);
 }
 
+export async function updateScan(
+  id: string,
+  data: Partial<Omit<LocalScan, 'id' | 'createdAt'>>,
+): Promise<LocalScan | undefined> {
+  const db = await getDB();
+  const existing = await db.get('scans', id);
+  if (!existing) return undefined;
+  const updated: LocalScan = { ...existing, ...data };
+  await db.put('scans', updated);
+  return updated;
+}
+
 export async function clearAllScans(): Promise<void> {
   const db = await getDB();
   await db.clear('scans');

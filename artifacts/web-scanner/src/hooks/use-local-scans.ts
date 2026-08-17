@@ -4,7 +4,7 @@
  */
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  listScans, getScan, saveScan, deleteScan,
+  listScans, getScan, saveScan, updateScan, deleteScan,
   type LocalScan,
 } from '@/lib/local-db';
 
@@ -29,6 +29,15 @@ export function useSaveScan() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: Omit<LocalScan, 'id' | 'createdAt'>) => saveScan(data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: SCANS_KEY }),
+  });
+}
+
+export function useUpdateScan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Omit<LocalScan, 'id' | 'createdAt'>> }) =>
+      updateScan(id, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: SCANS_KEY }),
   });
 }
