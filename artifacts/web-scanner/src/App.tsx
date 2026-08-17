@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { type ReactNode, useState, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
@@ -24,6 +24,8 @@ import HomeScreen from '@/pages/home';
 import PrivacyPolicyScreen from '@/pages/privacy-policy';
 import TermsOfServiceScreen from '@/pages/terms-of-service';
 import LoginScreen from '@/pages/login';
+import { PinLockScreen } from '@/components/pin-lock-screen';
+import { isLockRequired, recordHiddenAt } from '@/lib/pin-storage';
 
 const queryClient = new QueryClient();
 
@@ -57,13 +59,35 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
   return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>;
 }
 
+/* ── PIN lock gate ────────────────────────────────────────────────────────── */
+function AppWithPinLock() {
+  const [locked, setLocked] = useState(() => isLockRequired());
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.hidden) {
+        recordHiddenAt();
+      } else {
+        if (isLockRequired()) setLocked(true);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+
+  if (locked) {
+    return <PinLockScreen onUnlock={() => setLocked(false)} />;
+  }
+  return <Router />;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <LanguageProvider>
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-            <Router />
+            <AppWithPinLock />
           </WouterRouter>
           <Toaster />
           <SonnerToaster position="top-center" />

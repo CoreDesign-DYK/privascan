@@ -10,7 +10,7 @@
  *   3 = Google — Permissions confirmation
  *   4 = terms agreement
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useLocation } from 'wouter';
 import {
   User, ScanLine, FileText,
@@ -18,8 +18,14 @@ import {
   UserCircle2, Mail, LogOut, Shield, Calendar,
   Globe, Lock, Info, Share2, Star, Database,
   Smartphone, Zap, CheckCircle2, Server, Cloud,
+  Delete, CheckCircle, ToggleLeft, ToggleRight, Clock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  isPinEnabled, enablePin, verifyPin, disablePin,
+  isBiometricEnabled, checkBiometricSupport, registerBiometric, disableBiometric,
+  getPinTimeout, setPinTimeout, TIMEOUT_OPTIONS,
+} from '@/lib/pin-storage';
 
 /* ── Persisted user ───────────────────────────────────────────────────────── */
 const USER_KEY = 'privascan_user';
@@ -41,12 +47,12 @@ interface Props { onClose: () => void }
 type Provider = 'google' | 'apple' | 'email';
 
 /* ── static data ─────────────────────────────────────────────────────────── */
-type MenuAction = 'signin' | 'scan' | 'help' | 'about' | 'legal-privacy' | 'legal-terms' | 'legal-consent' | null;
+type MenuAction = 'signin' | 'scan' | 'help' | 'about' | 'pin' | 'legal-privacy' | 'legal-terms' | 'legal-consent' | null;
 const MAIN_ITEMS: { icon: React.ReactNode; label: string; action: MenuAction }[] = [
   { icon: <User      className="w-4 h-4" />, label: 'Account',          action: 'signin' },
   { icon: <ScanLine  className="w-4 h-4" />, label: 'Scan',             action: 'scan'   },
   { icon: <Globe     className="w-4 h-4" />, label: 'Language',         action: null     },
-  { icon: <Lock      className="w-4 h-4" />, label: 'App PIN',          action: null     },
+  { icon: <Lock      className="w-4 h-4" />, label: 'App PIN',          action: 'pin'    },
   { icon: <Info      className="w-4 h-4" />, label: 'About PrivaScan',  action: 'about'  },
 ];
 const MORE_ITEMS: { icon: React.ReactNode; label: string; action: MenuAction }[] = [
@@ -307,7 +313,7 @@ export function HomePopup({ onClose }: Props) {
   const [showProfile, setShowProfile] = useState(false);
   useEffect(() => { setUser(loadUser()); }, []);
 
-  // 0 main | 1 login | 2 google-choose | 3 google-perms (+ consent) | 4 sign-up
+  // 0 main | 1 login | 2 google-choose | 3 google-perms | 4 sign-up | 5 about | 6 app-pin
   const [page,           setPage]           = useState(0);
   const [provider,       setProvider]       = useState<Provider | null>(null);
   const [email,          setEmail]          = useState('');
@@ -323,9 +329,117 @@ export function HomePopup({ onClose }: Props) {
   // Legal doc overlay: null = hidden, key = which doc to show
   const [legalDoc, setLegalDoc]         = useState<LegalDocKey | null>(null);
 
-  // back-navigation map: which page to return to from each page
-  const BACK: Record<number, number> = { 1: 0, 2: 1, 3: 2, 4: 1, 5: 0 };
-  function goBack() { setPage(p => BACK[p] ?? 0); }
+  // ── Page 6: App PIN settings state ──────────────────────────────────────
+  // pinStatus: live reflection of isPinEnabled()
+  const [pinStatus,   setPinStatus]   = useState<boolean>(isPinEnabled);
+  const [bioEnabled,  setBioEnabled]  = useState<boolean>(isBiometricEnabled);
+  const [bioSupport,  setBioSupport]  = useState<boolean>(false);
+  const [pinTimeout,  setPinTimeoutState] = useState<number>(getPinTimeout);
+
+  // PIN entry overlay within card
+  // mode: 'none' | 'set-1' (enter new) | 'set-2' (confirm) | 'verify' (verify before disable/change) | 'change-1' | 'change-2'
+  const [pinMode,       setPinMode]       = useState<'none'|'set-1'|'set-2'|'verify'|'change-1'|'change-2'>('none');
+  const [pinInput,      setPinInput]      = useState('');
+  const [pinFirst,      setPinFirst]      = useState('');   // saved first pass
+  const [pinError,      setPinError]      = useState(false);
+  const [pinShake,      setPinShake]      = useState(false);
+  const [pinTarget,     setPinTarget]     = useState<'disable'|'change'|null>(null); // what verify leads to
+
+  // Load biometric support when page 6 is active
+  useEffect(() => {
+    if (page === 6) {
+      checkBiometricSupport().then(setBioSupport);
+      setPinStatus(isPinEnabled());
+      setBioEnabled(isBiometricEnabled());
+      setPinTimeoutState(getPinTimeout());
+    }
+  }, [page]);
+
+  // Auto-check PIN when 4 digits entered in overlay
+  useEffect(() => {
+    if (pinInput.length === 4) {
+      handlePinDigitComplete(pinInput);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pinInput]);
+
+  const doShakeError = useCallback(() => {
+    setPinError(true);
+    setPinShake(true);
+    setTimeout(() => {
+      setPinShake(false);
+      setPinError(false);
+      setPinInput('');
+    }, 700);
+  }, []);
+
+  async function handlePinDigitComplete(digits: string) {
+    if (pinMode === 'set-1' || pinMode === 'change-1') {
+      // Save first pass, move to confirm
+      setPinFirst(digits);
+      setPinInput('');
+      setPinMode(pinMode === 'set-1' ? 'set-2' : 'change-2');
+    } else if (pinMode === 'set-2' || pinMode === 'change-2') {
+      // Confirm pass
+      if (digits === pinFirst) {
+        await enablePin(digits);
+        setPinStatus(true);
+        setPinMode('none');
+        setPinInput('');
+        setPinFirst('');
+      } else {
+        doShakeError();
+      }
+    } else if (pinMode === 'verify') {
+      const ok = await verifyPin(digits);
+      if (ok) {
+        if (pinTarget === 'disable') {
+          disablePin();
+          disableBiometric();
+          setPinStatus(false);
+          setBioEnabled(false);
+          setPinMode('none');
+          setPinInput('');
+        } else if (pinTarget === 'change') {
+          setPinInput('');
+          setPinMode('change-1');
+        }
+      } else {
+        doShakeError();
+      }
+    }
+  }
+
+  function openPinEntry(mode: typeof pinMode, target?: typeof pinTarget) {
+    setPinMode(mode);
+    setPinInput('');
+    setPinFirst('');
+    setPinError(false);
+    setPinShake(false);
+    if (target !== undefined) setPinTarget(target);
+  }
+
+  async function handleBioToggle() {
+    if (bioEnabled) {
+      disableBiometric();
+      setBioEnabled(false);
+    } else {
+      const ok = await registerBiometric();
+      setBioEnabled(ok);
+    }
+  }
+
+  function handleTimeoutChange(minutes: number) {
+    setPinTimeout(minutes);
+    setPinTimeoutState(minutes);
+  }
+
+  // back-navigation map
+  const BACK: Record<number, number> = { 1: 0, 2: 1, 3: 2, 4: 1, 5: 0, 6: 0 };
+  function goBack() {
+    if (pinMode !== 'none') { setPinMode('none'); setPinInput(''); return; }
+    setPage(p => BACK[p] ?? 0);
+  }
 
   function goLogin()        { setPage(1); }
   function goGoogleChoose() { setProvider('google'); setPage(2); }
@@ -333,12 +447,10 @@ export function HomePopup({ onClose }: Props) {
   function goTerms(p: Provider) {
     setProvider(p);
     if (p === 'google') { goGoogleChoose(); return; }
-    // Non-google providers: consent already implied from login page; proceed directly
     handleAgree();
   }
 
   function handleAgree() {
-    // Persist user based on provider
     let newUser: StoredUser;
     if (provider === 'google') {
       newUser = { name: MOCK_ACCOUNT.name, email: MOCK_ACCOUNT.email, initials: MOCK_ACCOUNT.initials, provider: 'google', joinedAt: new Date().toISOString() };
@@ -366,13 +478,13 @@ export function HomePopup({ onClose }: Props) {
     if (action === 'scan')          { onClose(); return; }
     if (action === 'help')          { window.open('mailto:support@privascan.app'); return; }
     if (action === 'about')         { setPage(5);             return; }
+    if (action === 'pin')           { setPage(6);             return; }
     if (action === 'legal-privacy') { setLegalDoc('privacy'); return; }
     if (action === 'legal-terms')   { setLegalDoc('terms');   return; }
     if (action === 'legal-consent') { setLegalDoc('consent'); return; }
   }
 
-  /* 5 pages → 500% track, each panel 20% */
-  const TOTAL_PAGES = 6;
+  const TOTAL_PAGES = 7;
   const CARD_STYLE: React.CSSProperties = {
     width: '66vw', minWidth: 264, maxWidth: 396,
     height: 'min(78vh, 580px)',
@@ -877,7 +989,217 @@ export function HomePopup({ onClose }: Props) {
             </div>
           </div>
 
+          {/* ════ Page 6 — App PIN Settings ════ */}
+          <div className="flex flex-col h-full" style={{ width: `${100 / TOTAL_PAGES}%` }}>
+            {/* Header */}
+            <div className="flex items-center gap-2 px-5 pt-5 pb-3 border-b border-gray-100 shrink-0">
+              <button onClick={goBack} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors shrink-0">
+                <ChevronLeft className="w-4 h-4 text-gray-500" />
+              </button>
+              <div className="flex-1 flex items-center gap-2">
+                <p className="font-semibold text-[15px] text-gray-900">App PIN</p>
+                {pinStatus && (
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-bold">
+                    <CheckCircle className="w-3 h-3" />
+                    ON
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Scrollable body */}
+            <div className="flex-1 overflow-y-auto min-h-0">
+
+              {/* Info banner */}
+              <div className="mx-5 mt-4 mb-3 rounded-xl bg-sky-50 border border-sky-100 px-4 py-3 flex items-start gap-2.5">
+                <Lock className="w-4 h-4 text-sky-500 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-sky-700 leading-snug">
+                  Protect PrivaScan with a 4-digit PIN. Even if someone picks up your unlocked phone, your scanned documents stay private.
+                </p>
+              </div>
+
+              {!pinStatus ? (
+                /* ── PIN not enabled ── */
+                <div className="flex flex-col items-center px-5 py-6 gap-4">
+                  <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center">
+                    <Lock className="w-8 h-8 text-gray-400" />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[14px] font-bold text-gray-800">No PIN set</p>
+                    <p className="text-[11px] text-gray-400 mt-1">Set a 4-digit PIN to lock the app</p>
+                  </div>
+                  <button
+                    onClick={() => openPinEntry('set-1')}
+                    className="w-full py-3 rounded-xl bg-[#1e3a5f] hover:bg-[#162d4a] text-white font-bold text-[13px] transition-colors shadow-sm"
+                  >
+                    Enable App PIN
+                  </button>
+                </div>
+              ) : (
+                /* ── PIN enabled ── */
+                <div className="flex flex-col">
+
+                  {/* Auto-lock timing */}
+                  <div className="px-5 pt-4 pb-3 border-b border-gray-100">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Clock className="w-4 h-4 text-gray-400" />
+                      <p className="text-[12px] font-semibold text-gray-700">Auto-Lock</p>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {TIMEOUT_OPTIONS.map(opt => (
+                        <button
+                          key={opt.minutes}
+                          onClick={() => handleTimeoutChange(opt.minutes)}
+                          className={cn(
+                            'px-2.5 py-1 rounded-full text-[10px] font-semibold transition-colors',
+                            pinTimeout === opt.minutes
+                              ? 'bg-[#1e3a5f] text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
+                          )}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Biometric toggle */}
+                  {bioSupport && (
+                    <button
+                      onClick={handleBioToggle}
+                      className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-100 hover:bg-gray-50 transition-colors w-full text-left"
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-purple-50 flex items-center justify-center shrink-0">
+                        <svg viewBox="0 0 24 24" className="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                          <path d="M2 8V5a2 2 0 0 1 2-2h3"/><path d="M17 3h3a2 2 0 0 1 2 2v3"/>
+                          <path d="M22 16v3a2 2 0 0 1-2 2h-3"/><path d="M7 21H4a2 2 0 0 1-2-2v-3"/>
+                          <path d="M9 10h.01"/><path d="M15 10h.01"/><path d="M9.5 15a3.5 3.5 0 0 0 5 0"/>
+                          <path d="M12 7v3"/>
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-[12px] font-semibold text-gray-800">Face ID / Touch ID</p>
+                        <p className="text-[10px] text-gray-400">Use biometrics to unlock</p>
+                      </div>
+                      {bioEnabled
+                        ? <ToggleRight className="w-6 h-6 text-[#1e3a5f] shrink-0" />
+                        : <ToggleLeft  className="w-6 h-6 text-gray-300 shrink-0" />
+                      }
+                    </button>
+                  )}
+
+                  {/* Change PIN */}
+                  <button
+                    onClick={() => openPinEntry('verify', 'change')}
+                    className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-100 hover:bg-gray-50 transition-colors w-full text-left"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                      <Lock className="w-4 h-4 text-blue-500" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-[12px] font-semibold text-gray-800">Change PIN</p>
+                      <p className="text-[10px] text-gray-400">Set a new 4-digit PIN</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
+                  </button>
+
+                  {/* Disable PIN */}
+                  <button
+                    onClick={() => openPinEntry('verify', 'disable')}
+                    className="flex items-center gap-3 px-5 py-3.5 hover:bg-red-50 transition-colors w-full text-left"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
+                      <X className="w-4 h-4 text-red-400" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-[12px] font-semibold text-red-500">Disable PIN</p>
+                      <p className="text-[10px] text-gray-400">Remove app lock</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-red-200 shrink-0" />
+                  </button>
+
+                </div>
+              )}
+            </div>
+          </div>
+
         </div>{/* /sliding track */}
+
+        {/* ════ PIN entry overlay (inside card) ════ */}
+        {pinMode !== 'none' && (() => {
+          const titleMap: Record<typeof pinMode, string> = {
+            'none':     '',
+            'set-1':    'Set PIN',
+            'set-2':    'Confirm PIN',
+            'verify':   'Enter current PIN',
+            'change-1': 'New PIN',
+            'change-2': 'Confirm new PIN',
+          };
+          const PIN_KEYPAD = ['1','2','3','4','5','6','7','8','9','','0','⌫'] as const;
+          return (
+            <div className="absolute inset-0 bg-white z-20 flex flex-col" style={{ animation: 'slideUpIn 0.25s ease' }}>
+              {/* Header */}
+              <div className="flex items-center gap-2 px-5 pt-5 pb-3 border-b border-gray-100 shrink-0">
+                <button
+                  onClick={() => { setPinMode('none'); setPinInput(''); setPinFirst(''); }}
+                  className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors shrink-0"
+                >
+                  <ChevronLeft className="w-4 h-4 text-gray-500" />
+                </button>
+                <p className="font-semibold text-[15px] text-gray-900">{titleMap[pinMode]}</p>
+              </div>
+
+              {/* Dots + keypad */}
+              <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6 pb-6">
+                <p className="text-[12px] text-gray-400 text-center">
+                  {pinMode === 'set-1' || pinMode === 'change-1' ? 'Enter a 4-digit PIN'
+                   : pinMode === 'set-2' || pinMode === 'change-2' ? 'Re-enter the same PIN to confirm'
+                   : 'Enter your current PIN to continue'}
+                </p>
+
+                {/* 4 dots */}
+                <div className={cn('flex gap-4', pinShake && 'animate-[pinShake_0.5s_ease-in-out]')}>
+                  {[0,1,2,3].map(i => (
+                    <span key={i} className={cn(
+                      'w-3.5 h-3.5 rounded-full border-2 transition-all duration-150',
+                      i < pinInput.length
+                        ? pinError ? 'border-red-500 bg-red-500' : 'border-[#1e3a5f] bg-[#1e3a5f]'
+                        : 'border-gray-300',
+                    )} />
+                  ))}
+                </div>
+                {pinError && <p className="text-[11px] text-red-500 -mt-3">
+                  {pinMode === 'verify' ? 'Incorrect PIN' : 'PINs don\'t match — try again'}
+                </p>}
+
+                {/* Keypad */}
+                <div className="grid grid-cols-3 gap-2.5 w-full max-w-[220px]">
+                  {PIN_KEYPAD.map((k, i) => {
+                    if (k === '') return <div key={i} />;
+                    const isBack = k === '⌫';
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          if (isBack) { setPinInput(p => p.slice(0, -1)); }
+                          else if (pinInput.length < 4) { setPinInput(p => p + k); }
+                        }}
+                        className={cn(
+                          'h-12 rounded-xl text-[18px] font-semibold flex items-center justify-center transition-all active:scale-95',
+                          isBack
+                            ? 'text-gray-500 bg-transparent hover:bg-gray-100'
+                            : 'bg-gray-100 text-gray-900 hover:bg-gray-200 active:bg-gray-300',
+                        )}
+                      >
+                        {isBack ? <Delete className="w-4 h-4" /> : k}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ════ User profile overlay ════ */}
         {showProfile && user && (
