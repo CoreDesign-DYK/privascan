@@ -51,7 +51,6 @@ type MenuAction = 'signin' | 'scan' | 'help' | 'about' | 'pin' | 'legal-privacy'
 const MAIN_ITEMS: { icon: React.ReactNode; label: string; action: MenuAction }[] = [
   { icon: <User      className="w-4 h-4" />, label: 'Account',          action: 'signin' },
   { icon: <ScanLine  className="w-4 h-4" />, label: 'Scan',             action: 'scan'   },
-  { icon: <Globe     className="w-4 h-4" />, label: 'Language',         action: null     },
   { icon: <Lock      className="w-4 h-4" />, label: 'App PIN',          action: 'pin'    },
   { icon: <Info      className="w-4 h-4" />, label: 'About PrivaScan',  action: 'about'  },
 ];
