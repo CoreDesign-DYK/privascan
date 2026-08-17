@@ -194,11 +194,15 @@ const LEGAL_DOCS = {
         body: 'You may delete your account at any time from Settings → Account → Delete Account. PrivaScan may suspend or terminate your account if you violate these Terms, engage in fraudulent activity, or fail to pay subscription fees. Upon termination, your license to use the app ends immediately and your data will be deleted within 30 days.',
       },
       {
-        heading: '13. Governing Law',
+        heading: '13. File Data Retention Upon App Deletion',
+        body: 'Whether your scanned files are kept or deleted when you uninstall PrivaScan depends entirely on where each file was saved:\n\n① Files saved to the device\'s shared storage (data RETAINED)\n\n• iOS: Files exported to the "Files" app (On My iPhone folder, iCloud Drive, etc.) or saved to your Photos library.\n• Android: Files saved to public system folders such as Documents, Download, or DCIM.\n\nResult: Because these files exist independently in the OS shared file system as PDF or image files, uninstalling PrivaScan has no effect on them. They remain fully accessible through any file manager or viewer app. Your data is safe.\n\n② Files kept only in the app\'s private sandbox (data DELETED)\n\nThis applies when a scanned document appears in PrivaScan\'s internal list but you have not yet used "Export / Save to Device" to move it to shared storage.\n\nResult: When the app is uninstalled, the operating system removes the entire app sandbox directory, including all files stored inside it. These files cannot be recovered.\n\nRecommendation: Always export important documents to your device\'s shared storage or a cloud service before uninstalling PrivaScan. CLASSIC LEGEND is not liable for data loss resulting from uninstallation where files were not exported from the app sandbox.',
+      },
+      {
+        heading: '14. Governing Law',
         body: 'If you reside in the European Economic Area (EEA) or United Kingdom, these Terms are governed by the laws of Ireland. If you reside outside the EEA and UK, these Terms are governed by the laws of the State of California, USA, without regard to conflict of law principles. Disputes will be resolved by the courts of the applicable jurisdiction.',
       },
       {
-        heading: '14. Contact',
+        heading: '15. Contact',
         body: 'For questions about these Terms, contact us at: legal@privascan.app\n\nCLASSIC LEGEND, support@privascan.app',
       },
     ],
