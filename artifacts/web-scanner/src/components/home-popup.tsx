@@ -921,18 +921,18 @@ export function HomePopup({ onClose }: Props) {
 
               {/* Privacy slogan banner */}
               <div className="mx-5 mb-5 rounded-2xl overflow-hidden">
-                <div className="bg-gradient-to-br from-sky-500 to-blue-700 px-4 py-4">
-                  <div className="flex items-center gap-1.5 mb-2">
+                <div className="bg-gradient-to-br from-sky-500 to-blue-700 px-4 py-5">
+                  <div className="flex items-center gap-1.5 mb-3">
                     <Shield className="w-3.5 h-3.5 text-sky-200" />
                     <span className="text-[9px] font-bold tracking-widest text-sky-200 uppercase">Privacy First</span>
                   </div>
-                  <p className="text-white font-bold text-[14px] leading-snug">
-                    당신의 스캔 문서는 오직{' '}
-                    <span className="text-sky-200">당신의 기기</span>와{' '}
-                    <span className="text-sky-200">개인 클라우드</span>에만 존재합니다.
-                  </p>
-                  <p className="text-sky-100 text-[11px] mt-1.5 leading-snug">
-                    Your scanned documents exist only on your device and your personal cloud — never on our servers.
+                  <p className="text-white font-bold text-[16px] leading-snug">
+                    Your scanned documents exist only on{' '}
+                    <span className="text-yellow-300">your device</span>
+                    {' '}and{' '}
+                    <span className="text-yellow-300">your personal cloud</span>
+                    {' '}—{' '}
+                    <span className="text-sky-200">never on our servers.</span>
                   </p>
                 </div>
               </div>
