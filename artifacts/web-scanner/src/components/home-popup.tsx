@@ -376,7 +376,7 @@ export function HomePopup({ onClose }: Props) {
   const TOTAL_PAGES = 5;
   const CARD_STYLE: React.CSSProperties = {
     width: '60vw', minWidth: 240, maxWidth: 360,
-    height: 'min(88vh, 680px)',
+    height: 'min(78vh, 580px)',
     display: 'flex', flexDirection: 'column',
   };
 
