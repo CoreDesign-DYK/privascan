@@ -17,6 +17,7 @@ import {
   Settings, HelpCircle, ChevronRight, ChevronLeft, Eye, EyeOff, X,
   UserCircle2, Mail, LogOut, Shield, Calendar,
   Globe, Lock, Info, Share2, Star, Database,
+  Smartphone, Zap, CheckCircle2, Server, Cloud,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -40,13 +41,13 @@ interface Props { onClose: () => void }
 type Provider = 'google' | 'apple' | 'email';
 
 /* ── static data ─────────────────────────────────────────────────────────── */
-type MenuAction = 'signin' | 'scan' | 'help' | 'legal-privacy' | 'legal-terms' | 'legal-consent' | null;
+type MenuAction = 'signin' | 'scan' | 'help' | 'about' | 'legal-privacy' | 'legal-terms' | 'legal-consent' | null;
 const MAIN_ITEMS: { icon: React.ReactNode; label: string; action: MenuAction }[] = [
   { icon: <User      className="w-4 h-4" />, label: 'Account',          action: 'signin' },
   { icon: <ScanLine  className="w-4 h-4" />, label: 'Scan',             action: 'scan'   },
   { icon: <Globe     className="w-4 h-4" />, label: 'Language',         action: null     },
   { icon: <Lock      className="w-4 h-4" />, label: 'App PIN',          action: null     },
-  { icon: <Info      className="w-4 h-4" />, label: 'About PrivaScan',  action: null     },
+  { icon: <Info      className="w-4 h-4" />, label: 'About PrivaScan',  action: 'about'  },
 ];
 const MORE_ITEMS: { icon: React.ReactNode; label: string; action: MenuAction }[] = [
   { icon: <Settings   className="w-4 h-4" />, label: 'Settings',  action: null   },
@@ -323,7 +324,7 @@ export function HomePopup({ onClose }: Props) {
   const [legalDoc, setLegalDoc]         = useState<LegalDocKey | null>(null);
 
   // back-navigation map: which page to return to from each page
-  const BACK: Record<number, number> = { 1: 0, 2: 1, 3: 2, 4: 1 };
+  const BACK: Record<number, number> = { 1: 0, 2: 1, 3: 2, 4: 1, 5: 0 };
   function goBack() { setPage(p => BACK[p] ?? 0); }
 
   function goLogin()        { setPage(1); }
@@ -364,13 +365,14 @@ export function HomePopup({ onClose }: Props) {
     if (action === 'signin')        { goLogin(); return; }
     if (action === 'scan')          { onClose(); return; }
     if (action === 'help')          { window.open('mailto:support@privascan.app'); return; }
+    if (action === 'about')         { setPage(5);             return; }
     if (action === 'legal-privacy') { setLegalDoc('privacy'); return; }
     if (action === 'legal-terms')   { setLegalDoc('terms');   return; }
     if (action === 'legal-consent') { setLegalDoc('consent'); return; }
   }
 
   /* 5 pages → 500% track, each panel 20% */
-  const TOTAL_PAGES = 5;
+  const TOTAL_PAGES = 6;
   const CARD_STYLE: React.CSSProperties = {
     width: '66vw', minWidth: 264, maxWidth: 396,
     height: 'min(78vh, 580px)',
@@ -777,6 +779,101 @@ export function HomePopup({ onClose }: Props) {
                 Already have an account?{' '}
                 <button onClick={() => setPage(1)} className="text-blue-500 font-semibold hover:underline">Sign in</button>
               </p>
+            </div>
+          </div>
+
+          {/* ════ Page 5 — About PrivaScan ════ */}
+          <div className="flex flex-col h-full" style={{ width: `${100 / TOTAL_PAGES}%` }}>
+            {/* Header */}
+            <div className="flex items-center gap-2 px-5 pt-5 pb-3 border-b border-gray-100 shrink-0">
+              <button onClick={goBack} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors shrink-0">
+                <ChevronLeft className="w-4 h-4 text-gray-500" />
+              </button>
+              <p className="font-semibold text-[15px] text-gray-900">About PrivaScan</p>
+            </div>
+
+            {/* Scrollable body */}
+            <div className="flex-1 overflow-y-auto min-h-0">
+
+              {/* Logo + name */}
+              <div className="flex flex-col items-center pt-6 pb-4 px-5">
+                <AppLogo size="w-16 h-16" />
+                <p className="mt-3 font-bold text-[20px] tracking-tight text-gray-900">
+                  Priva<span className="text-sky-400">Scan</span>
+                </p>
+                <p className="text-[11px] text-gray-400 mt-0.5">Document Scanner · v1.0.0</p>
+              </div>
+
+              {/* Privacy slogan banner */}
+              <div className="mx-5 mb-5 rounded-2xl overflow-hidden">
+                <div className="bg-gradient-to-br from-sky-500 to-blue-700 px-4 py-4">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Shield className="w-3.5 h-3.5 text-sky-200" />
+                    <span className="text-[9px] font-bold tracking-widest text-sky-200 uppercase">Privacy First</span>
+                  </div>
+                  <p className="text-white font-bold text-[14px] leading-snug">
+                    당신의 스캔 문서는 오직{' '}
+                    <span className="text-sky-200">당신의 기기</span>와{' '}
+                    <span className="text-sky-200">개인 클라우드</span>에만 존재합니다.
+                  </p>
+                  <p className="text-sky-100 text-[11px] mt-1.5 leading-snug">
+                    Your scanned documents exist only on your device and your personal cloud — never on our servers.
+                  </p>
+                </div>
+              </div>
+
+              {/* Feature list */}
+              {[
+                {
+                  icon: <Smartphone className="w-4 h-4 text-blue-500" />,
+                  bg: 'bg-blue-50',
+                  title: '100% On-Device Processing',
+                  desc: 'Every scan is processed locally on your phone. No data ever leaves your device during capture.',
+                },
+                {
+                  icon: <Server className="w-4 h-4 text-red-400" />,
+                  bg: 'bg-red-50',
+                  title: 'Zero Cloud Server',
+                  desc: 'We operate no servers that store your documents — not even temporarily. Completely serverless.',
+                },
+                {
+                  icon: <Zap className="w-4 h-4 text-amber-500" />,
+                  bg: 'bg-amber-50',
+                  title: 'Offline-First',
+                  desc: 'Scan, process, and export without an internet connection. Full functionality, always.',
+                },
+                {
+                  icon: <Cloud className="w-4 h-4 text-sky-500" />,
+                  bg: 'bg-sky-50',
+                  title: 'Your Cloud, Your Rules',
+                  desc: 'Export to iCloud, Google Drive, or Dropbox on your terms — we never touch your cloud credentials.',
+                },
+                {
+                  icon: <CheckCircle2 className="w-4 h-4 text-green-500" />,
+                  bg: 'bg-green-50',
+                  title: 'PDF & JPEG Export',
+                  desc: 'High-quality output compatible with all devices, apps, and document workflows.',
+                },
+              ].map((f, i) => (
+                <div key={i} className="flex items-start gap-3 px-5 py-3 border-b border-gray-50">
+                  <div className={`w-8 h-8 rounded-xl ${f.bg} flex items-center justify-center shrink-0 mt-0.5`}>
+                    {f.icon}
+                  </div>
+                  <div>
+                    <p className="text-[12px] font-bold text-gray-800">{f.title}</p>
+                    <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">{f.desc}</p>
+                  </div>
+                </div>
+              ))}
+
+              {/* Company info */}
+              <div className="px-5 py-4 text-center space-y-1">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Developed by</p>
+                <p className="text-[12px] font-bold text-gray-700">CLASSIC LEGEND</p>
+                <p className="text-[11px] text-gray-400">support@privascan.app</p>
+                <p className="text-[10px] text-gray-300 mt-2">© 2024 CLASSIC LEGEND. All rights reserved.</p>
+              </div>
+
             </div>
           </div>
 
