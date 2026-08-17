@@ -35,6 +35,7 @@ interface StoredUser {
   initials: string;
   provider: 'google' | 'apple' | 'email';
   joinedAt: string; // ISO date string
+  accountType?: 'free' | 'member'; // optional for backward compat
 }
 function loadUser(): StoredUser | null {
   try { return JSON.parse(localStorage.getItem(USER_KEY) || 'null'); } catch { return null; }
@@ -317,6 +318,7 @@ export function HomePopup({ onClose }: Props) {
 
   // Page 7 account state
   const [notifEnabled, setNotifEnabled] = useState(true);
+  const [showTypePicker, setShowTypePicker] = useState(false);
 
   // 0 main | 1 login | 2 google-choose | 3 google-perms | 4 sign-up | 5 about | 6 app-pin | 7 account
   const [page,           setPage]           = useState(0);
@@ -458,17 +460,25 @@ export function HomePopup({ onClose }: Props) {
   function handleAgree() {
     let newUser: StoredUser;
     if (provider === 'google') {
-      newUser = { name: MOCK_ACCOUNT.name, email: MOCK_ACCOUNT.email, initials: MOCK_ACCOUNT.initials, provider: 'google', joinedAt: new Date().toISOString() };
+      newUser = { name: MOCK_ACCOUNT.name, email: MOCK_ACCOUNT.email, initials: MOCK_ACCOUNT.initials, provider: 'google', joinedAt: new Date().toISOString(), accountType: 'free' };
     } else if (provider === 'email' && suEmail.trim()) {
       const initials = suEmail.trim().slice(0, 2).toUpperCase();
-      newUser = { name: suEmail.trim(), email: suEmail.trim(), initials, provider: 'email', joinedAt: new Date().toISOString() };
+      newUser = { name: suEmail.trim(), email: suEmail.trim(), initials, provider: 'email', joinedAt: new Date().toISOString(), accountType: 'free' };
     } else {
-      newUser = { name: 'PrivaScan User', email: '', initials: 'PS', provider: provider ?? 'email', joinedAt: new Date().toISOString() };
+      newUser = { name: 'PrivaScan User', email: '', initials: 'PS', provider: provider ?? 'email', joinedAt: new Date().toISOString(), accountType: 'free' };
     }
     saveUser(newUser);
     setUser(newUser);
     onClose();
     setLocation('/');
+  }
+
+  function handleAccountTypeChange(t: 'free' | 'member') {
+    if (!user) return;
+    const updated = { ...user, accountType: t };
+    saveUser(updated);
+    setUser(updated);
+    setShowTypePicker(false);
   }
 
   function handleSignOut() {
@@ -1156,10 +1166,21 @@ export function HomePopup({ onClose }: Props) {
               </div>
 
               {/* Account Type */}
-              <div className="flex items-center justify-between py-4 border-b border-gray-100 -mx-1 px-1 rounded-xl hover:bg-sky-50 transition-colors cursor-default">
+              <button
+                onClick={() => setShowTypePicker(true)}
+                className="flex items-center justify-between py-4 border-b border-gray-100 -mx-1 px-1 rounded-xl hover:bg-sky-50 transition-colors w-full text-left"
+              >
                 <span className="text-[15px] text-gray-500 font-medium">Account Type</span>
-                <span className="text-[13px] text-gray-800 font-medium">Member</span>
-              </div>
+                <div className="flex items-center gap-1.5">
+                  <span className={cn(
+                    'text-[13px] font-semibold',
+                    (user?.accountType ?? 'free') === 'member' ? 'text-blue-600' : 'text-gray-500',
+                  )}>
+                    {(user?.accountType ?? 'free') === 'member' ? 'Member' : 'Free'}
+                  </span>
+                  <ChevronRight className="w-3.5 h-3.5 text-gray-300" />
+                </div>
+              </button>
 
               {/* Notification */}
               <div
@@ -1279,6 +1300,69 @@ export function HomePopup({ onClose }: Props) {
             </div>
           );
         })()}
+
+        {/* ════ Account Type picker sheet ════ */}
+        {showTypePicker && (
+          <>
+            {/* dim backdrop inside card */}
+            <div
+              className="absolute inset-0 z-20"
+              style={{ background: 'rgba(0,0,0,0.25)' }}
+              onClick={() => setShowTypePicker(false)}
+            />
+            {/* bottom sheet */}
+            <div
+              className="absolute bottom-0 left-0 right-0 z-30 bg-white rounded-t-2xl pb-2"
+              style={{ animation: 'slideUpIn 0.22s ease' }}
+            >
+              <div className="flex justify-center pt-2 pb-1">
+                <div className="w-10 h-1 rounded-full bg-gray-200" />
+              </div>
+              <p className="text-[12px] font-semibold text-gray-400 text-center pt-1 pb-2 uppercase tracking-wider">
+                Account Type
+              </p>
+
+              {(['free', 'member'] as const).map(t => {
+                const active = (user?.accountType ?? 'free') === t;
+                return (
+                  <button
+                    key={t}
+                    onClick={() => handleAccountTypeChange(t)}
+                    className={cn(
+                      'w-full flex items-center justify-between px-5 py-4 transition-colors',
+                      active ? 'bg-sky-50' : 'hover:bg-gray-50',
+                    )}
+                  >
+                    <div className="text-left">
+                      <p className={cn('text-[15px] font-semibold', active ? 'text-blue-600' : 'text-gray-800')}>
+                        {t === 'free' ? 'Free' : 'Member'}
+                      </p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">
+                        {t === 'free' ? 'Basic features, no subscription' : 'Full access with active subscription'}
+                      </p>
+                    </div>
+                    {active && (
+                      <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
+                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+
+              <div className="px-5 pt-2 pb-4">
+                <button
+                  onClick={() => setShowTypePicker(false)}
+                  className="w-full py-3 rounded-xl bg-gray-100 text-[13px] font-semibold text-gray-600 hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* ════ Legal document overlay ════ */}
         {legalDoc && (() => {
