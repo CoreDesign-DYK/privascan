@@ -26,7 +26,7 @@ interface StoredUser {
   name: string;
   email: string;
   initials: string;
-  provider: 'google' | 'apple' | 'phone' | 'email';
+  provider: 'google' | 'apple' | 'email';
   joinedAt: string; // ISO date string
 }
 function loadUser(): StoredUser | null {
@@ -37,7 +37,7 @@ function clearUser() { localStorage.removeItem(USER_KEY); }
 
 interface Props { onClose: () => void }
 
-type Provider = 'google' | 'apple' | 'phone' | 'email';
+type Provider = 'google' | 'apple' | 'email';
 
 /* ── static data ─────────────────────────────────────────────────────────── */
 type MenuAction = 'signin' | 'scan' | 'help' | 'legal-privacy' | 'legal-terms' | 'legal-consent' | null;
@@ -80,11 +80,6 @@ const SIGN_IN_METHODS: { id: Provider; label: string; bg: string; iconEl: React.
     id: 'apple', label: 'Continue with Apple',
     bg: 'bg-black hover:bg-gray-900',
     iconEl: <svg viewBox="0 0 814 1000" className="w-5 h-5 shrink-0" fill="white"><path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-37.3-161.8-109.3-100.9-193.7-100.9-288.5c0-167.8 109.3-256.6 216.7-256.6 69.4 0 127.3 45.4 170.8 45.4 41.3 0 106.2-48 187.7-48C643.3 192.3 740.7 230.8 788.1 340.9zm-130.2-89.5c0-71.5 69.3-131.5 69.3-132.9 0-.6-.7-.6-1.3-.6-65.9 0-156.6 73.3-156.6 158.2 0 69.4 56.9 128.4 126.3 128.4 0 0 1.3 0 1.3-.6.1-1.4-38.9-81.6-39-153.5z"/></svg>,
-  },
-  {
-    id: 'phone', label: 'Continue with Phone Number',
-    bg: 'bg-blue-500 hover:bg-blue-600',
-    iconEl: <svg viewBox="0 0 24 24" className="w-5 h-5 shrink-0" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>,
   },
   {
     id: 'email', label: 'Continue with Email',
@@ -436,8 +431,7 @@ export function HomePopup({ onClose }: Props) {
                     <button key={m.id} onClick={goLogin} className={cn(
                       'w-8 h-8 rounded-full flex items-center justify-center shadow-sm transition-opacity active:opacity-70',
                       m.id === 'google' ? 'bg-white border-2 border-gray-300' :
-                      m.id === 'apple'  ? 'bg-black' :
-                      m.id === 'phone'  ? 'bg-blue-500' : 'bg-emerald-500',
+                      m.id === 'apple'  ? 'bg-black' : 'bg-emerald-500',
                     )}>
                       {m.iconEl}
                     </button>
@@ -512,8 +506,7 @@ export function HomePopup({ onClose }: Props) {
                   <button key={m.id} onClick={() => goTerms(m.id)} className={cn(
                     'w-9 h-9 rounded-full flex items-center justify-center shadow-sm transition-opacity active:opacity-70 shrink-0',
                     m.id === 'google' ? 'bg-white border-2 border-gray-300' :
-                    m.id === 'apple'  ? 'bg-black' :
-                    m.id === 'phone'  ? 'bg-blue-500' : 'bg-emerald-500',
+                    m.id === 'apple'  ? 'bg-black' : 'bg-emerald-500',
                   )}>
                     {m.iconEl}
                   </button>
