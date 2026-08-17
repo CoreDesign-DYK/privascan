@@ -390,60 +390,45 @@ export function HomePopup({ onClose }: Props) {
 
           {/* ════ Page 0 — Main menu ════ */}
           <div className="flex flex-col" style={{ width: `${100 / TOTAL_PAGES}%` }}>
-            <div className="relative flex flex-col items-center pt-7 pb-5 px-3 border-b border-gray-100">
-              {/* Profile button (top-right corner) — only when logged in */}
-              {user && (
+            {/* ── Header row: logo+name LEFT, avatar RIGHT ── */}
+            <div className="flex items-center justify-between px-4 pt-5 pb-4 border-b border-gray-100">
+              {/* Left: logo + app name */}
+              <div className="flex items-center gap-2.5">
+                <AppLogo size="w-11 h-11" />
+                <div>
+                  <p className="font-bold text-[18px] tracking-tight text-gray-900 leading-none">
+                    Priva<span className="text-sky-400">Scan</span>
+                  </p>
+                  {!user && (
+                    <p className="text-[10px] text-gray-400 mt-0.5 leading-tight">
+                      Sign in to access more features
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Right: avatar (logged-in) or sign-in icons (logged-out) */}
+              {user ? (
                 <button
                   onClick={() => setShowProfile(true)}
-                  className="absolute top-3 right-3 flex items-center justify-center"
                   aria-label="View profile"
+                  className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center shadow-md ring-2 ring-white hover:ring-blue-200 active:scale-95 transition-all shrink-0"
                 >
-                  <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center shadow-sm ring-2 ring-white hover:ring-blue-200 transition-all">
-                    <span className="text-[11px] font-bold text-white leading-none">{user.initials}</span>
-                  </div>
+                  <span className="text-[13px] font-bold text-white leading-none">{user.initials}</span>
                 </button>
-              )}
-
-              {user ? (
-                /* ── Logged-in header ── */
-                <div className="flex items-center gap-3 w-full px-1">
-                  <Avatar initials={user.initials} size="w-12 h-12" text="text-sm" />
-                  <div className="min-w-0">
-                    <p className="font-bold text-[15px] text-gray-900 leading-snug truncate">{user.name}</p>
-                    <p className="text-[11px] text-gray-400 truncate">{user.email || 'No email'}</p>
-                    <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded-full bg-sky-50 border border-sky-200">
-                      {user.provider === 'google' && <GoogleIcon size="w-3 h-3" />}
-                      <span className="text-[9px] font-semibold text-sky-600 capitalize">{user.provider}</span>
-                    </span>
-                  </div>
-                </div>
               ) : (
-                /* ── Logged-out header ── */
-                <>
-                  <div className="flex items-center gap-3 mb-1">
-                    <AppLogo />
-                    <div>
-                      <p className="font-bold text-[18px] tracking-tight text-gray-900 leading-none">
-                        Priva<span className="text-sky-400">Scan</span>
-                      </p>
-                      <p className="text-[11px] text-gray-400 mt-1 leading-tight">
-                        Sign in to access<br />more features
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2.5 mt-3">
-                    {SIGN_IN_METHODS.map(m => (
-                      <button key={m.id} onClick={goLogin} className={cn(
-                        'w-9 h-9 rounded-full flex items-center justify-center shadow-sm transition-opacity active:opacity-70',
-                        m.id === 'google' ? 'bg-white border-2 border-gray-300' :
-                        m.id === 'apple'  ? 'bg-black' :
-                        m.id === 'phone'  ? 'bg-blue-500' : 'bg-emerald-500',
-                      )}>
-                        {m.iconEl}
-                      </button>
-                    ))}
-                  </div>
-                </>
+                <div className="flex items-center gap-2">
+                  {SIGN_IN_METHODS.map(m => (
+                    <button key={m.id} onClick={goLogin} className={cn(
+                      'w-8 h-8 rounded-full flex items-center justify-center shadow-sm transition-opacity active:opacity-70',
+                      m.id === 'google' ? 'bg-white border-2 border-gray-300' :
+                      m.id === 'apple'  ? 'bg-black' :
+                      m.id === 'phone'  ? 'bg-blue-500' : 'bg-emerald-500',
+                    )}>
+                      {m.iconEl}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
 
