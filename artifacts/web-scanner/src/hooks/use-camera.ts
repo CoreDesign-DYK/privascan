@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-// Set to true to use mock camera in development (no real camera needed).
-const IS_DEV = true;
+// Auto-detect: use real camera when running on a real device/mobile,
+// fall back to mock only in desktop localhost without camera.
+const IS_DEV = false;
 
 export function useCamera() {
   const videoRef = useRef<HTMLVideoElement>(null);
