@@ -11,12 +11,11 @@
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocation } from 'wouter';
-import { Zap, ZapOff, ChevronRight, Smartphone, Edit2, ScanLine, FileText, House } from 'lucide-react';
+import { Zap, ZapOff, ChevronRight, Smartphone, Edit2, ScanLine, FileText, House, Camera, Crop, RotateCw, Type, Trash2, PenLine, Check, X as XIcon } from 'lucide-react';
 import { useCamera } from '@/hooks/use-camera';
 import { useScannerContext } from '@/contexts/scanner-context';
 import { SettingsSheet } from '@/components/settings-sheet';
 import { HomePopup } from '@/components/home-popup';
-import { RadialMenu } from '@/components/radial-menu';
 import { GallerySheet } from '@/components/gallery-sheet';
 import { useLocalScans } from '@/hooks/use-local-scans';
 import { Button } from '@/components/ui/button';
@@ -247,9 +246,15 @@ export default function ScannerScreen() {
   const [qualityOpen, setQualityOpen] = useState(false);
 
   const [scanMode,    setScanMode]    = useState<ScanMode>('document');
-  const [radialOpen,  setRadialOpen]  = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [homeOpen,    setHomeOpen]    = useState(false);
+
+  // ── Text tool state ────────────────────────────────────────────────────────
+  const [textPanelOpen,  setTextPanelOpen]  = useState(false);
+  const [textInput,      setTextInput]      = useState('');
+  const [textSize,       setTextSize]       = useState<'S' | 'M' | 'L'>('M');
+  const [textColor,      setTextColor]      = useState<'white' | 'black' | 'blue'>('black');
+  const [textApplying,   setTextApplying]   = useState(false);
 
   const { data: localScans = [] } = useLocalScans();
   const lastScan = localScans[0] ?? null;
@@ -567,6 +572,56 @@ export default function ScannerScreen() {
     else if (mode === 'auto')       autoCaptureFrame();
     else                            manualCaptureFrame();
   }, [mode, autoCaptureFrame, manualCaptureFrame, bookCapture, presentationCapture, idCardsCapture]);
+
+  /* ── Text stamp: burns typed text onto the last page ───────────────────── */
+  const handleApplyText = useCallback(async () => {
+    if (!textInput.trim() || !pages.length) return;
+    setTextApplying(true);
+    try {
+      const src = pages[pages.length - 1];
+      const img = new Image();
+      await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = src; });
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0);
+
+      const sizePx = { S: 36, M: 56, L: 80 }[textSize];
+      const color  = { white: '#ffffff', black: '#111111', blue: '#2563eb' }[textColor];
+      ctx.font = `bold ${sizePx}px -apple-system, sans-serif`;
+      ctx.fillStyle = color;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Shadow for readability
+      ctx.shadowColor = textColor === 'white' ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.5)';
+      ctx.shadowBlur = 8;
+
+      // Wrap text at 80% width
+      const maxW = canvas.width * 0.8;
+      const words = textInput.trim().split(' ');
+      const lines: string[] = [];
+      let line = '';
+      for (const word of words) {
+        const test = line ? `${line} ${word}` : word;
+        if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = word; }
+        else { line = test; }
+      }
+      if (line) lines.push(line);
+
+      const lineH = sizePx * 1.35;
+      const totalH = lines.length * lineH;
+      const startY = canvas.height / 2 - totalH / 2 + lineH / 2;
+      lines.forEach((l, i) => ctx.fillText(l, canvas.width / 2, startY + i * lineH));
+
+      removePage(pages.length - 1);
+      addPage(canvas.toDataURL('image/jpeg', 0.92));
+      toast.success('Text added');
+      setTextPanelOpen(false);
+      setTextInput('');
+    } catch { toast.error('Failed to add text'); }
+    finally { setTextApplying(false); }
+  }, [textInput, textSize, textColor, pages, removePage, addPage]);
 
   /* ── Permission error ───────────────────────────────────────────────────── */
   if (hasPermission === false) {
@@ -1021,11 +1076,130 @@ export default function ScannerScreen() {
           </div>
         )}
 
+        {/* ── Adobe-style horizontal edit toolbar ── */}
+        {pages.length > 0 && (
+          <div className="flex justify-around items-center py-1 animate-in fade-in slide-in-from-bottom-2 duration-200">
+
+            {/* Retake */}
+            <ToolbarBtn icon={<Camera className="w-5 h-5" />} label="Retake" onClick={() => {
+              removePage(pages.length - 1);
+              toast('Last page removed');
+            }} />
+
+            {/* Crop */}
+            <ToolbarBtn icon={<Crop className="w-5 h-5" />} label="Crop" onClick={() => {
+              setPendingPage(pages[pages.length - 1]);
+              setDetectedCorners(defaultCorners(1240, 1754));
+              setLocation('/edit');
+            }} />
+
+            {/* Rotate */}
+            <ToolbarBtn icon={<RotateCw className="w-5 h-5" />} label="Rotate" onClick={async () => {
+              const src = pages[pages.length - 1];
+              const img = new Image();
+              img.src = src;
+              await new Promise<void>(res => { img.onload = () => res(); });
+              const c = document.createElement('canvas');
+              c.width = img.naturalHeight; c.height = img.naturalWidth;
+              const ctx = c.getContext('2d')!;
+              ctx.translate(c.width / 2, c.height / 2);
+              ctx.rotate(Math.PI / 2);
+              ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+              removePage(pages.length - 1);
+              addPage(c.toDataURL('image/jpeg', 0.92));
+              toast.success('Rotated 90°');
+            }} />
+
+            {/* Text */}
+            <ToolbarBtn
+              icon={<Type className="w-5 h-5" />}
+              label="Text"
+              active={textPanelOpen}
+              onClick={() => setTextPanelOpen(o => !o)}
+            />
+
+            {/* Markup */}
+            <ToolbarBtn icon={<PenLine className="w-5 h-5" />} label="Markup" onClick={() => {
+              setLocation('/markup');
+            }} />
+
+            {/* Delete */}
+            <ToolbarBtn icon={<Trash2 className="w-5 h-5" />} label="Delete" danger onClick={() => {
+              clearPages();
+              toast.error(`All page${pages.length > 1 ? 's' : ''} deleted`);
+            }} />
+
+          </div>
+        )}
+
+        {/* ── Text input panel ── */}
+        {textPanelOpen && pages.length > 0 && (
+          <div className="bg-gray-900/95 rounded-2xl px-4 py-3 space-y-3 border border-white/10 animate-in slide-in-from-bottom-2 duration-200">
+            {/* Input row */}
+            <div className="flex items-center gap-2">
+              <input
+                autoFocus
+                type="text"
+                value={textInput}
+                onChange={e => setTextInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleApplyText(); }}
+                placeholder="Type text to stamp on page…"
+                className="flex-1 bg-white/10 text-white placeholder-white/30 rounded-xl px-3 py-2 text-sm outline-none border border-white/10 focus:border-blue-500 transition-colors"
+              />
+              <button
+                onClick={() => { setTextPanelOpen(false); setTextInput(''); }}
+                className="text-white/40 hover:text-white/70 transition-colors p-1"
+              >
+                <XIcon className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Size + Color + Apply row */}
+            <div className="flex items-center gap-3">
+              {/* Size */}
+              <div className="flex gap-1">
+                {(['S', 'M', 'L'] as const).map(s => (
+                  <button key={s} onClick={() => setTextSize(s)}
+                    className={cn('w-8 h-8 rounded-lg text-xs font-bold transition-all',
+                      textSize === s ? 'bg-blue-500 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
+                    )}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+
+              {/* Color swatches */}
+              <div className="flex gap-1.5">
+                {([
+                  { key: 'black', bg: 'bg-gray-900', border: 'border-white/40' },
+                  { key: 'white', bg: 'bg-white',    border: 'border-white/40' },
+                  { key: 'blue',  bg: 'bg-blue-500', border: 'border-blue-300' },
+                ] as const).map(({ key, bg, border }) => (
+                  <button key={key} onClick={() => setTextColor(key)}
+                    className={cn('w-6 h-6 rounded-full border-2 transition-all',
+                      bg, border,
+                      textColor === key ? 'ring-2 ring-white ring-offset-1 ring-offset-gray-900 scale-110' : ''
+                    )} />
+                ))}
+              </div>
+
+              {/* Apply */}
+              <button
+                onClick={handleApplyText}
+                disabled={!textInput.trim() || textApplying}
+                className="ml-auto flex items-center gap-1.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-40 text-white text-sm font-semibold px-4 py-1.5 rounded-full transition-all"
+              >
+                {textApplying
+                  ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  : <><Check className="w-4 h-4" /> Apply</>
+                }
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ── Scan mode tabs ── */}
-        <div className={cn(
-          'flex justify-center transition-all duration-200 pointer-events-auto',
-          radialOpen && 'opacity-20 blur-[1px] pointer-events-none',
-        )}>
+        <div className="flex justify-center transition-all duration-200 pointer-events-auto">
           <div className="flex items-center gap-0 bg-white/8 border border-white/10 rounded-full px-1 py-1">
             {([
               { id: 'document',     label: 'Document'     },
@@ -1086,99 +1260,50 @@ export default function ScannerScreen() {
             )}
           </button>
 
-          {/* ── F: iOS-style capture button with progress ring ── */}
-          <RadialMenu
-            onOpenChange={setRadialOpen}
-            onRetake={() => {
-              if (!pages.length) { toast('No page to retake'); return; }
-              removePage(pages.length - 1);
-              toast('Last page removed — retake when ready');
-            }}
-            onCrop={() => {
-              if (pages.length) {
-                setPendingPage(pages[pages.length - 1]);
-                setDetectedCorners(defaultCorners(1240, 1754));
-                setLocation('/edit');
-              } else toast('No page yet');
-            }}
-            onRotate={async () => {
-              if (!pages.length) { toast('No page to rotate'); return; }
-              const src = pages[pages.length - 1];
-              const img = new Image();
-              img.src = src;
-              await new Promise<void>(res => { img.onload = () => res(); });
-              const canvas = document.createElement('canvas');
-              canvas.width  = img.naturalHeight;
-              canvas.height = img.naturalWidth;
-              const ctx = canvas.getContext('2d')!;
-              ctx.translate(canvas.width / 2, canvas.height / 2);
-              ctx.rotate(Math.PI / 2);
-              ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
-              const rotated = canvas.toDataURL('image/jpeg', 0.92);
-              removePage(pages.length - 1);
-              addPage(rotated);
-              toast.success('Rotated 90°');
-            }}
-            onMarkup={() => {
-              if (!pages.length) { toast('No page to mark up'); return; }
-              setLocation('/markup');
-            }}
-            onDelete={() => {
-              if (!pages.length) { toast('No pages to delete'); return; }
-              clearPages();
-              toast.error(`All ${pages.length} page${pages.length > 1 ? 's' : ''} deleted`);
-            }}
-          >
-            <div className="relative w-16 h-16">
-              {/* Progress ring */}
-              {mode === 'auto' && (
-                <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none" viewBox="0 0 80 80">
-                  <circle cx="40" cy="40" r={RING_R} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="3" />
-                  {stableProgress > 0 && (
-                    <circle
-                      cx="40" cy="40" r={RING_R}
-                      fill="none"
-                      stroke={isStable ? '#4ade80' : '#60a5fa'}
-                      strokeWidth="3"
-                      strokeLinecap="round"
-                      strokeDasharray={RING_CIRC}
-                      strokeDashoffset={RING_CIRC * (1 - stableProgress)}
-                      style={{ transition: 'stroke-dashoffset 0.15s ease-out, stroke 0.3s ease' }}
-                    />
-                  )}
-                </svg>
-              )}
-
-              {/* iOS shutter button */}
-              <button
-                onClick={handleCaptureButton}
-                className={cn(
-                  'absolute inset-0 rounded-full border-[3px] border-white',
-                  'flex items-center justify-center',
-                  'active:scale-95 transition-transform duration-100',
-                  isStable && mode === 'auto' && 'animate-capture-glow',
+          {/* ── F: iOS-style capture button (standalone) ── */}
+          <div className="relative w-16 h-16">
+            {/* Progress ring */}
+            {mode === 'auto' && (
+              <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none" viewBox="0 0 80 80">
+                <circle cx="40" cy="40" r={RING_R} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="3" />
+                {stableProgress > 0 && (
+                  <circle
+                    cx="40" cy="40" r={RING_R}
+                    fill="none"
+                    stroke={isStable ? '#4ade80' : '#60a5fa'}
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeDasharray={RING_CIRC}
+                    strokeDashoffset={RING_CIRC * (1 - stableProgress)}
+                    style={{ transition: 'stroke-dashoffset 0.15s ease-out, stroke 0.3s ease' }}
+                  />
                 )}
-              >
-                <div className={cn(
-                  'w-[2.7rem] h-[2.7rem] rounded-full transition-all duration-300',
-                  isStable && mode === 'auto'
-                    ? 'bg-green-400 shadow-[0_0_16px_rgba(74,222,128,0.6)]'
-                    : mode === 'manual'
-                      ? 'bg-white'
-                      : 'bg-white',
-                )}>
-                  {mode === 'auto' && (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <Zap className={cn(
-                        'w-4 h-4 fill-current transition-colors',
-                        isStable ? 'text-white' : 'text-gray-800',
-                      )} />
-                    </div>
-                  )}
-                </div>
-              </button>
-            </div>
-          </RadialMenu>
+              </svg>
+            )}
+            {/* iOS shutter button */}
+            <button
+              onClick={handleCaptureButton}
+              className={cn(
+                'absolute inset-0 rounded-full border-[3px] border-white',
+                'flex items-center justify-center',
+                'active:scale-95 transition-transform duration-100',
+                isStable && mode === 'auto' && 'animate-capture-glow',
+              )}
+            >
+              <div className={cn(
+                'w-[2.7rem] h-[2.7rem] rounded-full transition-all duration-300',
+                isStable && mode === 'auto'
+                  ? 'bg-green-400 shadow-[0_0_16px_rgba(74,222,128,0.6)]'
+                  : 'bg-white',
+              )}>
+                {mode === 'auto' && (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <Zap className={cn('w-4 h-4 fill-current transition-colors', isStable ? 'text-white' : 'text-gray-800')} />
+                  </div>
+                )}
+              </div>
+            </button>
+          </div>
 
           {/* Preview / page count */}
           {mode === 'manual' ? (
@@ -1214,5 +1339,31 @@ export default function ScannerScreen() {
       <GallerySheet open={galleryOpen} onClose={() => setGalleryOpen(false)} />
       {homeOpen && <HomePopup onClose={() => setHomeOpen(false)} />}
     </div>
+  );
+}
+
+/* ── ToolbarBtn sub-component ──────────────────────────────────────────────── */
+function ToolbarBtn({
+  icon, label, onClick, active, danger,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  active?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'flex flex-col items-center gap-1 px-2 py-1.5 rounded-xl transition-all active:scale-90',
+        active  && 'bg-white/15 text-white',
+        danger  && !active && 'text-red-400 hover:text-red-300',
+        !active && !danger && 'text-white/70 hover:text-white',
+      )}
+    >
+      {icon}
+      <span className="text-[10px] font-medium leading-none">{label}</span>
+    </button>
   );
 }
