@@ -1201,6 +1201,13 @@ export function HomePopup({ onClose }: Props) {
                 </div>
               </button>
 
+              {/* Subscription */}
+              <button className="flex items-center gap-3 py-3 border-b border-gray-100 w-full text-left -mx-1 px-1 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors">
+                <Crown className="w-4 h-4 text-gray-400 shrink-0" />
+                <span className="flex-1 text-[13px] text-gray-700 font-medium">Subscription</span>
+                <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
+              </button>
+
               {/* Notification */}
               <div
                 onClick={() => setNotifEnabled(v => !v)}
@@ -1224,13 +1231,6 @@ export function HomePopup({ onClose }: Props) {
                   />
                 </div>
               </div>
-
-              {/* Subscription */}
-              <button className="flex items-center gap-3 py-3 border-b border-gray-100 w-full text-left -mx-1 px-1 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors">
-                <Crown className="w-4 h-4 text-gray-400 shrink-0" />
-                <span className="flex-1 text-[13px] text-gray-700 font-medium">Subscription</span>
-                <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
-              </button>
 
               {/* Sign Out */}
               <button
