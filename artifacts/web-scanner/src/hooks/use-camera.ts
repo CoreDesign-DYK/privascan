@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 
-const IS_DEV = false;
+const IS_DEV = true;
 
 export function useCamera() {
   const videoRef   = useRef<HTMLVideoElement>(null);
