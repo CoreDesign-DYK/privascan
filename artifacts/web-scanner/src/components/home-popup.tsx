@@ -1171,49 +1171,43 @@ export function HomePopup({ onClose }: Props) {
               {/* Account Detail */}
               <button
                 onClick={() => setPage(8)}
-                className="flex items-center gap-3 py-3.5 border-b border-gray-100 -mx-1 px-1 rounded-xl hover:bg-sky-50 transition-colors w-full text-left"
+                className="flex items-center gap-3 py-3 border-b border-gray-100 -mx-1 px-1 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors w-full text-left"
               >
-                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
-                  <User className="w-4 h-4 text-blue-500" />
-                </div>
-                <span className="flex-1 text-[15px] text-gray-600 font-medium">Account Detail</span>
+                <User className="w-4 h-4 text-gray-400 shrink-0" />
+                <span className="flex-1 text-[13px] text-gray-700 font-medium">Account Detail</span>
                 <div className="flex items-center gap-1 min-w-0">
                   <span className="text-[12px] text-gray-400 truncate max-w-[100px]">
                     {user?.email ? maskEmail(user.email) : '—'}
                   </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-gray-300 shrink-0" />
+                  <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
                 </div>
               </button>
 
               {/* Account Type */}
               <button
                 onClick={() => setShowTypePicker(true)}
-                className="flex items-center gap-3 py-3.5 border-b border-gray-100 -mx-1 px-1 rounded-xl hover:bg-sky-50 transition-colors w-full text-left"
+                className="flex items-center gap-3 py-3 border-b border-gray-100 -mx-1 px-1 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors w-full text-left"
               >
-                <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
-                  <Shield className="w-4 h-4 text-indigo-500" />
-                </div>
-                <span className="flex-1 text-[15px] text-gray-600 font-medium">Account Type</span>
+                <Shield className="w-4 h-4 text-gray-400 shrink-0" />
+                <span className="flex-1 text-[13px] text-gray-700 font-medium">Account Type</span>
                 <div className="flex items-center gap-1.5">
                   <span className={cn(
                     'text-[12px] font-semibold',
-                    (user?.accountType ?? 'free') === 'member' ? 'text-blue-600' : 'text-gray-400',
+                    (user?.accountType ?? 'free') === 'member' ? 'text-blue-500' : 'text-gray-400',
                   )}>
                     {(user?.accountType ?? 'free') === 'member' ? 'Member' : 'Free'}
                   </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-gray-300" />
+                  <ChevronRight className="w-4 h-4 text-gray-300" />
                 </div>
               </button>
 
               {/* Notification */}
               <div
                 onClick={() => setNotifEnabled(v => !v)}
-                className="flex items-center gap-3 py-3.5 border-b border-gray-100 -mx-1 px-1 rounded-xl hover:bg-sky-50 transition-colors cursor-pointer"
+                className="flex items-center gap-3 py-3 border-b border-gray-100 -mx-1 px-1 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer"
               >
-                <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center shrink-0">
-                  <Bell className="w-4 h-4 text-orange-500" />
-                </div>
-                <span className="flex-1 text-[15px] text-gray-600 font-medium">Notification</span>
+                <Bell className="w-4 h-4 text-gray-400 shrink-0" />
+                <span className="flex-1 text-[13px] text-gray-700 font-medium">Notification</span>
                 <div
                   className={cn(
                     'relative flex-none w-[36px] h-[22px] rounded-full transition-colors duration-300',
@@ -1232,23 +1226,19 @@ export function HomePopup({ onClose }: Props) {
               </div>
 
               {/* Subscription */}
-              <button className="flex items-center gap-3 py-3.5 border-b border-gray-100 w-full text-left -mx-1 px-1 rounded-xl hover:bg-sky-50 transition-colors">
-                <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
-                  <CreditCard className="w-4 h-4 text-emerald-500" />
-                </div>
-                <span className="flex-1 text-[15px] text-gray-600 font-medium">Subscription</span>
+              <button className="flex items-center gap-3 py-3 border-b border-gray-100 w-full text-left -mx-1 px-1 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors">
+                <CreditCard className="w-4 h-4 text-gray-400 shrink-0" />
+                <span className="flex-1 text-[13px] text-gray-700 font-medium">Subscription</span>
                 <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
               </button>
 
               {/* Sign Out */}
               <button
                 onClick={handleSignOut}
-                className="flex items-center gap-3 py-3.5 w-full text-left -mx-1 px-1 rounded-xl hover:bg-red-50 transition-colors group"
+                className="flex items-center gap-3 py-3 w-full text-left -mx-1 px-1 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors"
               >
-                <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center shrink-0">
-                  <LogOut className="w-4 h-4 text-red-400 group-hover:text-red-500 transition-colors" />
-                </div>
-                <span className="text-[15px] text-gray-600 font-medium group-hover:text-red-500 transition-colors">Sign Out</span>
+                <LogOut className="w-4 h-4 text-gray-400 shrink-0" />
+                <span className="text-[13px] text-gray-700 font-medium">Sign Out</span>
               </button>
 
             </div>
