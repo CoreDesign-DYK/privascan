@@ -26,6 +26,8 @@ import TermsOfServiceScreen from '@/pages/terms-of-service';
 import LoginScreen from '@/pages/login';
 import { PinLockScreen } from '@/components/pin-lock-screen';
 import { isLockRequired, recordHiddenAt } from '@/lib/pin-storage';
+import { registerServiceWorker } from '@/lib/sw-registration';
+import { UpdateBanner } from '@/components/update-banner';
 
 const queryClient = new QueryClient();
 
@@ -82,6 +84,12 @@ function AppWithPinLock() {
 }
 
 function App() {
+  const [updateReady, setUpdateReady] = useState(false);
+
+  useEffect(() => {
+    registerServiceWorker(() => setUpdateReady(true));
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -91,6 +99,9 @@ function App() {
           </WouterRouter>
           <Toaster />
           <SonnerToaster position="top-center" />
+          {updateReady && (
+            <UpdateBanner onDismiss={() => setUpdateReady(false)} />
+          )}
         </LanguageProvider>
       </TooltipProvider>
     </QueryClientProvider>

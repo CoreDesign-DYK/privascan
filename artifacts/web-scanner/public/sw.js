@@ -7,7 +7,9 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE).then((cache) => cache.addAll(PRECACHE_URLS))
   );
-  self.skipWaiting();
+  // Do NOT call skipWaiting() here.
+  // The new SW waits in "installed" state until the app sends SKIP_WAITING.
+  // This lets us show the update banner before reloading.
 });
 
 self.addEventListener('activate', (event) => {
@@ -17,6 +19,13 @@ self.addEventListener('activate', (event) => {
     )
   );
   self.clients.claim();
+});
+
+// The app sends this message when the user taps "Update Now"
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 // Network-first, fall back to cache
