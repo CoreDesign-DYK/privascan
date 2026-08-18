@@ -19,6 +19,7 @@ import {
   Globe, Lock, Info, Share2, Star, Database,
   Smartphone, Zap, CheckCircle2, Server, Cloud,
   Delete, CheckCircle, ToggleLeft, ToggleRight, Clock,
+  Bell, CreditCard, LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -1170,11 +1171,14 @@ export function HomePopup({ onClose }: Props) {
               {/* Account Detail */}
               <button
                 onClick={() => setPage(8)}
-                className="flex items-center justify-between py-4 border-b border-gray-100 -mx-1 px-1 rounded-xl hover:bg-sky-50 transition-colors w-full text-left"
+                className="flex items-center gap-3 py-3.5 border-b border-gray-100 -mx-1 px-1 rounded-xl hover:bg-sky-50 transition-colors w-full text-left"
               >
-                <span className="text-[15px] text-gray-500 font-medium">Account Detail</span>
+                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                  <User className="w-4 h-4 text-blue-500" />
+                </div>
+                <span className="flex-1 text-[15px] text-gray-600 font-medium">Account Detail</span>
                 <div className="flex items-center gap-1 min-w-0">
-                  <span className="text-[13px] text-gray-800 font-medium truncate max-w-[48%]">
+                  <span className="text-[12px] text-gray-400 truncate max-w-[100px]">
                     {user?.email ? maskEmail(user.email) : '—'}
                   </span>
                   <ChevronRight className="w-3.5 h-3.5 text-gray-300 shrink-0" />
@@ -1184,13 +1188,16 @@ export function HomePopup({ onClose }: Props) {
               {/* Account Type */}
               <button
                 onClick={() => setShowTypePicker(true)}
-                className="flex items-center justify-between py-4 border-b border-gray-100 -mx-1 px-1 rounded-xl hover:bg-sky-50 transition-colors w-full text-left"
+                className="flex items-center gap-3 py-3.5 border-b border-gray-100 -mx-1 px-1 rounded-xl hover:bg-sky-50 transition-colors w-full text-left"
               >
-                <span className="text-[15px] text-gray-500 font-medium">Account Type</span>
+                <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
+                  <Shield className="w-4 h-4 text-indigo-500" />
+                </div>
+                <span className="flex-1 text-[15px] text-gray-600 font-medium">Account Type</span>
                 <div className="flex items-center gap-1.5">
                   <span className={cn(
-                    'text-[13px] font-semibold',
-                    (user?.accountType ?? 'free') === 'member' ? 'text-blue-600' : 'text-gray-500',
+                    'text-[12px] font-semibold',
+                    (user?.accountType ?? 'free') === 'member' ? 'text-blue-600' : 'text-gray-400',
                   )}>
                     {(user?.accountType ?? 'free') === 'member' ? 'Member' : 'Free'}
                   </span>
@@ -1201,10 +1208,12 @@ export function HomePopup({ onClose }: Props) {
               {/* Notification */}
               <div
                 onClick={() => setNotifEnabled(v => !v)}
-                className="flex items-center justify-between py-4 border-b border-gray-100 -mx-1 px-1 rounded-xl hover:bg-sky-50 transition-colors cursor-pointer"
+                className="flex items-center gap-3 py-3.5 border-b border-gray-100 -mx-1 px-1 rounded-xl hover:bg-sky-50 transition-colors cursor-pointer"
               >
-                <span className="text-[15px] text-gray-500 font-medium">Notification</span>
-                {/* iOS-style toggle */}
+                <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center shrink-0">
+                  <Bell className="w-4 h-4 text-orange-500" />
+                </div>
+                <span className="flex-1 text-[15px] text-gray-600 font-medium">Notification</span>
                 <div
                   className={cn(
                     'relative flex-none w-[36px] h-[22px] rounded-full transition-colors duration-300',
@@ -1223,17 +1232,23 @@ export function HomePopup({ onClose }: Props) {
               </div>
 
               {/* Subscription */}
-              <button className="flex items-center justify-between py-4 border-b border-gray-100 w-full text-left -mx-1 px-1 rounded-xl hover:bg-sky-50 transition-colors">
-                <span className="text-[15px] text-gray-500 font-medium">Subscription</span>
+              <button className="flex items-center gap-3 py-3.5 border-b border-gray-100 w-full text-left -mx-1 px-1 rounded-xl hover:bg-sky-50 transition-colors">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
+                  <CreditCard className="w-4 h-4 text-emerald-500" />
+                </div>
+                <span className="flex-1 text-[15px] text-gray-600 font-medium">Subscription</span>
                 <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
               </button>
 
               {/* Sign Out */}
               <button
                 onClick={handleSignOut}
-                className="flex items-center justify-between py-4 w-full text-left -mx-1 px-1 rounded-xl hover:bg-red-50 transition-colors"
+                className="flex items-center gap-3 py-3.5 w-full text-left -mx-1 px-1 rounded-xl hover:bg-red-50 transition-colors group"
               >
-                <span className="text-[15px] text-gray-500 font-medium hover:text-red-500 transition-colors">Sign Out</span>
+                <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center shrink-0">
+                  <LogOut className="w-4 h-4 text-red-400 group-hover:text-red-500 transition-colors" />
+                </div>
+                <span className="text-[15px] text-gray-600 font-medium group-hover:text-red-500 transition-colors">Sign Out</span>
               </button>
 
             </div>
