@@ -14,6 +14,7 @@ interface ScannerContextType {
   pages: string[];
   addPage: (dataUrl: string) => void;
   removePage: (index: number) => void;
+  updatePage: (index: number, dataUrl: string) => void;
   clearPages: () => void;
   mode: 'auto' | 'manual';
   setMode: (mode: 'auto' | 'manual') => void;
@@ -44,12 +45,13 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
 
   const addPage     = useCallback((url: string)  => setPages(p => [...p, url]),           []);
   const removePage  = useCallback((i: number)    => setPages(p => p.filter((_, j) => j !== i)), []);
+  const updatePage  = useCallback((i: number, url: string) => setPages(p => p.map((ex, j) => j === i ? url : ex)), []);
   const clearPages  = useCallback(()             => setPages([]),                           []);
 
   return (
     <ScannerContext.Provider value={{
       settings, setSettings,
-      pages, addPage, removePage, clearPages,
+      pages, addPage, removePage, updatePage, clearPages,
       mode, setMode,
       pendingPage, setPendingPage,
       detectedCorners, setDetectedCorners,

@@ -1,80 +1,235 @@
-import React, { useState, useRef, useEffect } from 'react';
+/**
+ * preview.tsx — Adobe Scan-style unified review screen
+ *
+ * Layout:
+ *   Header (back · page count · share)
+ *   Large page preview
+ *   Thumbnail strip
+ *   Sub-panel  (filters chips OR adjust sliders — only when tool active)
+ *   Tool bar   (Retake · Crop · Rotate · Filters · Adjust · Delete)
+ *   Primary    (Keep scanning · Save PDF)
+ *
+ * Crop opens a full-screen overlay within this screen (no route change).
+ * Rotate, Filters, Adjust apply directly to pages[selectedIdx] via updatePage.
+ */
+
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useLocation } from 'wouter';
 import { useScannerContext } from '@/contexts/scanner-context';
+import {
+  ChevronLeft, Share2, Camera, Crop as CropIcon, RotateCw,
+  Sparkles, SlidersHorizontal, Trash2, Check, X, Download,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { filterCanvas, FILTER_LABELS, type FilterType } from '@/lib/filters';
+import { warpPerspective, estimateOutputSize, type Point } from '@/lib/perspective';
+import { defaultCorners } from '@/lib/edge-detection';
+import { generatePDF, downloadBlob, shareFile } from '@/lib/export';
+import { useSaveScan, useUpdateScan, useDeleteLocalScan } from '@/hooks/use-local-scans';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-  Trash2, Plus, Share, ChevronLeft, Download, Share2,
-  Scissors, ScanText, ChevronDown, ChevronUp, Mail, AlertTriangle,
-} from 'lucide-react';
-import {
-  Dialog, DialogContent, DialogDescription,
-  DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
-import { generatePDF, downloadBlob, shareFile, splitPages } from '@/lib/export';
-import { useSaveScan, useUpdateScan, useDeleteLocalScan } from '@/hooks/use-local-scans';
-import { OcrPanel } from '@/components/ocr-panel';
-import { toast } from 'sonner';
 
+/* ── Types ─────────────────────────────────────────────────────────────────── */
+type ActiveTool = 'none' | 'filters' | 'adjust' | 'crop';
+type DragTarget =
+  | 'corner-0' | 'corner-1' | 'corner-2' | 'corner-3'
+  | 'edge-top' | 'edge-right' | 'edge-bottom' | 'edge-left';
+
+const FILTERS: FilterType[] = ['original', 'auto', 'bw', 'highcontrast'];
+
+function midpoint(a: Point, b: Point): Point {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+/* ── Main component ─────────────────────────────────────────────────────────── */
 export default function PreviewScreen() {
   const [, setLocation] = useLocation();
-  const { pages, removePage, clearPages, settings } = useScannerContext();
-  const saveScan       = useSaveScan();
-  const updateScan     = useUpdateScan();
-  const deleteScan     = useDeleteLocalScan();
+  const { pages, removePage, updatePage, clearPages, settings } = useScannerContext();
+  const saveScan   = useSaveScan();
+  const updateScan = useUpdateScan();
+  const deleteScan = useDeleteLocalScan();
 
-  const [exportOpen,      setExportOpen]      = useState(false);
-  const [fileName,        setFileName]        = useState(() => `Scan_${new Date().toISOString().slice(0, 10)}`);
-  const [ocrPage,         setOcrPage]         = useState<number | null>(null);
-  const [splitting,       setSplitting]       = useState(false);
-  const [isExported,      setIsExported]      = useState(false);
-  const [leaveWarning,    setLeaveWarning]    = useState(false);
-  const [pendingNav,      setPendingNav]      = useState<string>('/');
+  /* ── Page selection ─────────────────────────────────────────────────────── */
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const [activeTool,  setActiveTool]  = useState<ActiveTool>('none');
+  const [applying,    setApplying]    = useState(false);
 
-  /** ID of the auto-saved draft in IndexedDB */
+  /* ── Export state ───────────────────────────────────────────────────────── */
+  const [exportOpen,  setExportOpen]  = useState(false);
+  const [fileName,    setFileName]    = useState(() => `Scan_${new Date().toISOString().slice(0, 10)}`);
+  const [isExported,  setIsExported]  = useState(false);
   const draftId = useRef<string | null>(null);
 
-  /* ── Auto-save draft to IndexedDB as soon as preview loads ─────────────── */
+  /* ── Filter / Adjust pending ────────────────────────────────────────────── */
+  const [pendingFilter,     setPendingFilter]     = useState<FilterType>('original');
+  const [pendingBrightness, setPendingBrightness] = useState(0);
+  const [pendingContrast,   setPendingContrast]   = useState(0);
+
+  /* ── Crop overlay state ─────────────────────────────────────────────────── */
+  const [cropCorners,  setCropCorners]  = useState<[Point, Point, Point, Point] | null>(null);
+  const [cropDisplayW, setCropDisplayW] = useState(0);
+  const [cropDisplayH, setCropDisplayH] = useState(0);
+  const [cropNatW,     setCropNatW]     = useState(0);
+  const [cropNatH,     setCropNatH]     = useState(0);
+  const [cropImgLoaded, setCropImgLoaded] = useState(false);
+  const cropImgRef       = useRef<HTMLImageElement>(null);
+  const cropContainerRef = useRef<HTMLDivElement>(null);
+  const cropDragging     = useRef<DragTarget | null>(null);
+
+  /* ── Guards ─────────────────────────────────────────────────────────────── */
+  useEffect(() => {
+    if (pages.length === 0) setLocation('/');
+  }, [pages.length, setLocation]);
+
+  useEffect(() => {
+    if (selectedIdx >= pages.length && pages.length > 0)
+      setSelectedIdx(pages.length - 1);
+  }, [pages.length, selectedIdx]);
+
+  /* ── Reset pending edits when page changes ──────────────────────────────── */
+  useEffect(() => {
+    setPendingFilter('original');
+    setPendingBrightness(0);
+    setPendingContrast(0);
+  }, [selectedIdx]);
+
+  /* ── Auto-save draft ────────────────────────────────────────────────────── */
   useEffect(() => {
     if (pages.length === 0 || draftId.current) return;
     saveScan.mutateAsync({
-      name: fileName,
-      pageCount: pages.length,
-      scanType:  settings.scanType,
-      colorMode: settings.colorMode,
-      paperSize: settings.paperSize,
-      format:    'pdf',
-      thumbnail: pages[0],
-      pages:     [...pages],
-    }).then(saved => {
-      draftId.current = saved.id;
-    }).catch(() => { /* silent — draft save is best-effort */ });
+      name: fileName, pageCount: pages.length,
+      scanType: settings.scanType, colorMode: settings.colorMode,
+      paperSize: settings.paperSize, format: 'pdf',
+      thumbnail: pages[0], pages: [...pages],
+    }).then(saved => { draftId.current = saved.id; }).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // run once on mount
+  }, []);
 
-  /* ── Safe navigation: warn if not yet exported ──────────────────────────── */
-  const safeNavigate = (to: string) => {
-    if (!isExported) {
-      setPendingNav(to);
-      setLeaveWarning(true);
-    } else {
-      clearPages();
-      setLocation(to);
+  /* ── Rotate 90° CW ──────────────────────────────────────────────────────── */
+  const handleRotate = useCallback(async () => {
+    const dataUrl = pages[selectedIdx];
+    if (!dataUrl || applying) return;
+    setApplying(true);
+    try {
+      const img = new Image();
+      await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = dataUrl; });
+      const canvas  = document.createElement('canvas');
+      canvas.width  = img.naturalHeight;
+      canvas.height = img.naturalWidth;
+      const ctx = canvas.getContext('2d')!;
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate(Math.PI / 2);
+      ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+      updatePage(selectedIdx, canvas.toDataURL('image/jpeg', 0.92));
+    } finally { setApplying(false); }
+  }, [pages, selectedIdx, updatePage, applying]);
+
+  /* ── Apply filter + adjust ──────────────────────────────────────────────── */
+  const handleApplyFilters = useCallback(async () => {
+    if (pendingFilter === 'original' && pendingBrightness === 0 && pendingContrast === 0) {
+      setActiveTool('none'); return;
     }
+    const dataUrl = pages[selectedIdx];
+    if (!dataUrl) return;
+    setApplying(true);
+    try {
+      const img = new Image();
+      await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = dataUrl; });
+      const src = document.createElement('canvas');
+      src.width = img.naturalWidth; src.height = img.naturalHeight;
+      src.getContext('2d')!.drawImage(img, 0, 0);
+      const out = filterCanvas(src, pendingFilter, pendingBrightness, pendingContrast);
+      updatePage(selectedIdx, out.toDataURL('image/jpeg', 0.92));
+      setActiveTool('none');
+      setPendingFilter('original'); setPendingBrightness(0); setPendingContrast(0);
+    } finally { setApplying(false); }
+  }, [pages, selectedIdx, updatePage, pendingFilter, pendingBrightness, pendingContrast]);
+
+  /* ── Crop overlay: image load ────────────────────────────────────────────── */
+  const onCropImgLoad = useCallback(() => {
+    const img = cropImgRef.current;
+    const con = cropContainerRef.current;
+    if (!img || !con) return;
+    const nw = img.naturalWidth, nh = img.naturalHeight;
+    const cw = con.clientWidth,  ch = con.clientHeight;
+    const scale = Math.min(cw / nw, ch / nh, 1);
+    const dw = Math.round(nw * scale), dh = Math.round(nh * scale);
+    setCropNatW(nw); setCropNatH(nh);
+    setCropDisplayW(dw); setCropDisplayH(dh);
+    setCropCorners(defaultCorners(dw, dh));
+    setCropImgLoaded(true);
+  }, []);
+
+  /* ── Crop drag ──────────────────────────────────────────────────────────── */
+  const startCropDrag = (e: React.PointerEvent, target: DragTarget) => {
+    e.stopPropagation();
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    cropDragging.current = target;
   };
 
-  const confirmLeave = (action: 'export' | 'draft' | 'discard') => {
-    setLeaveWarning(false);
-    if (action === 'export') { setExportOpen(true); return; }
-    if (action === 'draft')  { return; /* stay on preview — draft already saved */ }
-    // discard: delete the draft from IndexedDB and leave
-    if (draftId.current) deleteScan.mutateAsync(draftId.current).catch(() => {});
-    clearPages();
-    setLocation(pendingNav);
-  };
+  const onCropPointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    if (!cropDragging.current || !cropCorners) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(cropDisplayW, e.clientX - rect.left));
+    const y = Math.max(0, Math.min(cropDisplayH, e.clientY - rect.top));
+    const c = cropCorners.map(p => ({ ...p })) as [Point, Point, Point, Point];
+    switch (cropDragging.current) {
+      case 'corner-0': c[0] = { x, y }; break;
+      case 'corner-1': c[1] = { x, y }; break;
+      case 'corner-2': c[2] = { x, y }; break;
+      case 'corner-3': c[3] = { x, y }; break;
+      case 'edge-top':    c[0] = { ...c[0], y }; c[1] = { ...c[1], y }; break;
+      case 'edge-bottom': c[2] = { ...c[2], y }; c[3] = { ...c[3], y }; break;
+      case 'edge-left':   c[0] = { ...c[0], x }; c[3] = { ...c[3], x }; break;
+      case 'edge-right':  c[1] = { ...c[1], x }; c[2] = { ...c[2], x }; break;
+    }
+    setCropCorners(c);
+  }, [cropCorners, cropDisplayW, cropDisplayH]);
 
-  /* ── Update draft after explicit export ─────────────────────────────────── */
+  /* ── Apply crop ─────────────────────────────────────────────────────────── */
+  const handleApplyCrop = useCallback(async () => {
+    if (!cropCorners || !pages[selectedIdx]) return;
+    setApplying(true);
+    try {
+      const img = new Image();
+      await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = pages[selectedIdx]; });
+      const srcCanvas = document.createElement('canvas');
+      srcCanvas.width = cropNatW; srcCanvas.height = cropNatH;
+      srcCanvas.getContext('2d')!.drawImage(img, 0, 0);
+      const scaleX = cropNatW / cropDisplayW, scaleY = cropNatH / cropDisplayH;
+      const natCorners = cropCorners.map(p => ({ x: p.x * scaleX, y: p.y * scaleY })) as [Point, Point, Point, Point];
+      const { w: outW, h: outH } = estimateOutputSize(natCorners);
+      const warped = warpPerspective(srcCanvas, natCorners, outW, outH);
+      updatePage(selectedIdx, warped.toDataURL('image/jpeg', 0.92));
+      setActiveTool('none'); setCropImgLoaded(false);
+      toast.success('Crop applied');
+    } catch { toast.error('Crop failed'); }
+    finally { setApplying(false); }
+  }, [cropCorners, pages, selectedIdx, cropNatW, cropNatH, cropDisplayW, cropDisplayH, updatePage]);
+
+  /* ── Delete page ────────────────────────────────────────────────────────── */
+  const handleDelete = useCallback(() => {
+    if (pages.length === 1) {
+      if (draftId.current) deleteScan.mutateAsync(draftId.current).catch(() => {});
+      clearPages(); setLocation('/'); return;
+    }
+    removePage(selectedIdx);
+    setSelectedIdx(Math.min(selectedIdx, pages.length - 2));
+    setActiveTool('none');
+  }, [pages.length, selectedIdx, removePage, clearPages, deleteScan, setLocation]);
+
+  /* ── Retake: remove selected, go back to scanner ────────────────────────── */
+  const handleRetake = useCallback(() => {
+    removePage(selectedIdx);
+    setLocation('/');
+  }, [removePage, selectedIdx, setLocation]);
+
+  /* ── Export helpers ─────────────────────────────────────────────────────── */
   const finalise = async (format: 'pdf' | 'jpeg') => {
     if (draftId.current) {
       await updateScan.mutateAsync({
@@ -85,65 +240,25 @@ export default function PreviewScreen() {
       await saveScan.mutateAsync({
         name: fileName, pageCount: pages.length,
         scanType: settings.scanType, colorMode: settings.colorMode,
-        paperSize: settings.paperSize, format,
-        thumbnail: pages[0], pages: [...pages],
+        paperSize: settings.paperSize, format, thumbnail: pages[0], pages: [...pages],
       });
     }
     setIsExported(true);
   };
 
-  /* ── Email share ────────────────────────────────────────────────────────── */
-  const handleEmailShare = async () => {
-    if (!pages.length) return;
-    const tid = toast.loading('Preparing…');
-    try {
-      const blob = await generatePDF(pages, settings.paperSize);
-      const file = new File([blob], `${fileName}.pdf`, { type: 'application/pdf' });
-      if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: fileName });
-        toast.success('Shared!', { id: tid });
-      } else {
-        downloadBlob(blob, `${fileName}.pdf`);
-        toast.success('PDF saved — attach it manually to an email.', { id: tid });
-      }
-    } catch (e: any) {
-      if (e?.name !== 'AbortError') toast.error('Share failed', { id: tid });
-      else toast.dismiss(tid);
-    }
-  };
-
-  /* ── Save as PDF ─────────────────────────────────────────────────────────── */
   const handleSavePDF = async () => {
-    if (!pages.length) return;
     const tid = toast.loading('Generating PDF…');
     try {
       const blob = await generatePDF(pages, settings.paperSize);
       downloadBlob(blob, `${fileName}.pdf`);
       await finalise('pdf');
-      toast.success('PDF saved to device ✓', { id: tid });
+      toast.success('PDF saved ✓', { id: tid });
       setExportOpen(false); clearPages(); setLocation('/gallery');
     } catch { toast.error('Failed to export PDF', { id: tid }); }
   };
 
-  /* ── Save as JPEG ────────────────────────────────────────────────────────── */
-  const handleSaveJPEG = async () => {
-    if (!pages.length) return;
-    const tid = toast.loading('Saving images…');
-    try {
-      pages.forEach((p, i) => {
-        const a = document.createElement('a');
-        a.href = p; a.download = `${fileName}_page_${i + 1}.jpg`; a.click();
-      });
-      await finalise('jpeg');
-      toast.success('Images saved to device ✓', { id: tid });
-      setExportOpen(false); clearPages(); setLocation('/gallery');
-    } catch { toast.error('Failed to save', { id: tid }); }
-  };
-
-  /* ── Share via OS sheet ──────────────────────────────────────────────────── */
   const handleShare = async () => {
-    if (!pages.length) return;
-    const tid = toast.loading('Preparing share…');
+    const tid = toast.loading('Preparing…');
     try {
       const blob = await generatePDF(pages, settings.paperSize);
       await shareFile(blob, `${fileName}.pdf`, 'application/pdf');
@@ -156,233 +271,454 @@ export default function PreviewScreen() {
     }
   };
 
-  /* ── Split into individual PDFs ──────────────────────────────────────────── */
-  const handleSplit = async () => {
-    if (pages.length < 2) { toast.error('Need at least 2 pages to split'); return; }
-    if (!confirm(`Split ${pages.length} pages into ${pages.length} individual PDFs?`)) return;
-    const tid = toast.loading('Splitting pages…');
-    try {
-      setSplitting(true);
-      const blobs = await splitPages(pages, settings.paperSize);
-      blobs.forEach((blob, i) => downloadBlob(blob, `${fileName}_page_${i + 1}.pdf`));
-      for (let i = 0; i < pages.length; i++) {
-        await saveScan.mutateAsync({
-          name: `${fileName}_page_${i + 1}`, pageCount: 1,
-          scanType: settings.scanType, colorMode: settings.colorMode,
-          paperSize: settings.paperSize, format: 'pdf',
-          thumbnail: pages[i], pages: [pages[i]],
-        });
-      }
-      // Remove original draft to avoid duplicate
-      if (draftId.current) deleteScan.mutateAsync(draftId.current).catch(() => {});
-      toast.success(`${pages.length} PDFs saved!`, { id: tid });
-      setIsExported(true);
-      clearPages(); setLocation('/gallery');
-    } catch { toast.error('Split failed', { id: tid }); }
-    finally { setSplitting(false); }
-  };
+  /* ── Crop geometry ──────────────────────────────────────────────────────── */
+  const cropMids = cropCorners ? {
+    top:    midpoint(cropCorners[0], cropCorners[1]),
+    right:  midpoint(cropCorners[1], cropCorners[2]),
+    bottom: midpoint(cropCorners[2], cropCorners[3]),
+    left:   midpoint(cropCorners[0], cropCorners[3]),
+  } : null;
 
-  /* ── Empty state ─────────────────────────────────────────────────────────── */
-  if (pages.length === 0) {
-    return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
-        <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mb-4">
-          <Trash2 className="w-8 h-8 text-muted-foreground" />
-        </div>
-        <h2 className="text-xl font-bold mb-2">No pages yet</h2>
-        <p className="text-muted-foreground mb-6">Go back to the scanner to capture some documents.</p>
-        <Button onClick={() => setLocation('/')}>Back to Scanner</Button>
-      </div>
-    );
-  }
+  const currentPage = pages[selectedIdx];
+  if (pages.length === 0) return null;
 
+  /* ── Render ─────────────────────────────────────────────────────────────── */
   return (
-    <div className="min-h-[100dvh] bg-secondary flex flex-col">
-      {/* Header */}
-      <div className="bg-background px-4 h-16 flex items-center justify-between border-b sticky top-0 z-10">
-        <Button variant="ghost" size="icon" onClick={() => safeNavigate('/')} className="-ml-2">
-          <ChevronLeft className="w-6 h-6" />
-        </Button>
-        <span className="font-semibold text-lg">{pages.length} Page{pages.length !== 1 ? 's' : ''}</span>
-        <div className="flex items-center gap-1">
-          {pages.length > 1 && (
-            <Button
-              variant="ghost" size="sm"
-              className="text-xs gap-1 text-muted-foreground"
-              onClick={handleSplit}
-              disabled={splitting}
-            >
-              <Scissors className="w-3.5 h-3.5" />
-              {splitting ? 'Splitting…' : 'Split'}
-            </Button>
-          )}
-          <Button variant="ghost" size="icon"
-            onClick={() => {
-              if (confirm('Discard all pages?')) {
-                if (draftId.current) deleteScan.mutateAsync(draftId.current).catch(() => {});
-                clearPages(); setLocation('/');
-              }
-            }}
-            className="text-destructive -mr-2">
-            <Trash2 className="w-5 h-5" />
-          </Button>
-        </div>
-      </div>
+    <div className="min-h-[100dvh] bg-gray-950 flex flex-col select-none relative">
 
-      {/* Pages */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-40">
-        {pages.map((p, i) => (
-          <div key={i} className="space-y-3">
-            <div className="relative group">
-              <div className="absolute -top-3 -left-3 w-8 h-8 bg-black text-white rounded-full flex items-center justify-center font-bold text-sm z-10 shadow-md">
-                {i + 1}
-              </div>
-              <div className="bg-background p-2 rounded-xl shadow-sm border">
-                <img src={p} alt={`Page ${i + 1}`} className="w-full h-auto rounded-lg object-contain" />
-              </div>
-              <button
-                onClick={() => removePage(i)}
-                className="absolute -top-3 -right-3 w-8 h-8 bg-destructive text-white rounded-full flex items-center justify-center shadow-md hover:scale-105 transition-transform"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-
-            <button
-              onClick={() => setOcrPage(ocrPage === i ? null : i)}
-              className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-background border text-xs font-medium text-muted-foreground hover:text-primary hover:border-primary/30 transition-colors"
-            >
-              <span className="flex items-center gap-1.5">
-                <ScanText className="w-3.5 h-3.5" />
-                OCR — Extract text from page {i + 1}
-                <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-semibold">Free · Offline</span>
-              </span>
-              {ocrPage === i ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            </button>
-
-            {ocrPage === i && <OcrPanel imageDataUrl={p} />}
-          </div>
-        ))}
-      </div>
-
-      {/* Bottom Bar */}
-      <div className="bg-background border-t px-4 pt-3 pb-8 sticky bottom-0 z-10 flex flex-col gap-2">
-        {/* Save & Export — prominent, pulsing ring when not yet exported */}
+      {/* ════ Header ════ */}
+      <div className="flex items-center justify-between px-4 h-14 shrink-0">
+        <button
+          onClick={() => setLocation('/')}
+          className="w-9 h-9 flex items-center justify-center rounded-full text-white/70 hover:bg-white/10 transition-colors"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+        <span className="text-white font-semibold text-[15px]">
+          {pages.length} Page{pages.length !== 1 ? 's' : ''}
+        </span>
         <button
           onClick={() => setExportOpen(true)}
-          className={[
-            'w-full h-14 rounded-full font-semibold text-[15px] flex items-center justify-center gap-2 transition-all shadow-lg',
-            isExported
-              ? 'bg-green-600 text-white'
-              : 'bg-primary text-primary-foreground animate-[pulse-ring_2s_ease-in-out_infinite]',
-          ].join(' ')}
+          className="w-9 h-9 flex items-center justify-center rounded-full text-white/70 hover:bg-white/10 transition-colors"
         >
-          <Share className="w-5 h-5" />
-          {isExported ? 'Exported ✓' : 'Save & Export'}
+          <Share2 className="w-5 h-5" />
         </button>
-
-        {/* Helper text when not yet exported */}
-        {!isExported && (
-          <p className="text-center text-[11px] text-amber-600 font-medium">
-            ⚠️ Tap above to save your scan to your device — unsaved scans may be lost.
-          </p>
-        )}
-
-        {/* Add More */}
-        <Button variant="outline" className="w-full h-11 rounded-full font-semibold" onClick={() => setLocation('/')}>
-          <Plus className="w-4 h-4 mr-2" /> Add More Pages
-        </Button>
       </div>
 
-      {/* ── Leave-without-exporting warning dialog ── */}
-      <Dialog open={leaveWarning} onOpenChange={setLeaveWarning}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <div className="flex items-center gap-2 mb-1">
-              <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
-              <DialogTitle>Scan not exported yet</DialogTitle>
-            </div>
-            <DialogDescription>
-              Your scan was auto-saved as a draft, but the file has not been saved to your device.
-              If you delete the app, the draft will be lost.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-2 mt-2">
-            <Button className="w-full" onClick={() => confirmLeave('export')}>
-              <Share className="w-4 h-4 mr-2" /> Save & Export now
-            </Button>
-            <Button variant="outline" className="w-full" onClick={() => confirmLeave('draft')}>
-              Keep draft, stay here
-            </Button>
-            <Button variant="ghost" className="w-full text-destructive hover:text-destructive" onClick={() => confirmLeave('discard')}>
-              Discard and leave
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* ════ Main preview ════ */}
+      <div className="flex-1 flex items-center justify-center overflow-hidden px-6 py-2 min-h-0">
+        {currentPage && (
+          <img
+            key={selectedIdx}
+            src={currentPage}
+            alt={`Page ${selectedIdx + 1}`}
+            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+          />
+        )}
+      </div>
 
-      {/* ── Export Dialog ── */}
+      {/* ════ Thumbnail strip ════ */}
+      <div className="shrink-0 px-4 pt-2 pb-1">
+        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+          {pages.map((p, i) => (
+            <button
+              key={i}
+              onClick={() => { setSelectedIdx(i); setActiveTool('none'); }}
+              className={cn(
+                'shrink-0 w-14 h-[72px] rounded-lg overflow-hidden border-2 transition-all relative',
+                i === selectedIdx
+                  ? 'border-blue-500 shadow-lg shadow-blue-500/30 scale-105'
+                  : 'border-white/20 opacity-60 hover:opacity-90',
+              )}
+            >
+              <img src={p} alt={`Page ${i + 1}`} className="w-full h-full object-cover" />
+              <span className="absolute bottom-0.5 right-1 text-[9px] text-white font-bold drop-shadow">
+                {i + 1}
+              </span>
+            </button>
+          ))}
+          {/* Add page hint */}
+          <button
+            onClick={() => setLocation('/')}
+            className="shrink-0 w-14 h-[72px] rounded-lg border-2 border-dashed border-white/20 flex items-center justify-center text-white/30 hover:border-white/40 hover:text-white/50 transition-colors"
+          >
+            <span className="text-2xl leading-none">+</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ════ Filters sub-panel ════ */}
+      {activeTool === 'filters' && (
+        <div className="shrink-0 bg-gray-900/80 backdrop-blur px-4 py-3 border-t border-white/10">
+          <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+            {FILTERS.map(f => (
+              <button
+                key={f}
+                onClick={() => setPendingFilter(f)}
+                className={cn(
+                  'shrink-0 px-4 py-2 rounded-full text-sm font-semibold transition-all',
+                  pendingFilter === f
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-white/10 text-white/70 hover:bg-white/20',
+                )}
+              >
+                {FILTER_LABELS[f]}
+              </button>
+            ))}
+          </div>
+          <div className="flex justify-end mt-2 gap-4">
+            <button
+              onClick={() => { setActiveTool('none'); setPendingFilter('original'); }}
+              className="text-sm text-white/40 hover:text-white/70 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleApplyFilters}
+              disabled={applying}
+              className="flex items-center gap-1.5 text-sm text-blue-400 font-semibold hover:text-blue-300 transition-colors disabled:opacity-50"
+            >
+              <Check className="w-4 h-4" /> Apply
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ════ Adjust sub-panel ════ */}
+      {activeTool === 'adjust' && (
+        <div className="shrink-0 bg-gray-900/80 backdrop-blur px-4 py-3 border-t border-white/10 space-y-3">
+          <SliderRow label="Brightness" value={pendingBrightness} onChange={setPendingBrightness} min={-100} max={100} />
+          <SliderRow label="Contrast"   value={pendingContrast}   onChange={setPendingContrast}   min={-100} max={100} />
+          <div className="flex justify-end gap-4">
+            <button
+              onClick={() => { setActiveTool('none'); setPendingBrightness(0); setPendingContrast(0); }}
+              className="text-sm text-white/40 hover:text-white/70 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleApplyFilters}
+              disabled={applying}
+              className="flex items-center gap-1.5 text-sm text-blue-400 font-semibold hover:text-blue-300 transition-colors disabled:opacity-50"
+            >
+              <Check className="w-4 h-4" /> Apply
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ════ Tool bar ════ */}
+      <div className="shrink-0 bg-gray-900 border-t border-white/10 px-2 py-3">
+        <div className="flex justify-around items-center">
+
+          {/* Retake */}
+          <ToolButton icon={<Camera className="w-5 h-5" />} label="Retake"
+            onClick={handleRetake} disabled={applying} />
+
+          {/* Crop */}
+          <ToolButton icon={<CropIcon className="w-5 h-5" />} label="Crop"
+            active={activeTool === 'crop'}
+            onClick={() => { setCropImgLoaded(false); setActiveTool('crop'); }}
+            disabled={applying} />
+
+          {/* Rotate */}
+          <ToolButton icon={<RotateCw className="w-5 h-5" />} label="Rotate"
+            onClick={handleRotate} disabled={applying}
+            spin={applying} />
+
+          {/* Filters */}
+          <ToolButton icon={<Sparkles className="w-5 h-5" />} label="Filters"
+            active={activeTool === 'filters'}
+            onClick={() => setActiveTool(t => t === 'filters' ? 'none' : 'filters')}
+            disabled={applying} />
+
+          {/* Adjust */}
+          <ToolButton icon={<SlidersHorizontal className="w-5 h-5" />} label="Adjust"
+            active={activeTool === 'adjust'}
+            onClick={() => setActiveTool(t => t === 'adjust' ? 'none' : 'adjust')}
+            disabled={applying} />
+
+          {/* Delete */}
+          <ToolButton icon={<Trash2 className="w-5 h-5" />} label="Delete"
+            onClick={handleDelete} disabled={applying} danger />
+
+        </div>
+      </div>
+
+      {/* ════ Primary actions ════ */}
+      <div className="shrink-0 bg-gray-900 px-4 pb-[max(24px,env(safe-area-inset-bottom))] pt-2 flex gap-3">
+        <button
+          onClick={() => setLocation('/')}
+          className="flex-1 h-12 rounded-full border border-white/30 text-white font-semibold text-[14px] hover:bg-white/10 transition-colors"
+        >
+          Keep scanning
+        </button>
+        <button
+          onClick={handleSavePDF}
+          className="flex-[1.4] h-12 rounded-full bg-blue-500 hover:bg-blue-600 text-white font-semibold text-[14px] transition-colors"
+        >
+          Save PDF
+        </button>
+      </div>
+
+      {/* ════ Crop overlay (full-screen, z-50) ════ */}
+      {activeTool === 'crop' && (
+        <div className="absolute inset-0 z-50 bg-gray-950 flex flex-col">
+
+          {/* Crop header */}
+          <div className="flex items-center justify-between px-4 h-14 shrink-0">
+            <button
+              onClick={() => { setActiveTool('none'); setCropImgLoaded(false); }}
+              className="flex items-center gap-1.5 text-white/60 hover:text-white transition-colors text-sm"
+            >
+              <X className="w-4 h-4" /> Cancel
+            </button>
+            <span className="text-white font-semibold">Crop</span>
+            <button
+              onClick={handleApplyCrop}
+              disabled={applying || !cropImgLoaded}
+              className="flex items-center gap-1.5 text-blue-400 font-semibold disabled:opacity-40 hover:text-blue-300 transition-colors text-sm"
+            >
+              {applying
+                ? <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                : <><Check className="w-4 h-4" /> Apply</>
+              }
+            </button>
+          </div>
+
+          {/* Crop canvas */}
+          <div
+            ref={cropContainerRef}
+            className="flex-1 flex items-center justify-center overflow-hidden px-4 py-2"
+            style={{ minHeight: 0 }}
+          >
+            {currentPage && (
+              <div
+                className="relative"
+                style={{ width: cropDisplayW || 'auto', height: cropDisplayH || 'auto' }}
+              >
+                <img
+                  ref={cropImgRef}
+                  src={currentPage}
+                  onLoad={onCropImgLoad}
+                  className="block rounded-md"
+                  style={{
+                    width:   cropDisplayW || undefined,
+                    height:  cropDisplayH || undefined,
+                    opacity: cropImgLoaded ? 1 : 0,
+                  }}
+                  alt="Crop"
+                  draggable={false}
+                />
+
+                {cropImgLoaded && cropCorners && cropMids && (
+                  <svg
+                    className="absolute inset-0 touch-none overflow-visible"
+                    width={cropDisplayW}
+                    height={cropDisplayH}
+                    onPointerMove={onCropPointerMove}
+                    onPointerUp={() => { cropDragging.current = null; }}
+                    onPointerLeave={() => { cropDragging.current = null; }}
+                  >
+                    {/* Quad outline */}
+                    <polygon
+                      points={cropCorners.map(p => `${p.x},${p.y}`).join(' ')}
+                      fill="none" stroke="#3b82f6" strokeWidth="2"
+                    />
+
+                    {/* Edge invisible hit areas */}
+                    {([
+                      [cropCorners[0], cropCorners[1], 'edge-top',    'ns-resize'],
+                      [cropCorners[1], cropCorners[2], 'edge-right',  'ew-resize'],
+                      [cropCorners[2], cropCorners[3], 'edge-bottom', 'ns-resize'],
+                      [cropCorners[3], cropCorners[0], 'edge-left',   'ew-resize'],
+                    ] as [Point, Point, DragTarget, string][]).map(([a, b, target, cursor]) => (
+                      <line key={target}
+                        x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                        stroke="transparent" strokeWidth="20"
+                        style={{ cursor }}
+                        onPointerDown={e => startCropDrag(e, target)}
+                      />
+                    ))}
+
+                    {/* Edge midpoint bars */}
+                    {([
+                      { ...cropMids.top,    horizontal: true,  target: 'edge-top'    as DragTarget, cursor: 'ns-resize' },
+                      { ...cropMids.bottom, horizontal: true,  target: 'edge-bottom' as DragTarget, cursor: 'ns-resize' },
+                      { ...cropMids.left,   horizontal: false, target: 'edge-left'   as DragTarget, cursor: 'ew-resize' },
+                      { ...cropMids.right,  horizontal: false, target: 'edge-right'  as DragTarget, cursor: 'ew-resize' },
+                    ]).map(({ x, y, horizontal, target, cursor }) => (
+                      <CropEdgeBar key={target} cx={x} cy={y} horizontal={horizontal}
+                        onPointerDown={e => startCropDrag(e, target)} cursor={cursor} />
+                    ))}
+
+                    {/* Corner handles */}
+                    {cropCorners.map((p, i) => (
+                      <CropCornerHandle key={i} cx={p.x} cy={p.y}
+                        onPointerDown={e => startCropDrag(e, `corner-${i}` as DragTarget)} />
+                    ))}
+                  </svg>
+                )}
+
+                {!cropImgLoaded && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Reset corners */}
+          <div className="flex justify-center py-4 shrink-0">
+            <button
+              onClick={() => {
+                if (cropDisplayW && cropDisplayH)
+                  setCropCorners(defaultCorners(cropDisplayW, cropDisplayH));
+              }}
+              className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors"
+            >
+              <RotateCw className="w-3 h-3" /> Reset corners
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ════ Export dialog ════ */}
       <Dialog open={exportOpen} onOpenChange={setExportOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Save &amp; Export</DialogTitle>
             <DialogDescription>
-              All processing runs on your device — no cloud server, instant speed.
+              All processing runs on-device — no cloud, instant speed.
             </DialogDescription>
           </DialogHeader>
-
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>File Name</Label>
               <Input value={fileName} onChange={e => setFileName(e.target.value)} placeholder="File name" />
             </div>
-
             <div className="grid grid-cols-2 gap-3">
               <Button variant="outline" className="h-24 flex-col gap-1.5" onClick={handleSavePDF}>
                 <Download className="w-6 h-6" />
                 <span className="text-sm font-semibold">Save PDF</span>
-                <span className="text-[10px] text-muted-foreground">{pages.length} page{pages.length !== 1 ? 's' : ''} merged</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {pages.length} page{pages.length !== 1 ? 's' : ''} merged
+                </span>
               </Button>
-              <Button variant="outline" className="h-24 flex-col gap-1.5" onClick={handleSaveJPEG}>
-                <Download className="w-6 h-6" />
-                <span className="text-sm font-semibold">Save JPEG</span>
-                <span className="text-[10px] text-muted-foreground">{pages.length} image{pages.length !== 1 ? 's' : ''}</span>
+              <Button variant="outline" className="h-24 flex-col gap-1.5" onClick={handleShare}>
+                <Share2 className="w-6 h-6" />
+                <span className="text-sm font-semibold">Share</span>
+                <span className="text-[10px] text-muted-foreground">AirDrop · Files · Apps</span>
               </Button>
             </div>
-
-            {pages.length > 1 && (
-              <Button variant="outline" className="w-full h-12 gap-2" onClick={() => { setExportOpen(false); handleSplit(); }}>
-                <Scissors className="w-4 h-4" />
-                Split into {pages.length} individual PDFs
-                <span className="text-[10px] text-muted-foreground ml-1">on-device</span>
-              </Button>
-            )}
-
-            <div className="relative my-1">
-              <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-background px-2 text-muted-foreground">Or share</span>
-              </div>
-            </div>
-
-            <Button variant="secondary" className="w-full h-12" onClick={handleShare}>
-              <Share2 className="w-5 h-5 mr-2" />
-              Share via Files / AirDrop / Apps
-            </Button>
-            <p className="text-center text-[11px] text-muted-foreground">
-              Opens the system share sheet — save to Files, AirDrop, email, or any installed app.
-            </p>
-
-            <Button variant="outline" className="w-full h-12" onClick={handleEmailShare}>
-              <Mail className="w-5 h-5 mr-2" />
-              Send by Email
-            </Button>
-            <p className="text-center text-[11px] text-muted-foreground">
-              Opens your device's Mail app with the PDF attached.
-            </p>
           </div>
         </DialogContent>
       </Dialog>
+
     </div>
+  );
+}
+
+/* ── Sub-components ─────────────────────────────────────────────────────────── */
+
+function ToolButton({
+  icon, label, onClick, disabled, active, danger, spin,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  danger?: boolean;
+  spin?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        'flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl transition-all disabled:opacity-40',
+        active  && 'bg-white/15 text-white',
+        danger  && !active && 'text-red-400 hover:bg-red-400/10',
+        !active && !danger && 'text-white/70 hover:text-white hover:bg-white/10',
+      )}
+    >
+      <div className={cn(spin && 'animate-spin')}>{icon}</div>
+      <span className="text-[10px] font-medium leading-none">{label}</span>
+    </button>
+  );
+}
+
+function SliderRow({
+  label, value, onChange, min, max,
+}: {
+  label: string; value: number; onChange: (v: number) => void; min: number; max: number;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-xs text-white/50 w-20 shrink-0">{label}</span>
+      <input
+        type="range" min={min} max={max} value={value}
+        onChange={e => onChange(Number(e.target.value))}
+        className="flex-1 accent-blue-500 h-1"
+      />
+      <span className="text-xs text-white/50 w-8 text-right tabular-nums">
+        {value > 0 ? `+${value}` : value}
+      </span>
+    </div>
+  );
+}
+
+function CropCornerHandle({
+  cx, cy, onPointerDown,
+}: {
+  cx: number; cy: number;
+  onPointerDown: (e: React.PointerEvent) => void;
+}) {
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={26} fill="transparent"
+        onPointerDown={onPointerDown} style={{ cursor: 'grab' }} />
+      <circle cx={cx} cy={cy} r={14} fill="white" stroke="#3b82f6" strokeWidth="2.5"
+        style={{ pointerEvents: 'none' }} />
+      <circle cx={cx} cy={cy} r={4}  fill="#3b82f6"
+        style={{ pointerEvents: 'none' }} />
+    </g>
+  );
+}
+
+function CropEdgeBar({
+  cx, cy, horizontal, onPointerDown, cursor,
+}: {
+  cx: number; cy: number; horizontal: boolean;
+  onPointerDown: (e: React.PointerEvent) => void;
+  cursor: string;
+}) {
+  const W = horizontal ? 28 : 10;
+  const H = horizontal ? 10 : 28;
+  return (
+    <g>
+      <rect
+        x={cx - W / 2 - 6} y={cy - H / 2 - 6}
+        width={W + 12} height={H + 12}
+        rx={8} fill="transparent"
+        onPointerDown={onPointerDown} style={{ cursor }}
+      />
+      <rect
+        x={cx - W / 2} y={cy - H / 2}
+        width={W} height={H} rx={5}
+        fill="white" stroke="#3b82f6" strokeWidth="2"
+        style={{ pointerEvents: 'none' }}
+      />
+      {horizontal
+        ? <line x1={cx - 5} y1={cy} x2={cx + 5} y2={cy}
+            stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round"
+            style={{ pointerEvents: 'none' }} />
+        : <line x1={cx} y1={cy - 5} x2={cx} y2={cy + 5}
+            stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round"
+            style={{ pointerEvents: 'none' }} />
+      }
+    </g>
   );
 }
