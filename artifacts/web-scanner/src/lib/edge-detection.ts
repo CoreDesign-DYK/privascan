@@ -13,17 +13,12 @@ const SAMPLE_H = 240;
  * Detect the 4 corners of a document in the given video frame.
  * Returns [TL, TR, BR, BL] in *source* image coordinates,
  * or null if no clear document is found.
- *
- * @param video   Live <video> element (camera stream)
- * @param srcW    Actual video / image width (for coordinate scaling)
- * @param srcH    Actual video / image height
  */
 export function detectDocumentCorners(
   video: HTMLVideoElement,
   srcW: number,
   srcH: number,
 ): [Point, Point, Point, Point] | null {
-  // 1. Sample the frame at low resolution
   const canvas = document.createElement('canvas');
   canvas.width  = SAMPLE_W;
   canvas.height = SAMPLE_H;
@@ -33,12 +28,11 @@ export function detectDocumentCorners(
   const imageData = ctx.getImageData(0, 0, SAMPLE_W, SAMPLE_H);
   const gray      = toGrayscale(imageData);
   const edges     = sobelEdge(gray, SAMPLE_W, SAMPLE_H);
-  const binary    = threshold(edges, SAMPLE_W, SAMPLE_H, 60);
+  const binary    = threshold(edges, SAMPLE_W, SAMPLE_H, 30); // was 60 — more sensitive
 
   const corners = findLargestQuad(binary, SAMPLE_W, SAMPLE_H);
   if (!corners) return null;
 
-  // Scale corners back to source resolution
   const scaleX = srcW / SAMPLE_W;
   const scaleY = srcH / SAMPLE_H;
   return corners.map(p => ({
@@ -47,7 +41,7 @@ export function detectDocumentCorners(
   })) as [Point, Point, Point, Point];
 }
 
-/** Detect corners from a static image canvas (for edit screen on DEV mock) */
+/** Detect corners from a static image canvas (for edit screen fallback) */
 export function detectCornersFromCanvas(
   src: HTMLCanvasElement,
 ): [Point, Point, Point, Point] | null {
@@ -60,7 +54,7 @@ export function detectCornersFromCanvas(
   const imageData = ctx.getImageData(0, 0, SAMPLE_W, SAMPLE_H);
   const gray      = toGrayscale(imageData);
   const edges     = sobelEdge(gray, SAMPLE_W, SAMPLE_H);
-  const binary    = threshold(edges, SAMPLE_W, SAMPLE_H, 60);
+  const binary    = threshold(edges, SAMPLE_W, SAMPLE_H, 30); // same relaxed threshold
 
   const corners = findLargestQuad(binary, SAMPLE_W, SAMPLE_H);
   if (!corners) return null;
@@ -113,23 +107,22 @@ function threshold(edges: Float32Array, w: number, h: number, thresh: number): U
 /**
  * Find the 4 extreme edge pixels (top-most, right-most, bottom-most, left-most)
  * and use them as approximate document corners [TL, TR, BR, BL].
- * This is a simplified heuristic that works well for flat documents.
  */
 function findLargestQuad(
   binary: Uint8Array,
   w: number,
   h: number,
 ): [Point, Point, Point, Point] | null {
-  // Collect edge points
   const pts: Point[] = [];
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       if (binary[y * w + x]) pts.push({ x, y });
     }
   }
-  if (pts.length < 50) return null;
 
-  // Find corners by maximising/minimising x+y, x-y
+  // Relaxed: was 50, now 30 — easier to detect in dim/busy scenes
+  if (pts.length < 30) return null;
+
   let TL = pts[0], TR = pts[0], BR = pts[0], BL = pts[0];
   for (const p of pts) {
     if (p.x + p.y < TL.x + TL.y) TL = p;
@@ -138,15 +131,14 @@ function findLargestQuad(
     if (p.y - p.x > BL.y - BL.x) BL = p;
   }
 
-  // Reject if quad is too small (< 20% of image area)
+  // Relaxed: was 20%, now 12% — document doesn't need to fill frame
   const area = quadArea(TL, TR, BR, BL);
-  if (area < 0.20 * w * h) return null;
+  if (area < 0.12 * w * h) return null;
 
   return [TL, TR, BR, BL];
 }
 
 function quadArea(TL: Point, TR: Point, BR: Point, BL: Point): number {
-  // Shoelace formula
   const pts = [TL, TR, BR, BL];
   let area = 0;
   for (let i = 0; i < 4; i++) {

@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { useScannerContext } from '@/contexts/scanner-context';
 import { warpPerspective, estimateOutputSize, type Point } from '@/lib/perspective';
 import { filterCanvas, FILTER_LABELS, type FilterType } from '@/lib/filters';
-import { defaultCorners } from '@/lib/edge-detection';
+import { defaultCorners, detectCornersFromCanvas } from '@/lib/edge-detection';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -70,17 +70,33 @@ export default function EditScreen() {
 
     const nw = img.naturalWidth, nh = img.naturalHeight;
     const cw = con.clientWidth,  ch = con.clientHeight;
-    const scale = Math.min(cw / nw, ch / nh, 1);
+    // Reserve 48 px at bottom so corner handles are never clipped by the controls panel
+    const scale = Math.min(cw / nw, (ch - 48) / nh, 1);
     const dw = Math.round(nw * scale), dh = Math.round(nh * scale);
 
     setNatW(nw); setNatH(nh);
     setDisplayW(dw); setDisplayH(dh);
     setImgLoaded(true);
 
-    const src = detectedCorners
-      ? detectedCorners.map(p => ({ x: p.x * scale, y: p.y * scale })) as [Point, Point, Point, Point]
-      : defaultCorners(dw, dh);
-    setCorners(src);
+    if (detectedCorners) {
+      // Use corners from live edge detection (already in natural-image coords)
+      setCorners(detectedCorners.map(p => ({ x: p.x * scale, y: p.y * scale })) as [Point, Point, Point, Point]);
+    } else {
+      // Fallback: run edge detection on the captured image itself
+      try {
+        const offscreen = document.createElement('canvas');
+        offscreen.width = nw; offscreen.height = nh;
+        offscreen.getContext('2d')!.drawImage(img, 0, 0);
+        const detected = detectCornersFromCanvas(offscreen);
+        if (detected) {
+          setCorners(detected.map(p => ({ x: p.x * scale, y: p.y * scale })) as [Point, Point, Point, Point]);
+        } else {
+          setCorners(defaultCorners(dw, dh));
+        }
+      } catch {
+        setCorners(defaultCorners(dw, dh));
+      }
+    }
   }, [detectedCorners]);
 
   /* ── Pointer events ──────────────────────────────────────────────────────── */
