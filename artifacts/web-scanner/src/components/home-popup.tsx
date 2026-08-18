@@ -1232,8 +1232,13 @@ export function HomePopup({ onClose }: Props) {
                 onClick={() => setNotifEnabled(v => !v)}
                 className="flex items-center gap-3 py-3 border-b border-gray-100 -mx-1 px-1 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer"
               >
-                <Bell className="w-4 h-4 text-gray-400 shrink-0" />
-                <span className="flex-1 text-[13px] text-gray-700 font-medium">Notification</span>
+                <Bell className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] text-gray-700 font-medium leading-tight">Notification</p>
+                  <p className="text-[10px] text-gray-400 leading-snug mt-0.5">
+                    Receive app updates, scan tips, and important notices from PrivaScan
+                  </p>
+                </div>
                 <div
                   className={cn(
                     'relative flex-none w-[36px] h-[22px] rounded-full transition-colors duration-300',
