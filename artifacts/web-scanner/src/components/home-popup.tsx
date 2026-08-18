@@ -1241,15 +1241,15 @@ export function HomePopup({ onClose }: Props) {
                 </div>
                 <div
                   className={cn(
-                    'relative flex-none w-[25px] h-[15px] rounded-full transition-colors duration-300',
+                    'relative flex-none w-[30px] h-[18px] rounded-full transition-colors duration-300',
                     notifEnabled ? 'bg-[#34C759]' : 'bg-[#D1D1D6]',
                   )}
                   style={{ boxShadow: 'inset 0 0 0 0.5px rgba(0,0,0,0.08)' }}
                 >
                   <span
                     className={cn(
-                      'absolute top-[1px] w-[13px] h-[13px] rounded-full bg-white transition-transform duration-300',
-                      notifEnabled ? 'translate-x-[11px]' : 'translate-x-[1px]',
+                      'absolute top-[1px] w-[16px] h-[16px] rounded-full bg-white transition-transform duration-300',
+                      notifEnabled ? 'translate-x-[13px]' : 'translate-x-[1px]',
                     )}
                     style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.22)' }}
                   />
