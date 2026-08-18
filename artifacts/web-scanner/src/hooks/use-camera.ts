@@ -1,32 +1,37 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 
-// Auto-detect: use real camera when running on a real device/mobile,
-// fall back to mock only in desktop localhost without camera.
 const IS_DEV = false;
 
 export function useCamera() {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef   = useRef<HTMLVideoElement>(null);
+  const streamRef  = useRef<MediaStream | null>(null);   // ref, not state → no re-render loop
   const [hasPermission, setHasPermission] = useState<boolean | null>(IS_DEV ? true : null);
-  const [stream, setStream] = useState<MediaStream | null>(null);
-  const [error, setError] = useState<Error | null>(null);
+  const [error, setError]                 = useState<Error | null>(null);
+
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) videoRef.current.srcObject = null;
+  }, []); // stable — no state deps
 
   const startCamera = useCallback(async () => {
-    if (IS_DEV) {
-      // Dev mode: immediately grant permission, no real camera needed.
-      setHasPermission(true);
-      return;
-    }
+    if (IS_DEV) { setHasPermission(true); return; }
+
+    // Already running — don't request again
+    if (streamRef.current) return;
 
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: 'environment',
-          width: { ideal: 1920 },
+          width:  { ideal: 1920 },
           height: { ideal: 1080 },
         },
       });
 
-      setStream(mediaStream);
+      streamRef.current = mediaStream;
       setHasPermission(true);
 
       if (videoRef.current) {
@@ -34,22 +39,9 @@ export function useCamera() {
       }
     } catch (err) {
       setHasPermission(false);
-      setError(err instanceof Error ? err : new Error('Failed to access camera'));
+      setError(err instanceof Error ? err : new Error('Camera access denied'));
     }
-  }, []);
-
-  const stopCamera = useCallback(() => {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      setStream(null);
-    }
-  }, [stream]);
-
-  useEffect(() => {
-    return () => {
-      stopCamera();
-    };
-  }, [stopCamera]);
+  }, []); // stable — no state deps
 
   return {
     videoRef,
@@ -57,7 +49,6 @@ export function useCamera() {
     startCamera,
     stopCamera,
     error,
-    stream,
     isMockMode: IS_DEV,
   };
 }
