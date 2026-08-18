@@ -262,6 +262,8 @@ export default function ScannerScreen() {
   const settingsRef      = useRef(settings);
   const edgeTimerRef     = useRef<ReturnType<typeof setInterval> | null>(null);
   const stableFrames     = useRef(0);
+  const waitingClear     = useRef(false);        // true = waiting for doc to leave frame
+  const [isWaitingClear, setIsWaitingClear] = useState(false);
   const captureAutoRef   = useRef<() => void>(() => {});
   const scanModeRef      = useRef<ScanMode>('document');
 
@@ -295,6 +297,8 @@ export default function ScannerScreen() {
   // Reset stability when switching modes
   useEffect(() => {
     stableFrames.current = 0;
+    waitingClear.current = false;
+    setIsWaitingClear(false);
     setStableProgress(0);
     setEdgeCorners(null);
   }, [mode]);
@@ -335,6 +339,10 @@ export default function ScannerScreen() {
     triggerCaptureEffects();
     setCapturedLabel(pageNum);
     setTimeout(() => setCapturedLabel(null), 1800);
+
+    // Enter waiting-clear state — block next scan until doc leaves frame
+    waitingClear.current = true;
+    setIsWaitingClear(true);
   }, [isMockMode, videoRef, addPage, triggerCaptureEffects]);
 
   useEffect(() => { captureAutoRef.current = autoCaptureFrame; }, [autoCaptureFrame]);
@@ -352,6 +360,19 @@ export default function ScannerScreen() {
 
       if (modeRef.current !== 'auto') return;
 
+      // ── Waiting-clear phase: hold until document leaves frame ──────────────
+      if (waitingClear.current) {
+        if (!corners) {
+          // Document removed — ready for next scan
+          waitingClear.current = false;
+          setIsWaitingClear(false);
+          stableFrames.current = 0;
+          setStableProgress(0);
+        }
+        return; // Don't accumulate stability while waiting
+      }
+
+      // ── Normal detection phase ─────────────────────────────────────────────
       if (corners) {
         stableFrames.current = Math.min(stableFrames.current + 1, STABLE_TARGET);
       } else {
@@ -939,9 +960,13 @@ export default function ScannerScreen() {
         {/* Auto-mode status hint */}
         {mode === 'auto' && (
           <div className="flex justify-center min-h-[20px]">
-            {capturedLabel !== null ? (
+            {isWaitingClear ? (
+              <span className="text-amber-400 text-sm font-semibold animate-in fade-in flex items-center gap-1.5">
+                <span>↑</span> Remove document to scan next
+              </span>
+            ) : capturedLabel !== null ? (
               <span className="text-green-400 text-sm font-semibold animate-in fade-in">
-                ✓ Page {capturedLabel} saved — aim at next page
+                ✓ Page {capturedLabel} saved
               </span>
             ) : isMockMode ? (
               <span className="text-white/35 text-sm">
