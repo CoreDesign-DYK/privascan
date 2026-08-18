@@ -492,6 +492,22 @@ export function HomePopup({ onClose }: Props) {
     setShowTypePicker(false);
   }
 
+  function handleSubscription() {
+    const ua = navigator.userAgent;
+    const isIOS     = /iPad|iPhone|iPod/.test(ua);
+    const isAndroid = /Android/.test(ua);
+    if (isIOS) {
+      // Opens iOS Settings → [Your Name] → Subscriptions
+      window.location.href = 'itms-apps://apps.apple.com/account/subscriptions';
+    } else if (isAndroid) {
+      // Opens Google Play → Account → Payments & subscriptions
+      window.open('https://play.google.com/store/account/subscriptions', '_blank');
+    } else {
+      // Desktop fallback: Apple subscriptions web page
+      window.open('https://apps.apple.com/account/subscriptions', '_blank');
+    }
+  }
+
   function handleSignOut() {
     clearUser();
     setUser(null);
@@ -1202,7 +1218,10 @@ export function HomePopup({ onClose }: Props) {
               </button>
 
               {/* Subscription */}
-              <button className="flex items-center gap-3 py-3 border-b border-gray-100 w-full text-left -mx-1 px-1 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors">
+              <button
+                onClick={handleSubscription}
+                className="flex items-center gap-3 py-3 border-b border-gray-100 w-full text-left -mx-1 px-1 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors"
+              >
                 <Crown className="w-4 h-4 text-gray-400 shrink-0" />
                 <span className="flex-1 text-[13px] text-gray-700 font-medium">Subscription</span>
                 <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
