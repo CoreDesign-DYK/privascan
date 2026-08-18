@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, Sun, Moon, ChevronDown, Check } from 'lucide-react';
+import { SlidersHorizontal, Sun, Moon, ChevronDown, Check } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { useScannerContext } from '@/contexts/scanner-context';
@@ -71,7 +71,7 @@ export function SettingsSheet() {
     <Popover>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon" className="text-white hover:bg-white/20">
-          <Settings className="h-6 w-6" />
+          <SlidersHorizontal className="w-4 h-4" />
           <span className="sr-only">Settings</span>
         </Button>
       </PopoverTrigger>
