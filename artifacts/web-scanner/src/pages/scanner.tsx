@@ -70,11 +70,56 @@ function createDocumentPage(
   source: HTMLCanvasElement,
   corners: [Point, Point, Point, Point] | null,
   quality: number,
-): string {
-  if (!corners) return source.toDataURL('image/jpeg', quality);
+): string | null {
+  // Never silently save the complete camera frame as a document. A false
+  // positive is preferable to a result that visibly contains the desk.
+  if (!corners) return null;
 
   const { w, h } = estimateOutputSize(corners);
-  return warpPerspective(source, corners, w, h).toDataURL('image/jpeg', quality);
+  const warped = warpPerspective(source, corners, w, h);
+  const sharpness = measureSharpness(warped);
+  if (sharpness < 18) return null;
+  return warped.toDataURL('image/jpeg', Math.max(quality, 0.96));
+}
+
+function measureSharpness(canvas: HTMLCanvasElement): number {
+  const sample = document.createElement('canvas');
+  const width = 180;
+  const height = Math.max(120, Math.round(width * canvas.height / canvas.width));
+  sample.width = width;
+  sample.height = height;
+  const ctx = sample.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return 0;
+  ctx.drawImage(canvas, 0, 0, width, height);
+  const { data } = ctx.getImageData(0, 0, width, height);
+  const laplacian: number[] = [];
+  const gray = (x: number, y: number) => {
+    const i = (y * width + x) * 4;
+    return 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+  };
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const value = 4 * gray(x, y) - gray(x - 1, y) - gray(x + 1, y) -
+        gray(x, y - 1) - gray(x, y + 1);
+      laplacian.push(value);
+    }
+  }
+  if (!laplacian.length) return 0;
+  const mean = laplacian.reduce((sum, value) => sum + value, 0) / laplacian.length;
+  return laplacian.reduce((sum, value) => sum + (value - mean) ** 2, 0) / laplacian.length;
+}
+
+function documentMoved(
+  previous: [Point, Point, Point, Point],
+  next: [Point, Point, Point, Point],
+  frameWidth: number,
+  frameHeight: number,
+): boolean {
+  const averageDistance = previous.reduce(
+    (sum, point, index) => sum + Math.hypot(point.x - next[index].x, point.y - next[index].y),
+    0,
+  ) / previous.length;
+  return averageDistance > Math.hypot(frameWidth, frameHeight) * 0.035;
 }
 
 /* ── Mock generators for special scan modes ───────────────────────────────── */
@@ -279,7 +324,10 @@ export default function ScannerScreen() {
   const edgeTimerRef     = useRef<ReturnType<typeof setInterval> | null>(null);
   const stableFrames     = useRef(0);
   const waitingClear     = useRef(false);        // true = waiting for doc to leave frame
+  const rejectedCornersRef = useRef<[Point, Point, Point, Point] | null>(null);
+  const needsClearerCaptureRef = useRef(false);
   const [isWaitingClear, setIsWaitingClear] = useState(false);
+  const [needsClearerCapture, setNeedsClearerCapture] = useState(false);
   const captureAutoRef   = useRef<() => void>(() => {});
   const scanModeRef      = useRef<ScanMode>('document');
 
@@ -315,6 +363,9 @@ export default function ScannerScreen() {
     stableFrames.current = 0;
     waitingClear.current = false;
     setIsWaitingClear(false);
+    setNeedsClearerCapture(false);
+    needsClearerCaptureRef.current = false;
+    rejectedCornersRef.current = null;
     setStableProgress(0);
     setEdgeCorners(null);
   }, [mode]);
@@ -339,9 +390,12 @@ export default function ScannerScreen() {
   /* ── Auto-capture ───────────────────────────────────────────────────────── */
   const autoCaptureFrame = useCallback(() => {
     const pageNum = pagesLenRef.current + 1;
+    let captured = false;
+    let rejectedCorners: [Point, Point, Point, Point] | null = null;
 
     if (isMockMode || !videoRef.current) {
       addPage(generateMockPage(pageNum, settingsRef.current));
+      captured = true;
     } else {
       const video = videoRef.current;
       const canvas = document.createElement('canvas');
@@ -349,10 +403,32 @@ export default function ScannerScreen() {
       const ctx1 = canvas.getContext('2d')!;
       if (settingsRef.current.colorMode === 'greyscale') ctx1.filter = 'grayscale(100%)';
       ctx1.drawImage(video, 0, 0);
-      const corners = edgeCorners ?? detectCornersFromCanvas(canvas);
-      addPage(createDocumentPage(canvas, corners, QUALITY_VALUES[settingsRef.current.imageQuality]));
+      // Re-check the exact high-resolution frame being saved. Live detection
+      // can be one or more frames old after the phone has moved.
+      const corners = detectCornersFromCanvas(canvas);
+      const page = createDocumentPage(canvas, corners, QUALITY_VALUES[settingsRef.current.imageQuality]);
+      if (page) {
+        addPage(page);
+        captured = true;
+      } else {
+        // The live quad is never used to crop an image, but it is useful as
+        // a movement baseline when the exact capture frame is too soft to
+        // detect on its own.
+        rejectedCorners = corners ?? edgeCorners;
+      }
+    }
+    if (!captured) {
+      waitingClear.current = true;
+      rejectedCornersRef.current = rejectedCorners;
+      setIsWaitingClear(true);
+      setNeedsClearerCapture(true);
+      needsClearerCaptureRef.current = true;
+      return;
     }
     setActivePageIndex(pageNum - 1);
+    setNeedsClearerCapture(false);
+    needsClearerCaptureRef.current = false;
+    rejectedCornersRef.current = null;
 
     triggerCaptureEffects();
     setCapturedLabel(pageNum);
@@ -384,6 +460,23 @@ export default function ScannerScreen() {
           // Document removed — ready for next scan
           waitingClear.current = false;
           setIsWaitingClear(false);
+          setNeedsClearerCapture(false);
+          needsClearerCaptureRef.current = false;
+          rejectedCornersRef.current = null;
+          stableFrames.current = 0;
+          setStableProgress(0);
+        } else if (
+          needsClearerCaptureRef.current &&
+          rejectedCornersRef.current &&
+          documentMoved(rejectedCornersRef.current, corners, video.videoWidth, video.videoHeight)
+        ) {
+          // A meaningful reposition gives the camera a fresh opportunity to
+          // focus without repeatedly saving the same blurry frame.
+          waitingClear.current = false;
+          rejectedCornersRef.current = null;
+          setIsWaitingClear(false);
+          setNeedsClearerCapture(false);
+          needsClearerCaptureRef.current = false;
           stableFrames.current = 0;
           setStableProgress(0);
         }
@@ -425,8 +518,14 @@ export default function ScannerScreen() {
       const ctx2 = canvas.getContext('2d')!;
       if (settingsRef.current.colorMode === 'greyscale') ctx2.filter = 'grayscale(100%)';
       ctx2.drawImage(video, 0, 0);
-      const corners = edgeCorners ?? detectCornersFromCanvas(canvas);
-      addPage(createDocumentPage(canvas, corners, QUALITY_VALUES[settingsRef.current.imageQuality]));
+      // Prefer the capture-frame result over a potentially stale live overlay.
+      const corners = detectCornersFromCanvas(canvas);
+      const page = createDocumentPage(canvas, corners, QUALITY_VALUES[settingsRef.current.imageQuality]);
+      if (!page) {
+        toast.error('문서 경계 또는 초점을 확인한 뒤 다시 촬영하세요');
+        return;
+      }
+      addPage(page);
     }
     setActivePageIndex(pageNum - 1);
 
@@ -1015,7 +1114,9 @@ export default function ScannerScreen() {
           <div className="flex justify-center min-h-[20px]">
             {isWaitingClear ? (
               <span className="text-amber-400 text-sm font-semibold animate-in fade-in flex items-center gap-1.5">
-                <span>↑</span> Remove document to scan next
+                <span>↑</span> {needsClearerCapture
+                  ? 'Image was unclear — move document and try again'
+                  : 'Remove document to scan next'}
               </span>
             ) : capturedLabel !== null ? (
               <span className="text-green-400 text-sm font-semibold animate-in fade-in">

@@ -9,8 +9,10 @@
 
 import { type Point } from './perspective';
 
-const SAMPLE_W = 320;
-const SAMPLE_H = 240;
+// A modestly larger sample keeps paper boundaries accurate enough to exclude
+// narrow background strips while remaining light enough for live detection.
+const SAMPLE_W = 480;
+const SAMPLE_H = 360;
 
 type Bounds = { top: number; right: number; bottom: number; left: number };
 type Gradients = { gx: Float32Array; gy: Float32Array };

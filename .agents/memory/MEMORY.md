@@ -1,1 +1,2 @@
 - [Active scan recovery](active-scan-recovery.md) — Keep unfinished scans recoverable on-device without mixing drafts into the saved-document gallery.
+- [Capture quality safeguards](capture-quality-safeguards.md) — Never turn an uncertain or soft camera frame into a completed document scan.

@@ -26,8 +26,11 @@ export function useCamera() {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: 'environment',
-          width:  { ideal: 1920 },
-          height: { ideal: 1080 },
+          // Prefer a 4:3 high-resolution stream so portrait documents retain
+          // more vertical pixels instead of being squeezed into 16:9.
+          aspectRatio: { ideal: 4 / 3 },
+          width:  { ideal: 2560 },
+          height: { ideal: 1920 },
         },
       });
 
