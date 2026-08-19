@@ -1,2 +1,3 @@
 - [Active scan recovery](active-scan-recovery.md) — Keep unfinished scans recoverable on-device without mixing drafts into the saved-document gallery.
 - [Capture quality safeguards](capture-quality-safeguards.md) — Never turn an uncertain or soft camera frame into a completed document scan.
+- [Preview control layout](preview-control-layout.md) — Keep save actions visible in one viewport; let secondary edit tools scroll horizontally on small screens.

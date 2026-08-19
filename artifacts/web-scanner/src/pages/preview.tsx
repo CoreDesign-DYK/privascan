@@ -283,10 +283,10 @@ export default function PreviewScreen() {
 
   /* ── Render ─────────────────────────────────────────────────────────────── */
   return (
-    <div className="min-h-[100dvh] bg-gray-950 flex flex-col select-none relative">
+    <div className="h-[100dvh] max-h-[100dvh] overflow-hidden bg-gray-950 flex flex-col select-none relative">
 
       {/* ════ Header ════ */}
-      <div className="flex items-center justify-between px-4 h-14 shrink-0">
+      <div className="flex items-center justify-between px-4 h-12 shrink-0">
         <button
           onClick={() => setLocation('/')}
           className="w-9 h-9 flex items-center justify-center rounded-full text-white/70 hover:bg-white/10 transition-colors"
@@ -317,14 +317,14 @@ export default function PreviewScreen() {
       </div>
 
       {/* ════ Thumbnail strip ════ */}
-      <div className="shrink-0 px-4 pt-2 pb-1">
+      <div className="shrink-0 px-4 pt-1 pb-0.5">
         <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
           {pages.map((p, i) => (
             <button
               key={i}
               onClick={() => { setSelectedIdx(i); setActiveTool('none'); }}
               className={cn(
-                'shrink-0 w-14 h-[72px] rounded-lg overflow-hidden border-2 transition-all relative',
+                'shrink-0 w-14 h-16 rounded-lg overflow-hidden border-2 transition-all relative',
                 i === selectedIdx
                   ? 'border-blue-500 shadow-lg shadow-blue-500/30 scale-105'
                   : 'border-white/20 opacity-60 hover:opacity-90',
@@ -339,7 +339,7 @@ export default function PreviewScreen() {
           {/* Add page hint */}
           <button
             onClick={() => setLocation('/')}
-            className="shrink-0 w-14 h-[72px] rounded-lg border-2 border-dashed border-white/20 flex items-center justify-center text-white/30 hover:border-white/40 hover:text-white/50 transition-colors"
+            className="shrink-0 w-14 h-16 rounded-lg border-2 border-dashed border-white/20 flex items-center justify-center text-white/30 hover:border-white/40 hover:text-white/50 transition-colors"
           >
             <span className="text-2xl leading-none">+</span>
           </button>
@@ -407,8 +407,8 @@ export default function PreviewScreen() {
       )}
 
       {/* ════ Tool bar ════ */}
-      <div className="shrink-0 bg-gray-900 border-t border-white/10 px-2 py-3">
-        <div className="flex justify-around items-center">
+      <div className="shrink-0 bg-gray-900 border-t border-white/10 py-1.5">
+        <div className="flex items-center justify-start gap-1 overflow-x-auto no-scrollbar px-2">
 
           {/* Retake */}
           <ToolButton icon={<Camera className="w-5 h-5" />} label="Retake"
@@ -451,16 +451,16 @@ export default function PreviewScreen() {
       </div>
 
       {/* ════ Primary actions ════ */}
-      <div className="shrink-0 bg-gray-900 px-4 pb-[max(24px,env(safe-area-inset-bottom))] pt-2 flex gap-3">
+      <div className="shrink-0 bg-gray-900 px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-1.5 flex gap-3">
         <button
           onClick={() => setLocation('/')}
-          className="flex-1 h-12 rounded-full border border-white/30 text-white font-semibold text-[14px] hover:bg-white/10 transition-colors"
+          className="flex-1 h-11 rounded-full border border-white/30 text-white font-semibold text-[14px] hover:bg-white/10 transition-colors"
         >
           Keep scanning
         </button>
         <button
           onClick={handleSavePDF}
-          className="flex-[1.4] h-12 rounded-full bg-blue-500 hover:bg-blue-600 text-white font-semibold text-[14px] transition-colors"
+          className="flex-[1.4] h-11 rounded-full bg-blue-500 hover:bg-blue-600 text-white font-semibold text-[14px] transition-colors"
         >
           Save PDF
         </button>
@@ -643,14 +643,14 @@ function ToolButton({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        'flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl transition-all disabled:opacity-40',
+        'shrink-0 flex flex-col items-center gap-1 px-2 py-1 rounded-xl transition-all disabled:opacity-40',
         active  && 'bg-white/15 text-white',
         danger  && !active && 'text-red-400 hover:bg-red-400/10',
         !active && !danger && 'text-white/70 hover:text-white hover:bg-white/10',
       )}
     >
       <div className={cn(spin && 'animate-spin')}>{icon}</div>
-      <span className="text-[10px] font-medium leading-none">{label}</span>
+        <span className="whitespace-nowrap text-[10px] font-medium leading-none">{label}</span>
     </button>
   );
 }
