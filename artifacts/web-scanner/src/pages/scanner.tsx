@@ -282,7 +282,7 @@ function QualityGaugeIcon({ quality }: { quality: 'high' | 'medium' | 'low' }) {
 
 export default function ScannerScreen() {
   const [, setLocation] = useLocation();
-  const { videoRef, startCamera, stopCamera, hasPermission, isMockMode } = useCamera();
+  const { videoRef, startCamera, stopCamera, hasPermission, isMockMode, focusReady } = useCamera();
   const {
     mode, setMode, pages, addPage, removePage, clearPages, settings, setSettings,
     setActivePageIndex,
@@ -389,6 +389,7 @@ export default function ScannerScreen() {
 
   /* ── Auto-capture ───────────────────────────────────────────────────────── */
   const autoCaptureFrame = useCallback(() => {
+    if (!isMockMode && !focusReady) return;
     const pageNum = pagesLenRef.current + 1;
     let captured = false;
     let rejectedCorners: [Point, Point, Point, Point] | null = null;
@@ -437,7 +438,7 @@ export default function ScannerScreen() {
     // Enter waiting-clear state — block next scan until doc leaves frame
     waitingClear.current = true;
     setIsWaitingClear(true);
-  }, [isMockMode, videoRef, edgeCorners, addPage, setActivePageIndex, triggerCaptureEffects]);
+  }, [isMockMode, focusReady, videoRef, edgeCorners, addPage, setActivePageIndex, triggerCaptureEffects]);
 
   useEffect(() => { captureAutoRef.current = autoCaptureFrame; }, [autoCaptureFrame]);
 
@@ -452,7 +453,7 @@ export default function ScannerScreen() {
       const corners = detectDocumentCorners(video, video.videoWidth, video.videoHeight);
       setEdgeCorners(corners);
 
-      if (modeRef.current !== 'auto') return;
+      if (modeRef.current !== 'auto' || !focusReady) return;
 
       // ── Waiting-clear phase: hold until document leaves frame ──────────────
       if (waitingClear.current) {
@@ -501,10 +502,14 @@ export default function ScannerScreen() {
     }, EDGE_INTERVAL_MS);
 
     return () => { if (edgeTimerRef.current) clearInterval(edgeTimerRef.current); };
-  }, [isMockMode, videoRef]);
+  }, [isMockMode, videoRef, focusReady]);
 
   /* ── Manual capture ─────────────────────────────────────────────────────── */
   const manualCaptureFrame = useCallback(() => {
+    if (!isMockMode && !focusReady) {
+      toast.info('카메라 초점을 맞추는 중입니다. 잠시 기다려 주세요');
+      return;
+    }
     triggerCaptureEffects();
 
     const pageNum = pagesLenRef.current + 1;
@@ -532,10 +537,14 @@ export default function ScannerScreen() {
     // Review the page first. Crop is available from the review toolbar only
     // when a user wants to adjust the automatic correction.
     setLocation('/preview');
-  }, [isMockMode, videoRef, edgeCorners, addPage, setActivePageIndex, setLocation, triggerCaptureEffects]);
+  }, [isMockMode, focusReady, videoRef, edgeCorners, addPage, setActivePageIndex, setLocation, triggerCaptureEffects]);
 
   /* ── Book capture ───────────────────────────────────────────────────────── */
   const bookCapture = useCallback(() => {
+    if (!isMockMode && !focusReady) {
+      toast.info('카메라 초점을 맞추는 중입니다. 잠시 기다려 주세요');
+      return;
+    }
     triggerCaptureEffects();
     const q    = QUALITY_VALUES[settingsRef.current.imageQuality];
     const grey = settingsRef.current.colorMode === 'greyscale';
@@ -583,10 +592,14 @@ export default function ScannerScreen() {
     setTimeout(() => setCapturedLabel(null), 1800);
     setActivePageIndex(base + 1);
     setLocation('/preview');
-  }, [isMockMode, videoRef, addPage, setActivePageIndex, setLocation, triggerCaptureEffects]);
+  }, [isMockMode, focusReady, videoRef, addPage, setActivePageIndex, setLocation, triggerCaptureEffects]);
 
   /* ── Presentation capture ───────────────────────────────────────────────── */
   const presentationCapture = useCallback(() => {
+    if (!isMockMode && !focusReady) {
+      toast.info('카메라 초점을 맞추는 중입니다. 잠시 기다려 주세요');
+      return;
+    }
     triggerCaptureEffects();
     const q    = QUALITY_VALUES[settingsRef.current.imageQuality];
     const grey = settingsRef.current.colorMode === 'greyscale';
@@ -616,10 +629,14 @@ export default function ScannerScreen() {
     setTimeout(() => setCapturedLabel(null), 1800);
     setActivePageIndex(pageNum - 1);
     setLocation('/preview');
-  }, [isMockMode, videoRef, addPage, edgeCorners, setActivePageIndex, setLocation, triggerCaptureEffects]);
+  }, [isMockMode, focusReady, videoRef, addPage, edgeCorners, setActivePageIndex, setLocation, triggerCaptureEffects]);
 
   /* ── ID Cards capture (2-stage) ─────────────────────────────────────────── */
   const idCardsCapture = useCallback(() => {
+    if (!isMockMode && !focusReady) {
+      toast.info('카메라 초점을 맞추는 중입니다. 잠시 기다려 주세요');
+      return;
+    }
     triggerCaptureEffects();
     const q    = QUALITY_VALUES[settingsRef.current.imageQuality];
     const grey = settingsRef.current.colorMode === 'greyscale';
@@ -681,7 +698,7 @@ export default function ScannerScreen() {
       setCapturedLabel(pagesLenRef.current + 1);
       setTimeout(() => setCapturedLabel(null), 1800);
     }
-  }, [isMockMode, videoRef, addPage, edgeCorners, idStage, setActivePageIndex, setLocation, triggerCaptureEffects]);
+  }, [isMockMode, focusReady, videoRef, addPage, edgeCorners, idStage, setActivePageIndex, setLocation, triggerCaptureEffects]);
 
   /* ── Capture button handler ─────────────────────────────────────────────── */
   const handleCaptureButton = useCallback(() => {
