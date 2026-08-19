@@ -18,14 +18,14 @@ import { useLocation } from 'wouter';
 import { useScannerContext } from '@/contexts/scanner-context';
 import {
   ChevronLeft, Share2, Camera, Crop as CropIcon, RotateCw,
-  Sparkles, SlidersHorizontal, Trash2, Check, X, Download,
+  Sparkles, SlidersHorizontal, Trash2, Check, X, Download, Type, PenLine,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { filterCanvas, FILTER_LABELS, type FilterType } from '@/lib/filters';
 import { warpPerspective, estimateOutputSize, type Point } from '@/lib/perspective';
 import { defaultCorners } from '@/lib/edge-detection';
 import { generatePDF, downloadBlob, shareFile } from '@/lib/export';
-import { useSaveScan, useUpdateScan, useDeleteLocalScan } from '@/hooks/use-local-scans';
+import { useSaveScan } from '@/hooks/use-local-scans';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -49,13 +49,16 @@ function midpoint(a: Point, b: Point): Point {
 /* ── Main component ─────────────────────────────────────────────────────────── */
 export default function PreviewScreen() {
   const [, setLocation] = useLocation();
-  const { pages, removePage, updatePage, clearPages, settings } = useScannerContext();
-  const saveScan   = useSaveScan();
-  const updateScan = useUpdateScan();
-  const deleteScan = useDeleteLocalScan();
+  const {
+    pages, removePage, updatePage, clearPages, settings,
+    setActivePageIndex, activePageIndex, draftHydrated,
+  } = useScannerContext();
+  const saveScan = useSaveScan();
 
   /* ── Page selection ─────────────────────────────────────────────────────── */
-  const [selectedIdx, setSelectedIdx] = useState(0);
+  const [selectedIdx, setSelectedIdx] = useState(() =>
+    Math.min(activePageIndex, Math.max(0, pages.length - 1)),
+  );
   const [activeTool,  setActiveTool]  = useState<ActiveTool>('none');
   const [applying,    setApplying]    = useState(false);
 
@@ -63,7 +66,6 @@ export default function PreviewScreen() {
   const [exportOpen,  setExportOpen]  = useState(false);
   const [fileName,    setFileName]    = useState(() => `Scan_${new Date().toISOString().slice(0, 10)}`);
   const [isExported,  setIsExported]  = useState(false);
-  const draftId = useRef<string | null>(null);
 
   /* ── Filter / Adjust pending ────────────────────────────────────────────── */
   const [pendingFilter,     setPendingFilter]     = useState<FilterType>('original');
@@ -83,13 +85,23 @@ export default function PreviewScreen() {
 
   /* ── Guards ─────────────────────────────────────────────────────────────── */
   useEffect(() => {
-    if (pages.length === 0) setLocation('/');
-  }, [pages.length, setLocation]);
+    if (draftHydrated && pages.length === 0) setLocation('/');
+  }, [draftHydrated, pages.length, setLocation]);
 
   useEffect(() => {
     if (selectedIdx >= pages.length && pages.length > 0)
       setSelectedIdx(pages.length - 1);
   }, [pages.length, selectedIdx]);
+
+  useEffect(() => {
+    if (pages.length > 0) {
+      setSelectedIdx(Math.min(activePageIndex, pages.length - 1));
+    }
+  }, [activePageIndex, pages.length]);
+
+  useEffect(() => {
+    setActivePageIndex(selectedIdx);
+  }, [selectedIdx, setActivePageIndex]);
 
   /* ── Reset pending edits when page changes ──────────────────────────────── */
   useEffect(() => {
@@ -97,18 +109,6 @@ export default function PreviewScreen() {
     setPendingBrightness(0);
     setPendingContrast(0);
   }, [selectedIdx]);
-
-  /* ── Auto-save draft ────────────────────────────────────────────────────── */
-  useEffect(() => {
-    if (pages.length === 0 || draftId.current) return;
-    saveScan.mutateAsync({
-      name: fileName, pageCount: pages.length,
-      scanType: settings.scanType, colorMode: settings.colorMode,
-      paperSize: settings.paperSize, format: 'pdf',
-      thumbnail: pages[0], pages: [...pages],
-    }).then(saved => { draftId.current = saved.id; }).catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   /* ── Rotate 90° CW ──────────────────────────────────────────────────────── */
   const handleRotate = useCallback(async () => {
@@ -215,13 +215,12 @@ export default function PreviewScreen() {
   /* ── Delete page ────────────────────────────────────────────────────────── */
   const handleDelete = useCallback(() => {
     if (pages.length === 1) {
-      if (draftId.current) deleteScan.mutateAsync(draftId.current).catch(() => {});
       clearPages(); setLocation('/'); return;
     }
     removePage(selectedIdx);
     setSelectedIdx(Math.min(selectedIdx, pages.length - 2));
     setActiveTool('none');
-  }, [pages.length, selectedIdx, removePage, clearPages, deleteScan, setLocation]);
+  }, [pages.length, selectedIdx, removePage, clearPages, setLocation]);
 
   /* ── Retake: remove selected, go back to scanner ────────────────────────── */
   const handleRetake = useCallback(() => {
@@ -231,18 +230,11 @@ export default function PreviewScreen() {
 
   /* ── Export helpers ─────────────────────────────────────────────────────── */
   const finalise = async (format: 'pdf' | 'jpeg') => {
-    if (draftId.current) {
-      await updateScan.mutateAsync({
-        id: draftId.current,
-        data: { name: fileName, format, pageCount: pages.length, pages: [...pages], thumbnail: pages[0] },
-      });
-    } else {
-      await saveScan.mutateAsync({
-        name: fileName, pageCount: pages.length,
-        scanType: settings.scanType, colorMode: settings.colorMode,
-        paperSize: settings.paperSize, format, thumbnail: pages[0], pages: [...pages],
-      });
-    }
+    await saveScan.mutateAsync({
+      name: fileName, pageCount: pages.length,
+      scanType: settings.scanType, colorMode: settings.colorMode,
+      paperSize: settings.paperSize, format, thumbnail: pages[0], pages: [...pages],
+    });
     setIsExported(true);
   };
 
@@ -280,6 +272,13 @@ export default function PreviewScreen() {
   } : null;
 
   const currentPage = pages[selectedIdx];
+  if (!draftHydrated) {
+    return (
+      <div className="min-h-[100dvh] bg-gray-950 flex items-center justify-center">
+        <div className="w-7 h-7 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
+      </div>
+    );
+  }
   if (pages.length === 0) return null;
 
   /* ── Render ─────────────────────────────────────────────────────────────── */
@@ -425,6 +424,12 @@ export default function PreviewScreen() {
           <ToolButton icon={<RotateCw className="w-5 h-5" />} label="Rotate"
             onClick={handleRotate} disabled={applying}
             spin={applying} />
+
+          <ToolButton icon={<Type className="w-5 h-5" />} label="Edit text"
+            onClick={() => setLocation('/markup?mode=text')} disabled={applying} />
+
+          <ToolButton icon={<PenLine className="w-5 h-5" />} label="Markup"
+            onClick={() => setLocation('/markup')} disabled={applying} />
 
           {/* Filters */}
           <ToolButton icon={<Sparkles className="w-5 h-5" />} label="Filters"

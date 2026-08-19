@@ -18,7 +18,6 @@ import { TopBar } from '@/components/top-bar';
 import ScannerScreen from '@/pages/scanner';
 import PreviewScreen from '@/pages/preview';
 import GalleryScreen from '@/pages/gallery';
-import EditScreen from '@/pages/edit';
 import MarkupScreen from '@/pages/markup';
 import HomeScreen from '@/pages/home';
 import PrivacyPolicyScreen from '@/pages/privacy-policy';
@@ -33,7 +32,7 @@ const queryClient = new QueryClient();
 
 function Router() {
   const [location] = useLocation();
-  const hideTopBar = ['/', '/edit', '/markup', '/preview', '/home', '/privacy-policy', '/terms-of-service', '/login'].includes(location);
+  const hideTopBar = ['/', '/markup', '/preview', '/home', '/privacy-policy', '/terms-of-service', '/login'].includes(location);
 
   return (
     <RoutedErrorBoundary>
@@ -42,7 +41,6 @@ function Router() {
           <Route path="/" component={ScannerScreen} />
           <Route path="/preview" component={PreviewScreen} />
           <Route path="/gallery" component={GalleryScreen} />
-          <Route path="/edit" component={EditScreen} />
           <Route path="/markup" component={MarkupScreen} />
           <Route path="/home">{() => { window.location.replace('/'); return null; }}</Route>
           <Route path="/privacy-policy" component={PrivacyPolicyScreen} />

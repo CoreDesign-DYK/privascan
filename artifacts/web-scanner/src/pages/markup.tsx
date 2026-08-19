@@ -6,7 +6,7 @@
  *   Text  — tap to place keyboard text
  *
  * On "Done", annotations are flattened at full image resolution
- * and the last page in the scanner context is replaced.
+ * and the selected page in the scanner context is replaced.
  */
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { useLocation } from 'wouter';
@@ -59,7 +59,7 @@ function toImageSpace(pt: Pt, b: ReturnType<typeof containBounds>): Pt {
 /* ── Component ───────────────────────────────────────────────────────────── */
 export default function MarkupScreen() {
   const [, setLocation] = useLocation();
-  const { pages, addPage, removePage } = useScannerContext();
+  const { pages, updatePage, activePageIndex } = useScannerContext();
 
   const containerRef   = useRef<HTMLDivElement>(null);
   const canvasRef      = useRef<HTMLCanvasElement>(null);
@@ -67,7 +67,9 @@ export default function MarkupScreen() {
   const isDrawing      = useRef(false);
 
   const [items,   setItems]   = useState<MarkupItem[]>([]);
-  const [mode,    setMode]    = useState<'draw' | 'text'>('draw');
+  const [mode,    setMode]    = useState<'draw' | 'text'>(() =>
+    new URLSearchParams(window.location.search).get('mode') === 'text' ? 'text' : 'draw',
+  );
   const [color,   setColor]   = useState('#000000');
   const [penW,    setPenW]    = useState(7);
 
@@ -78,7 +80,8 @@ export default function MarkupScreen() {
   });
   const [textValue, setTextValue] = useState('');
 
-  const bgImage = pages.length ? pages[pages.length - 1] : null;
+  const pageIndex = Math.min(activePageIndex, Math.max(0, pages.length - 1));
+  const bgImage = pages.length ? pages[pageIndex] : null;
 
   /* ── Render helper ──────────────────────────────────────────────────────── */
   const render = useCallback(() => {
@@ -268,8 +271,7 @@ export default function MarkupScreen() {
     }
 
     const result = out.toDataURL('image/jpeg', 0.92);
-    removePage(pages.length - 1);
-    addPage(result);
+    updatePage(pageIndex, result);
     toast.success('Markup saved');
     setLocation('/preview');
   };

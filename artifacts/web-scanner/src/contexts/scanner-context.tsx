@@ -21,6 +21,9 @@ interface ScannerContextType {
   removePage: (index: number) => void;
   updatePage: (index: number, dataUrl: string) => void;
   clearPages: () => void;
+  activePageIndex: number;
+  setActivePageIndex: (index: number) => void;
+  draftHydrated: boolean;
   mode: 'auto' | 'manual';
   setMode: (mode: 'auto' | 'manual') => void;
   /** Raw captured image waiting to be edited */
@@ -41,6 +44,7 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
     imageQuality: 'high',
   });
   const [pages, setPages]                     = useState<string[]>([]);
+  const [activePageIndex, setActivePageIndex] = useState(0);
   const [mode, setMode]                       = useState<'auto' | 'manual'>('manual');
   const [pendingPage, setPendingPage]         = useState<string | null>(null);
   const [detectedCorners, setDetectedCorners] = useState<[Point, Point, Point, Point] | null>(null);
@@ -96,10 +100,14 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
     setFullSettings(prev => ({ ...prev, ...s }));
 
   const addPage     = useCallback((url: string)  => setPages(p => [...p, url]),           []);
-  const removePage  = useCallback((i: number)    => setPages(p => p.filter((_, j) => j !== i)), []);
+  const removePage  = useCallback((i: number)    => {
+    setPages(p => p.filter((_, j) => j !== i));
+    setActivePageIndex(index => Math.max(0, index > i ? index - 1 : index));
+  }, []);
   const updatePage  = useCallback((i: number, url: string) => setPages(p => p.map((ex, j) => j === i ? url : ex)), []);
   const clearPages  = useCallback(() => {
     setPages([]);
+    setActivePageIndex(0);
     setPendingPage(null);
     setDetectedCorners(null);
     void clearActiveDraft().catch(() => {});
@@ -109,6 +117,8 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
     <ScannerContext.Provider value={{
       settings, setSettings,
       pages, addPage, removePage, updatePage, clearPages,
+      activePageIndex, setActivePageIndex,
+      draftHydrated,
       mode, setMode,
       pendingPage, setPendingPage,
       detectedCorners, setDetectedCorners,

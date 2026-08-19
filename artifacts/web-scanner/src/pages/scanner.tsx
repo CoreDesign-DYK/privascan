@@ -11,7 +11,7 @@
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocation } from 'wouter';
-import { Zap, ZapOff, ChevronRight, Smartphone, Edit2, ScanLine, FileText, House, Camera, Crop, RotateCw, Type, Trash2, PenLine, Check, X as XIcon } from 'lucide-react';
+import { Zap, ZapOff, ChevronRight, Smartphone, Edit2, ScanLine, FileText, House, Camera, Crop, RotateCw, Type, Trash2, Check, X as XIcon } from 'lucide-react';
 import { useCamera } from '@/hooks/use-camera';
 import { useScannerContext } from '@/contexts/scanner-context';
 import { SettingsSheet } from '@/components/settings-sheet';
@@ -21,8 +21,8 @@ import { useLocalScans } from '@/hooks/use-local-scans';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { detectDocumentCorners, defaultCorners } from '@/lib/edge-detection';
-import { type Point, warpPerspective } from '@/lib/perspective';
+import { detectDocumentCorners, detectCornersFromCanvas } from '@/lib/edge-detection';
+import { estimateOutputSize, type Point, warpPerspective } from '@/lib/perspective';
 import { type ScannerSettings, QUALITY_VALUES, type ScanMode } from '@/lib/scanner-types';
 
 const EDGE_INTERVAL_MS = 200;
@@ -64,6 +64,17 @@ function generateMockPage(pageNum: number, settings: ScannerSettings): string {
   ].forEach((line, i) => ctx.fillText(line, 80, 240 + i * 46));
 
   return canvas.toDataURL('image/jpeg', QUALITY_VALUES[settings.imageQuality]);
+}
+
+function createDocumentPage(
+  source: HTMLCanvasElement,
+  corners: [Point, Point, Point, Point] | null,
+  quality: number,
+): string {
+  if (!corners) return source.toDataURL('image/jpeg', quality);
+
+  const { w, h } = estimateOutputSize(corners);
+  return warpPerspective(source, corners, w, h).toDataURL('image/jpeg', quality);
 }
 
 /* ── Mock generators for special scan modes ───────────────────────────────── */
@@ -229,7 +240,7 @@ export default function ScannerScreen() {
   const { videoRef, startCamera, stopCamera, hasPermission, isMockMode } = useCamera();
   const {
     mode, setMode, pages, addPage, removePage, clearPages, settings, setSettings,
-    setPendingPage, setDetectedCorners,
+    setActivePageIndex,
   } = useScannerContext();
 
   const canvasRef            = useRef<HTMLCanvasElement>(null);
@@ -338,8 +349,10 @@ export default function ScannerScreen() {
       const ctx1 = canvas.getContext('2d')!;
       if (settingsRef.current.colorMode === 'greyscale') ctx1.filter = 'grayscale(100%)';
       ctx1.drawImage(video, 0, 0);
-      addPage(canvas.toDataURL('image/jpeg', QUALITY_VALUES[settingsRef.current.imageQuality]));
+      const corners = edgeCorners ?? detectCornersFromCanvas(canvas);
+      addPage(createDocumentPage(canvas, corners, QUALITY_VALUES[settingsRef.current.imageQuality]));
     }
+    setActivePageIndex(pageNum - 1);
 
     triggerCaptureEffects();
     setCapturedLabel(pageNum);
@@ -348,7 +361,7 @@ export default function ScannerScreen() {
     // Enter waiting-clear state — block next scan until doc leaves frame
     waitingClear.current = true;
     setIsWaitingClear(true);
-  }, [isMockMode, videoRef, addPage, triggerCaptureEffects]);
+  }, [isMockMode, videoRef, edgeCorners, addPage, setActivePageIndex, triggerCaptureEffects]);
 
   useEffect(() => { captureAutoRef.current = autoCaptureFrame; }, [autoCaptureFrame]);
 
@@ -404,10 +417,7 @@ export default function ScannerScreen() {
     const pageNum = pagesLenRef.current + 1;
 
     if (isMockMode || !videoRef.current) {
-      const dataUrl = generateMockPage(pageNum, settingsRef.current);
-      setPendingPage(dataUrl);
-      setDetectedCorners(defaultCorners(1240, 1754));
-      setLocation('/edit');
+      addPage(generateMockPage(pageNum, settingsRef.current));
     } else {
       const video  = videoRef.current;
       const canvas = document.createElement('canvas');
@@ -415,14 +425,15 @@ export default function ScannerScreen() {
       const ctx2 = canvas.getContext('2d')!;
       if (settingsRef.current.colorMode === 'greyscale') ctx2.filter = 'grayscale(100%)';
       ctx2.drawImage(video, 0, 0);
-      const dataUrl = canvas.toDataURL('image/jpeg', QUALITY_VALUES[settingsRef.current.imageQuality]);
-      setPendingPage(dataUrl);
-      // If the live frame did not yield a reliable quad, let the crop screen
-      // analyse the captured image itself instead of forcing a full-frame box.
-      setDetectedCorners(edgeCorners ?? null);
-      setLocation('/edit');
+      const corners = edgeCorners ?? detectCornersFromCanvas(canvas);
+      addPage(createDocumentPage(canvas, corners, QUALITY_VALUES[settingsRef.current.imageQuality]));
     }
-  }, [isMockMode, videoRef, edgeCorners, setPendingPage, setDetectedCorners, setLocation, triggerCaptureEffects]);
+    setActivePageIndex(pageNum - 1);
+
+    // Review the page first. Crop is available from the review toolbar only
+    // when a user wants to adjust the automatic correction.
+    setLocation('/preview');
+  }, [isMockMode, videoRef, edgeCorners, addPage, setActivePageIndex, setLocation, triggerCaptureEffects]);
 
   /* ── Book capture ───────────────────────────────────────────────────────── */
   const bookCapture = useCallback(() => {
@@ -471,7 +482,9 @@ export default function ScannerScreen() {
 
     setCapturedLabel(base + 2);
     setTimeout(() => setCapturedLabel(null), 1800);
-  }, [isMockMode, videoRef, addPage, triggerCaptureEffects]);
+    setActivePageIndex(base + 1);
+    setLocation('/preview');
+  }, [isMockMode, videoRef, addPage, setActivePageIndex, setLocation, triggerCaptureEffects]);
 
   /* ── Presentation capture ───────────────────────────────────────────────── */
   const presentationCapture = useCallback(() => {
@@ -502,7 +515,9 @@ export default function ScannerScreen() {
 
     setCapturedLabel(pageNum);
     setTimeout(() => setCapturedLabel(null), 1800);
-  }, [isMockMode, videoRef, addPage, edgeCorners, triggerCaptureEffects]);
+    setActivePageIndex(pageNum - 1);
+    setLocation('/preview');
+  }, [isMockMode, videoRef, addPage, edgeCorners, setActivePageIndex, setLocation, triggerCaptureEffects]);
 
   /* ── ID Cards capture (2-stage) ─────────────────────────────────────────── */
   const idCardsCapture = useCallback(() => {
@@ -538,6 +553,8 @@ export default function ScannerScreen() {
 
       if (isMockMode) {
         addPage(generateMockIdComposite(settingsRef.current));
+        setActivePageIndex(pagesLenRef.current);
+        setLocation('/preview');
       } else {
         const backData = captureCardDataUrl();
         const fImg = new Image(), bImg = new Image();
@@ -554,7 +571,9 @@ export default function ScannerScreen() {
           cctx.drawImage(fImg, 0, 0);
           cctx.drawImage(bImg, 0, fImg.height + 20);
           addPage(composite.toDataURL('image/jpeg', q));
+          setActivePageIndex(pagesLenRef.current);
           toast.success('ID Card saved — front & back combined');
+          setLocation('/preview');
         });
       }
 
@@ -563,7 +582,7 @@ export default function ScannerScreen() {
       setCapturedLabel(pagesLenRef.current + 1);
       setTimeout(() => setCapturedLabel(null), 1800);
     }
-  }, [isMockMode, videoRef, addPage, edgeCorners, idStage, triggerCaptureEffects]);
+  }, [isMockMode, videoRef, addPage, edgeCorners, idStage, setActivePageIndex, setLocation, triggerCaptureEffects]);
 
   /* ── Capture button handler ─────────────────────────────────────────────── */
   const handleCaptureButton = useCallback(() => {
@@ -1028,9 +1047,8 @@ export default function ScannerScreen() {
                 ref={i === pages.length - 1 ? lastThumbRef : null}
                 onClick={() => {
                   setSelectedThumb(i);
-                  setPendingPage(p);
-                  setDetectedCorners(null);
-                  setLocation('/edit');
+                  setActivePageIndex(i);
+                  setLocation('/preview');
                 }}
                 className={cn(
                   'relative shrink-0 w-[3.85rem] h-[4.9rem] rounded-xl overflow-hidden snap-center shadow-lg transition-all duration-200 group',
@@ -1067,9 +1085,8 @@ export default function ScannerScreen() {
 
             {/* Crop */}
             <ToolbarBtn icon={<Crop className="w-5 h-5" />} label="Crop" onClick={() => {
-              setPendingPage(pages[pages.length - 1]);
-              setDetectedCorners(null);
-              setLocation('/edit');
+              setActivePageIndex(pages.length - 1);
+              setLocation('/preview');
             }} />
 
             {/* Rotate */}
@@ -1096,11 +1113,6 @@ export default function ScannerScreen() {
               active={textPanelOpen}
               onClick={() => setTextPanelOpen(o => !o)}
             />
-
-            {/* Markup */}
-            <ToolbarBtn icon={<PenLine className="w-5 h-5" />} label="Markup" onClick={() => {
-              setLocation('/markup');
-            }} />
 
             {/* Delete */}
             <ToolbarBtn icon={<Trash2 className="w-5 h-5" />} label="Delete" danger onClick={() => {
