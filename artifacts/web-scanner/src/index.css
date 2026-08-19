@@ -106,8 +106,17 @@
   * {
     @apply border-border;
   }
+  html {
+    background: #0d0d14;
+    color-scheme: dark;
+  }
   body {
-    @apply font-sans antialiased bg-background text-foreground;
+    @apply font-sans antialiased text-foreground;
+    background: #0d0d14;
+  }
+  #root {
+    min-height: 100dvh;
+    background: #0d0d14;
   }
 }
 
