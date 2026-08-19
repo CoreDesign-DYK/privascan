@@ -417,7 +417,9 @@ export default function ScannerScreen() {
       ctx2.drawImage(video, 0, 0);
       const dataUrl = canvas.toDataURL('image/jpeg', QUALITY_VALUES[settingsRef.current.imageQuality]);
       setPendingPage(dataUrl);
-      setDetectedCorners(edgeCorners ?? defaultCorners(canvas.width, canvas.height));
+      // If the live frame did not yield a reliable quad, let the crop screen
+      // analyse the captured image itself instead of forcing a full-frame box.
+      setDetectedCorners(edgeCorners ?? null);
       setLocation('/edit');
     }
   }, [isMockMode, videoRef, edgeCorners, setPendingPage, setDetectedCorners, setLocation, triggerCaptureEffects]);
@@ -950,12 +952,14 @@ export default function ScannerScreen() {
             viewBox={`0 0 ${viewW} ${viewH}`}
             preserveAspectRatio="xMidYMid slice"
           >
-            {/* Subtle fill */}
+            {/* Adobe-style connected document outline + subtle interior tint */}
             <polygon
               points={edgeCorners.map(p => `${p.x},${p.y}`).join(' ')}
               fill={edgeFill}
-              stroke="none"
-              style={{ transition: 'fill 0.3s' }}
+              stroke={edgeStroke}
+              strokeWidth="3"
+              strokeLinejoin="round"
+              style={{ transition: 'fill 0.3s, stroke 0.3s ease' }}
             />
             {/* L-brackets at actual detected corners [TL, TR, BR, BL] */}
             {edgeCorners.map((p, i) => {
@@ -1050,7 +1054,7 @@ export default function ScannerScreen() {
                 onClick={() => {
                   setSelectedThumb(i);
                   setPendingPage(p);
-                  setDetectedCorners(defaultCorners(1240, 1754));
+                  setDetectedCorners(null);
                   setLocation('/edit');
                 }}
                 className={cn(
@@ -1089,7 +1093,7 @@ export default function ScannerScreen() {
             {/* Crop */}
             <ToolbarBtn icon={<Crop className="w-5 h-5" />} label="Crop" onClick={() => {
               setPendingPage(pages[pages.length - 1]);
-              setDetectedCorners(defaultCorners(1240, 1754));
+              setDetectedCorners(null);
               setLocation('/edit');
             }} />
 
