@@ -1169,7 +1169,7 @@ export default function ScannerScreen() {
                   setLocation('/preview');
                 }}
                 className={cn(
-                  'relative shrink-0 w-[3.85rem] h-[4.9rem] rounded-xl overflow-hidden snap-center shadow-lg transition-all duration-200 group',
+                  'relative shrink-0 w-[3.85rem] h-[4.9rem] rounded-none overflow-hidden snap-center shadow-lg transition-all duration-200 group',
                   i === selectedThumb
                     ? 'ring-2 ring-blue-400 ring-offset-1 ring-offset-transparent scale-105'
                     : 'ring-1 ring-white/20 hover:ring-blue-300',

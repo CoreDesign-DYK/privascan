@@ -324,7 +324,7 @@ export default function PreviewScreen() {
               key={i}
               onClick={() => { setSelectedIdx(i); setActiveTool('none'); }}
               className={cn(
-                'shrink-0 w-14 h-16 rounded-lg overflow-hidden border-2 transition-all relative',
+                'shrink-0 w-14 h-16 rounded-none overflow-hidden border-2 transition-all relative',
                 i === selectedIdx
                   ? 'border-blue-500 shadow-lg shadow-blue-500/30 scale-105'
                   : 'border-white/20 opacity-60 hover:opacity-90',
