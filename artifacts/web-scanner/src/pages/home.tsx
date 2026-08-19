@@ -121,7 +121,7 @@ export default function HomeScreen() {
             </svg>
           </div>
           {/* Name */}
-          <span className="font-bold text-[22px] tracking-tight text-gray-900">
+          <span className="hidden sm:inline font-bold text-[22px] tracking-tight text-gray-900">
             Priva<span className="text-sky-400">Scan</span>
           </span>
         </div>

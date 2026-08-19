@@ -564,7 +564,7 @@ export function HomePopup({ onClose }: Props) {
               <div className="flex items-center gap-2.5">
                 <AppLogo size="w-11 h-11" />
                 <div>
-                  <p className="font-bold text-[18px] tracking-tight text-gray-900 leading-none">
+                  <p className="hidden sm:block font-bold text-[18px] tracking-tight text-gray-900 leading-none">
                     Priva<span className="text-sky-400">Scan</span>
                   </p>
                   {!user && (
