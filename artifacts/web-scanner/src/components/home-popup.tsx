@@ -1403,8 +1403,7 @@ export function HomePopup({ onClose }: Props) {
 
         {/* ════ PIN entry overlay (inside card) ════ */}
         {pinMode !== 'none' && (() => {
-          const titleMap: Record<typeof pinMode, string> = {
-            'none':     '',
+          const titleMap: Record<Exclude<typeof pinMode, 'none'>, string> = {
             'set-1':    'Set PIN',
             'set-2':    'Confirm PIN',
             'verify':   'Enter current PIN',
@@ -1422,7 +1421,9 @@ export function HomePopup({ onClose }: Props) {
                 >
                   <ChevronLeft className="w-4 h-4 text-gray-500" />
                 </button>
-                <p className="font-semibold text-[15px] text-gray-900">{titleMap[pinMode]}</p>
+                <p className="font-semibold text-[15px] text-gray-900">
+                  {titleMap[pinMode as Exclude<typeof pinMode, 'none'>]}
+                </p>
               </div>
 
               {/* Dots + keypad */}

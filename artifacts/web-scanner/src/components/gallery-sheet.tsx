@@ -47,6 +47,7 @@ export function GallerySheet({ open, onClose }: Props) {
       setVisible(true);
       // give a frame for the DOM to render before sliding in
       requestAnimationFrame(() => requestAnimationFrame(() => setAnimateIn(true)));
+      return undefined;
     } else {
       setAnimateIn(false);
       const t = setTimeout(() => setVisible(false), 350);

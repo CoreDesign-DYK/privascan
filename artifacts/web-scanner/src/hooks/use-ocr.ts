@@ -1,7 +1,7 @@
 /**
  * use-ocr.ts
  * On-device OCR via Tesseract.js (WASM) — zero server, works fully offline.
- * Language follows the app's language selector: EN/DE/KO/JP.
+ * Language follows the app's language selector and runs fully on-device.
  */
 import { useState, useCallback, useRef } from 'react';
 import { createWorker, type Worker } from 'tesseract.js';
@@ -10,8 +10,17 @@ import { type Language } from '@/contexts/language-context';
 const LANG_MAP: Record<Language, string> = {
   EN: 'eng',
   DE: 'deu',
+  FR: 'fra',
+  ES: 'spa',
+  IT: 'ita',
+  PT: 'por',
+  RU: 'rus',
+  ZH: 'chi_sim',
+  JA: 'jpn',
   KO: 'kor',
-  JP: 'jpn',
+  AR: 'ara',
+  HI: 'hin',
+  NL: 'nld',
 };
 
 export type OcrStatus = 'idle' | 'loading' | 'recognizing' | 'done' | 'error';
