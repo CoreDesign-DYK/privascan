@@ -944,37 +944,17 @@ export default function ScannerScreen() {
             viewBox={`0 0 ${viewW} ${viewH}`}
             preserveAspectRatio="xMidYMid slice"
           >
-            {/* Adobe-style connected document outline + subtle interior tint */}
+             {/* Single connected document outline + subtle interior tint.
+                 Do not draw a second L-bracket layer here: it can diverge
+                 from the fitted quad and appear doubled at an angle. */}
             <polygon
               points={edgeCorners.map(p => `${p.x},${p.y}`).join(' ')}
               fill={edgeFill}
               stroke={edgeStroke}
-              strokeWidth="3"
+               strokeWidth="5"
               strokeLinejoin="round"
               style={{ transition: 'fill 0.3s, stroke 0.3s ease' }}
             />
-            {/* L-brackets at actual detected corners [TL, TR, BR, BL] */}
-            {edgeCorners.map((p, i) => {
-              const ARM = Math.min(viewW, viewH) * 0.08;
-              const dirs: [[number, number], [number, number]][] = [
-                [[ARM, 0],  [0, ARM] ],   // TL → right + down
-                [[-ARM, 0], [0, ARM] ],   // TR → left  + down
-                [[-ARM, 0], [0, -ARM]],   // BR → left  + up
-                [[ARM, 0],  [0, -ARM]],   // BL → right + up
-              ];
-              const [d1, d2] = dirs[i];
-              return (
-                <path
-                  key={i}
-                  d={`M ${p.x + d1[0]},${p.y + d1[1]} L ${p.x},${p.y} L ${p.x + d2[0]},${p.y + d2[1]}`}
-                  stroke={edgeStroke}
-                  strokeWidth="3.5"
-                  fill="none"
-                  strokeLinecap="square"
-                  style={{ transition: 'stroke 0.3s ease' }}
-                />
-              );
-            })}
           </svg>
         )}
 
