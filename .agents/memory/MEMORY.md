@@ -1,0 +1,1 @@
+- [Active scan recovery](active-scan-recovery.md) — Keep unfinished scans recoverable on-device without mixing drafts into the saved-document gallery.

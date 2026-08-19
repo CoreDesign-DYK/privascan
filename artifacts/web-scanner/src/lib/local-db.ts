@@ -4,6 +4,7 @@
  * Zero server costs — iOS Documents / Android Downloads accessible via Web Share API.
  */
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import type { ScannerSettings } from '@/lib/scanner-types';
 
 export interface LocalScan {
   id: string;
@@ -18,16 +19,30 @@ export interface LocalScan {
   pages: string[];          // base64 data-URLs of every page
 }
 
+/** In-progress work, kept separate from saved scans and the gallery. */
+export interface ActiveScanDraft {
+  id: 'active';
+  updatedAt: string;
+  settings: ScannerSettings;
+  pages: string[];
+  /** A captured image that is still waiting for crop/filter confirmation. */
+  pendingPage: string | null;
+}
+
 interface DocScanDB extends DBSchema {
   scans: {
     key: string;
     value: LocalScan;
     indexes: { by_date: string };
   };
+  drafts: {
+    key: string;
+    value: ActiveScanDraft;
+  };
 }
 
 const DB_NAME    = 'docscan-v1';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let _db: IDBPDatabase<DocScanDB> | null = null;
 
@@ -35,8 +50,13 @@ async function getDB(): Promise<IDBPDatabase<DocScanDB>> {
   if (_db) return _db;
   _db = await openDB<DocScanDB>(DB_NAME, DB_VERSION, {
     upgrade(db) {
-      const store = db.createObjectStore('scans', { keyPath: 'id' });
-      store.createIndex('by_date', 'createdAt');
+      if (!db.objectStoreNames.contains('scans')) {
+        const store = db.createObjectStore('scans', { keyPath: 'id' });
+        store.createIndex('by_date', 'createdAt');
+      }
+      if (!db.objectStoreNames.contains('drafts')) {
+        db.createObjectStore('drafts', { keyPath: 'id' });
+      }
     },
   });
   return _db;
@@ -94,6 +114,31 @@ export async function updateScan(
 export async function clearAllScans(): Promise<void> {
   const db = await getDB();
   await db.clear('scans');
+}
+
+// ── Active draft ─────────────────────────────────────────────────────────────
+
+export async function getActiveDraft(): Promise<ActiveScanDraft | undefined> {
+  const db = await getDB();
+  return db.get('drafts', 'active');
+}
+
+export async function saveActiveDraft(
+  data: Omit<ActiveScanDraft, 'id' | 'updatedAt'>,
+): Promise<ActiveScanDraft> {
+  const db = await getDB();
+  const draft: ActiveScanDraft = {
+    ...data,
+    id: 'active',
+    updatedAt: new Date().toISOString(),
+  };
+  await db.put('drafts', draft);
+  return draft;
+}
+
+export async function clearActiveDraft(): Promise<void> {
+  const db = await getDB();
+  await db.delete('drafts', 'active');
 }
 
 // ── Storage estimate ──────────────────────────────────────────────────────────

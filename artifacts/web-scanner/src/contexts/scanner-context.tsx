@@ -1,9 +1,14 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import {
+  createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode,
+} from 'react';
 import { type Point } from '@/lib/perspective';
 import {
   type ScanType, type ColorMode, type PaperSize, type ImageQuality, type ScannerSettings,
   PAPER_SIZES,
 } from '@/lib/scanner-types';
+import {
+  clearActiveDraft, getActiveDraft, saveActiveDraft,
+} from '@/lib/local-db';
 
 // Type-only re-exports are erased at runtime — Fast Refresh compatible
 export type { ScanType, ColorMode, PaperSize, ImageQuality, ScannerSettings };
@@ -39,6 +44,53 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
   const [mode, setMode]                       = useState<'auto' | 'manual'>('manual');
   const [pendingPage, setPendingPage]         = useState<string | null>(null);
   const [detectedCorners, setDetectedCorners] = useState<[Point, Point, Point, Point] | null>(null);
+  const [draftHydrated, setDraftHydrated]     = useState(false);
+  const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Restore unfinished work after a reload, browser eviction, or app restart.
+  // Drafts are private to this device and never appear in the saved-scan gallery.
+  useEffect(() => {
+    let cancelled = false;
+
+    getActiveDraft()
+      .then(draft => {
+        if (cancelled || !draft) return;
+        setFullSettings(draft.settings);
+        setPages(draft.pages);
+        setPendingPage(draft.pendingPage);
+      })
+      .catch(() => {
+        // IndexedDB can be unavailable in private browsing; scanning still works
+        // for the current tab even when durable recovery is not available.
+      })
+      .finally(() => {
+        if (!cancelled) setDraftHydrated(true);
+      });
+
+    return () => {
+      cancelled = true;
+      if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current);
+    };
+  }, []);
+
+  // Keep an in-progress scan durable without writing every slider/crop update
+  // synchronously. A short debounce protects camera responsiveness.
+  useEffect(() => {
+    if (!draftHydrated) return;
+    if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current);
+
+    draftSaveTimer.current = setTimeout(() => {
+      const hasWork = pages.length > 0 || !!pendingPage;
+      const action = hasWork
+        ? saveActiveDraft({ settings, pages, pendingPage })
+        : clearActiveDraft();
+      action.catch(() => {});
+    }, 250);
+
+    return () => {
+      if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current);
+    };
+  }, [draftHydrated, settings, pages, pendingPage]);
 
   const setSettings = (s: Partial<ScannerSettings>) =>
     setFullSettings(prev => ({ ...prev, ...s }));
@@ -46,7 +98,12 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
   const addPage     = useCallback((url: string)  => setPages(p => [...p, url]),           []);
   const removePage  = useCallback((i: number)    => setPages(p => p.filter((_, j) => j !== i)), []);
   const updatePage  = useCallback((i: number, url: string) => setPages(p => p.map((ex, j) => j === i ? url : ex)), []);
-  const clearPages  = useCallback(()             => setPages([]),                           []);
+  const clearPages  = useCallback(() => {
+    setPages([]);
+    setPendingPage(null);
+    setDetectedCorners(null);
+    void clearActiveDraft().catch(() => {});
+  }, []);
 
   return (
     <ScannerContext.Provider value={{

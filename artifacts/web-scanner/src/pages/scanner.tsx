@@ -679,7 +679,7 @@ export default function ScannerScreen() {
           className="absolute inset-0 w-full h-full object-cover z-0" />
       )}
 
-      {/* ── H: Top bar — logo · flash · done ── */}
+       {/* ── H: Top bar — logo · capture preferences · navigation ── */}
       <div
         className="absolute top-0 inset-x-0 z-20 grid grid-cols-[auto_minmax(0,1fr)_auto] sm:grid-cols-[1fr_auto_1fr] items-center px-3 sm:px-4 pt-4 pb-6"
         style={{ background: 'linear-gradient(to bottom, rgba(13,13,20,0.88) 0%, transparent 100%)' }}
@@ -837,16 +837,8 @@ export default function ScannerScreen() {
 
         </div>
 
-        {/* Col 3 — Right: Done + Home + Settings (all right-aligned) */}
+        {/* Col 3 — Right: Home + Settings (page count stays by the shutter) */}
         <div className="flex items-center justify-end gap-0 sm:gap-1 shrink-0">
-          {mode === 'auto' && pages.length > 0 && (
-            <button
-              onClick={() => setLocation('/preview')}
-              className="text-sm font-semibold text-white/90 hover:text-white bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1.5 rounded-full transition-all backdrop-blur-sm mr-1"
-            >
-              Done ({pages.length})
-            </button>
-          )}
           <button
             onClick={() => setHomeOpen(true)}
             className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 transition-all shrink-0"
@@ -1008,7 +1000,10 @@ export default function ScannerScreen() {
 
       {/* ── E: Glassmorphism bottom bar ── */}
       <div
-        className="absolute bottom-0 inset-x-0 z-20 pb-8 pt-4 px-5 flex flex-col gap-4"
+        className={cn(
+          'absolute bottom-0 inset-x-0 z-20 pb-8 pt-4 px-5 flex flex-col',
+          pages.length > 0 ? 'gap-3' : 'gap-4',
+        )}
         style={{
           background: 'linear-gradient(to top, rgba(13,13,20,0.92) 60%, rgba(13,13,20,0.6) 85%, transparent)',
           backdropFilter: 'blur(20px)',
@@ -1058,7 +1053,7 @@ export default function ScannerScreen() {
                   setLocation('/edit');
                 }}
                 className={cn(
-                  'relative shrink-0 w-[4.5rem] h-[5.75rem] rounded-xl overflow-hidden snap-center shadow-lg transition-all duration-200 group',
+                  'relative shrink-0 w-[3.85rem] h-[4.9rem] rounded-xl overflow-hidden snap-center shadow-lg transition-all duration-200 group',
                   i === selectedThumb
                     ? 'ring-2 ring-blue-400 ring-offset-1 ring-offset-transparent scale-105'
                     : 'ring-1 ring-white/20 hover:ring-blue-300',
@@ -1202,33 +1197,36 @@ export default function ScannerScreen() {
           </div>
         )}
 
-        {/* ── Scan mode tabs ── */}
-        <div className="flex justify-center transition-all duration-200 pointer-events-auto">
-          <div className="flex items-center gap-0 bg-white/8 border border-white/10 rounded-full px-1 py-1">
-            {([
-              { id: 'document',     label: 'Document'     },
-              { id: 'book',         label: 'Book'         },
-              { id: 'presentation', label: 'Presentation' },
-              { id: 'id-cards',     label: 'ID Card'      },
-            ] as { id: ScanMode; label: string }[]).map(({ id, label }) => (
-              <button
-                key={id}
-                onClick={() => setScanMode(id)}
-                className={cn(
-                  'px-3 py-1 rounded-full text-[10px] font-semibold transition-all select-none',
-                  scanMode === id
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-white/50 hover:text-white/80',
-                )}
-              >
-                {label}
-              </button>
-            ))}
+        {/* Scan modes are only needed before the first capture. Once pages
+            exist, this space is dedicated to the edit toolbar above. */}
+        {pages.length === 0 && (
+          <div className="flex justify-center transition-all duration-200 pointer-events-auto">
+            <div className="flex items-center gap-0 bg-white/8 border border-white/10 rounded-full px-1 py-1">
+              {([
+                { id: 'document',     label: 'Document'     },
+                { id: 'book',         label: 'Book'         },
+                { id: 'presentation', label: 'Presentation' },
+                { id: 'id-cards',     label: 'ID Card'      },
+              ] as { id: ScanMode; label: string }[]).map(({ id, label }) => (
+                <button
+                  key={id}
+                  onClick={() => setScanMode(id)}
+                  className={cn(
+                    'px-3 py-1 rounded-full text-[10px] font-semibold transition-all select-none',
+                    scanMode === id
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-white/50 hover:text-white/80',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* ID Cards stage indicator */}
-        {scanMode === 'id-cards' && (
+        {pages.length === 0 && scanMode === 'id-cards' && (
           <div className="flex justify-center -mt-2">
             <span className="text-[10px] font-semibold text-sky-400">
               {idStage === 'front'
