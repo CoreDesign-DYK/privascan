@@ -679,12 +679,12 @@ export default function ScannerScreen() {
 
       {/* ── H: Top bar — logo · flash · done ── */}
       <div
-        className="absolute top-0 inset-x-0 z-20 grid items-center px-4 pt-4 pb-6"
-        style={{ gridTemplateColumns: '1fr auto 1fr', background: 'linear-gradient(to bottom, rgba(13,13,20,0.88) 0%, transparent 100%)' }}
+        className="absolute top-0 inset-x-0 z-20 grid grid-cols-[auto_minmax(0,1fr)_auto] sm:grid-cols-[1fr_auto_1fr] items-center px-3 sm:px-4 pt-4 pb-6"
+        style={{ background: 'linear-gradient(to bottom, rgba(13,13,20,0.88) 0%, transparent 100%)' }}
       >
         {/* Col 1 — Left: PrivaScan brand */}
-        <div className="flex items-center gap-2">
-          <svg width="28" height="28" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <div className="flex items-center gap-2 shrink-0">
+          <svg className="w-7 h-7 shrink-0" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M2,12 L2,2 L12,2"    stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
             <path d="M36,2 L46,2 L46,12"  stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
             <path d="M2,36 L2,46 L12,46"  stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
@@ -698,20 +698,20 @@ export default function ScannerScreen() {
             <line x1="17" y1="32" x2="26" y2="32" stroke="#334155" strokeWidth="1.6" strokeLinecap="round"/>
             <line x1="7"  y1="24" x2="41" y2="24" stroke="#38bdf8" strokeWidth="2"  strokeLinecap="round" opacity="0.9"/>
           </svg>
-          <span className="font-bold tracking-tight" style={{ fontSize: '1.1rem', lineHeight: 1 }}>
+          <span className="hidden sm:inline font-bold tracking-tight" style={{ fontSize: '1.1rem', lineHeight: 1 }}>
             <span className="text-white">Priva</span><span style={{ color: '#38bdf8' }}>Scan</span>
           </span>
         </div>
 
         {/* Col 2 — Center: Flash + Quality + Auto/Manual */}
-        <div className="flex justify-center items-center gap-6">
+        <div className="flex justify-center items-center gap-1 sm:gap-6 min-w-0">
 
           {/* ── Flash ── */}
           <div className="relative flex items-center">
             <button
               onClick={() => { setFlashOpen(o => !o); setQualityOpen(false); }}
               className={cn(
-                'w-9 h-9 flex items-center justify-center rounded-full transition-all',
+                'w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-full transition-all shrink-0',
                 flashOpen ? 'bg-white/20' : 'hover:bg-white/10',
                 flashMode === 'on'   && 'text-yellow-300',
                 flashMode === 'off'  && 'text-white/40',
@@ -754,7 +754,7 @@ export default function ScannerScreen() {
             <button
               onClick={() => { setQualityOpen(o => !o); setFlashOpen(false); }}
               className={cn(
-                'w-9 h-9 flex items-center justify-center rounded-full transition-all',
+                'w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-full transition-all shrink-0',
                 qualityOpen ? 'bg-white/20' : 'hover:bg-white/10',
               )}
               aria-label="Scan quality"
@@ -810,7 +810,7 @@ export default function ScannerScreen() {
           </div>
 
           {/* ── Auto / Manual toggle ── */}
-          <div className="relative flex items-center h-9 bg-white/10 border border-white/15 rounded-full px-[3px] ml-[5px]">
+          <div className="relative flex items-center h-9 bg-white/10 border border-white/15 rounded-full px-[3px] ml-0 sm:ml-[5px] shrink-0">
               {/* Sliding pill */}
               <div
                 className="absolute top-[3px] bottom-[3px] rounded-full bg-white shadow-sm transition-all duration-300 ease-out"
@@ -824,7 +824,7 @@ export default function ScannerScreen() {
                   key={m}
                   onClick={() => setMode(m)}
                   className={cn(
-                    'relative z-10 h-full px-3 rounded-full text-[10px] font-semibold transition-colors duration-200 capitalize select-none',
+                    'relative z-10 h-full px-2 sm:px-3 rounded-full text-[10px] font-semibold transition-colors duration-200 capitalize select-none',
                     mode === m ? 'text-gray-900' : 'text-white/60 hover:text-white/90',
                   )}
                 >
@@ -836,7 +836,7 @@ export default function ScannerScreen() {
         </div>
 
         {/* Col 3 — Right: Done + Home + Settings (all right-aligned) */}
-        <div className="flex items-center justify-end gap-1">
+        <div className="flex items-center justify-end gap-0 sm:gap-1 shrink-0">
           {mode === 'auto' && pages.length > 0 && (
             <button
               onClick={() => setLocation('/preview')}
@@ -847,7 +847,7 @@ export default function ScannerScreen() {
           )}
           <button
             onClick={() => setHomeOpen(true)}
-            className="w-9 h-9 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 transition-all"
+            className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 transition-all shrink-0"
             aria-label="Home"
           >
             <House className="w-[18px] h-[18px]" />
