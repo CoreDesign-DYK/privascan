@@ -71,7 +71,7 @@ export function SettingsSheet() {
     <Popover>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon" className="text-white hover:bg-white/20">
-          <SlidersHorizontal className="w-5 h-5" />
+          <SlidersHorizontal className="w-6 h-6" />
           <span className="sr-only">Settings</span>
         </Button>
       </PopoverTrigger>
