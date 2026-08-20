@@ -1522,7 +1522,7 @@ export default function ScannerScreen() {
           <button
             onClick={() => setGalleryOpen(true)}
             aria-label={`Open saved scans${localScans.length > 0 ? ` (${localScans.length})` : ''}`}
-            className="relative w-12 h-12 rounded-xl border-2 border-white/25 hover:border-white/50 transition-all active:scale-95 shrink-0 bg-white/8 flex items-center justify-center"
+            className="relative w-12 h-12 rounded-xl transition-all active:scale-95 shrink-0 bg-white/8 flex items-center justify-center"
           >
             <img
               src={fileBoxIcon}
