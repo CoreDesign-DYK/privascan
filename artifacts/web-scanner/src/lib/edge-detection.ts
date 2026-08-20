@@ -79,11 +79,13 @@ function detectCornersFromImageData(
   const bottom = fitHorizontalEdge(gy, w, h, bounds.bottom, bounds.left, bounds.right, search);
   const left = fitVerticalEdge(gx, w, h, bounds.left, bounds.top, bounds.bottom, search);
   const right = fitVerticalEdge(gx, w, h, bounds.right, bounds.top, bounds.bottom, search);
+  if (!top || !bottom || !left || !right) return null;
 
   const TL = intersect(top, left);
   const TR = intersect(top, right);
   const BR = intersect(bottom, right);
   const BL = intersect(bottom, left);
+  if (!TL || !TR || !BR || !BL) return null;
   const corners: [Point, Point, Point, Point] = [TL, TR, BR, BL];
 
   return isValidDocumentQuad(corners, w, h) ? corners : null;
@@ -240,68 +242,155 @@ function edgeSupportVertical(
 
 type HorizontalLine = { m: number; b: number };
 type VerticalLine = { m: number; b: number };
+type EdgePoint = Point & { strength: number };
 
 function fitHorizontalEdge(
   gy: Float32Array, w: number, h: number, expectedY: number, left: number, right: number, radius: number,
-): HorizontalLine {
-  const points: Point[] = [];
+): HorizontalLine | null {
+  const points: EdgePoint[] = [];
   for (let x = left + 4; x <= right - 4; x += 4) {
     let bestY = expectedY;
     let bestValue = -1;
     for (let y = Math.max(1, expectedY - radius); y <= Math.min(h - 2, expectedY + radius); y++) {
-      const value = Math.abs(gy[y * w + x]);
+      const distanceBias = 1 - 0.25 * Math.abs(y - expectedY) / Math.max(1, radius);
+      const value = Math.abs(gy[y * w + x]) * distanceBias;
       if (value > bestValue) { bestValue = value; bestY = y; }
     }
-    points.push({ x, y: bestY });
+    points.push({ x, y: bestY, strength: bestValue });
   }
-  return fitYFromX(points, expectedY);
+  return fitYFromX(points, expectedY, radius);
 }
 
 function fitVerticalEdge(
   gx: Float32Array, w: number, h: number, expectedX: number, top: number, bottom: number, radius: number,
-): VerticalLine {
-  const points: Point[] = [];
+): VerticalLine | null {
+  const points: EdgePoint[] = [];
   for (let y = top + 4; y <= bottom - 4; y += 4) {
     let bestX = expectedX;
     let bestValue = -1;
     for (let x = Math.max(1, expectedX - radius); x <= Math.min(w - 2, expectedX + radius); x++) {
-      const value = Math.abs(gx[y * w + x]);
+      const distanceBias = 1 - 0.25 * Math.abs(x - expectedX) / Math.max(1, radius);
+      const value = Math.abs(gx[y * w + x]) * distanceBias;
       if (value > bestValue) { bestValue = value; bestX = x; }
     }
-    points.push({ x: bestX, y });
+    points.push({ x: bestX, y, strength: bestValue });
   }
-  return fitXFromY(points, expectedX);
+  return fitXFromY(points, expectedX, radius);
 }
 
-function fitYFromX(points: Point[], fallbackY: number): HorizontalLine {
-  if (points.length < 2) return { m: 0, b: fallbackY };
+function fitYFromX(points: EdgePoint[], expectedY: number, radius: number): HorizontalLine | null {
+  if (points.length < 8) return null;
+  const initial = leastSquaresYFromX(points);
+  if (!initial) return null;
+  const inliers = filterCoherentEdgePoints(
+    points,
+    point => Math.abs(point.y - (initial.m * point.x + initial.b)),
+    expectedY,
+    radius,
+    'y',
+  );
+  if (!hasEnoughCoherentPoints(inliers, points.length)) return null;
+  const line = leastSquaresYFromX(inliers);
+  return line && isCoherentHorizontalFit(inliers, line, expectedY, radius) ? line : null;
+}
+
+function fitXFromY(points: EdgePoint[], expectedX: number, radius: number): VerticalLine | null {
+  if (points.length < 8) return null;
+  const initial = leastSquaresXFromY(points);
+  if (!initial) return null;
+  const inliers = filterCoherentEdgePoints(
+    points,
+    point => Math.abs(point.x - (initial.m * point.y + initial.b)),
+    expectedX,
+    radius,
+    'x',
+  );
+  if (!hasEnoughCoherentPoints(inliers, points.length)) return null;
+  const line = leastSquaresXFromY(inliers);
+  return line && isCoherentVerticalFit(inliers, line, expectedX, radius) ? line : null;
+}
+
+function leastSquaresYFromX(points: Point[]): HorizontalLine | null {
   let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
   for (const p of points) {
     sumX += p.x; sumY += p.y; sumXY += p.x * p.y; sumXX += p.x * p.x;
   }
   const divisor = points.length * sumXX - sumX * sumX;
-  if (Math.abs(divisor) < 0.001) return { m: 0, b: fallbackY };
+  if (Math.abs(divisor) < 0.001) return null;
   const m = (points.length * sumXY - sumX * sumY) / divisor;
   return { m, b: (sumY - m * sumX) / points.length };
 }
 
-function fitXFromY(points: Point[], fallbackX: number): VerticalLine {
-  if (points.length < 2) return { m: 0, b: fallbackX };
+function leastSquaresXFromY(points: Point[]): VerticalLine | null {
   let sumX = 0, sumY = 0, sumXY = 0, sumYY = 0;
   for (const p of points) {
     sumX += p.x; sumY += p.y; sumXY += p.x * p.y; sumYY += p.y * p.y;
   }
   const divisor = points.length * sumYY - sumY * sumY;
-  if (Math.abs(divisor) < 0.001) return { m: 0, b: fallbackX };
+  if (Math.abs(divisor) < 0.001) return null;
   const m = (points.length * sumXY - sumX * sumY) / divisor;
   return { m, b: (sumX - m * sumY) / points.length };
 }
 
-function intersect(horizontal: HorizontalLine, vertical: VerticalLine): Point {
+function filterCoherentEdgePoints(
+  points: EdgePoint[],
+  residualFor: (point: EdgePoint) => number,
+  expectedCoordinate: number,
+  radius: number,
+  axis: 'x' | 'y',
+): EdgePoint[] {
+  const residuals = points.map(residualFor);
+  const residualMedian = median(residuals);
+  const residualLimit = Math.max(1.5, Math.min(radius * 0.35, residualMedian * 2.5 + 1));
+  const strengthFloor = Math.max(1, median(points.map(point => point.strength)) * 0.45);
+
+  return points.filter((point, index) => {
+    const coordinate = axis === 'x' ? point.x : point.y;
+    return (
+      residuals[index] <= residualLimit &&
+      point.strength >= strengthFloor &&
+      Math.abs(coordinate - expectedCoordinate) <= radius * 0.55
+    );
+  });
+}
+
+function hasEnoughCoherentPoints(inliers: EdgePoint[], total: number): boolean {
+  return inliers.length >= Math.max(8, Math.ceil(total * 0.7));
+}
+
+function isCoherentHorizontalFit(
+  points: EdgePoint[],
+  line: HorizontalLine,
+  expectedY: number,
+  radius: number,
+): boolean {
+  const residual = median(points.map(point => Math.abs(point.y - (line.m * point.x + line.b))));
+  const offset = median(points.map(point => Math.abs(point.y - expectedY)));
+  return residual <= Math.max(1.4, radius * 0.16) && offset <= radius * 0.45;
+}
+
+function isCoherentVerticalFit(
+  points: EdgePoint[],
+  line: VerticalLine,
+  expectedX: number,
+  radius: number,
+): boolean {
+  const residual = median(points.map(point => Math.abs(point.x - (line.m * point.y + line.b))));
+  const offset = median(points.map(point => Math.abs(point.x - expectedX)));
+  return residual <= Math.max(1.4, radius * 0.16) && offset <= radius * 0.45;
+}
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+}
+
+function intersect(horizontal: HorizontalLine, vertical: VerticalLine): Point | null {
   const denominator = 1 - vertical.m * horizontal.m;
-  const x = Math.abs(denominator) < 0.01
-    ? vertical.b
-    : (vertical.m * horizontal.b + vertical.b) / denominator;
+  if (Math.abs(denominator) < 0.01) return null;
+  const x = (vertical.m * horizontal.b + vertical.b) / denominator;
   return { x, y: horizontal.m * x + horizontal.b };
 }
 
