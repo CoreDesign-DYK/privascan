@@ -924,8 +924,8 @@ export default function ScannerScreen() {
 
   /* ── Derived colours ────────────────────────────────────────────────────── */
   const isStable   = stableProgress > 0.85;
-  const edgeStroke = isStable ? '#4ade80' : '#60a5fa';
-  const edgeFill   = isStable ? 'rgba(74,222,128,0.08)' : 'rgba(96,165,250,0.06)';
+  const edgeStroke = '#4ade80';
+  const edgeFill   = isStable ? 'rgba(74,222,128,0.12)' : 'rgba(74,222,128,0.07)';
   const bracketColor = edgeCorners
     ? (isStable ? '#4ade80' : '#60a5fa')
     : 'rgba(255,255,255,0.45)';
@@ -1235,7 +1235,7 @@ export default function ScannerScreen() {
               points={edgeCorners.map(p => `${p.x},${p.y}`).join(' ')}
               fill={edgeFill}
               stroke={edgeStroke}
-               strokeWidth="5"
+                strokeWidth="10"
               strokeLinejoin="round"
               style={{ transition: 'fill 0.3s, stroke 0.3s ease' }}
             />
