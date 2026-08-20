@@ -16,6 +16,10 @@ const SAMPLE_H = 360;
 
 type Bounds = { top: number; right: number; bottom: number; left: number };
 type Gradients = { gx: Float32Array; gy: Float32Array };
+type ColorSignals = {
+  luminance: Float32Array;
+  chroma: Float32Array;
+};
 
 /** Detect document corners in a live camera frame. */
 export function detectDocumentCorners(
@@ -57,12 +61,15 @@ function detectCornersFromImageData(
   image: ImageData,
 ): [Point, Point, Point, Point] | null {
   const { width: w, height: h } = image;
-  const gray = toGrayscale(image);
+  const color = toColorSignals(image);
 
   // Blur before calculating gradients so page text and wood grain do not
-  // overpower the long high-contrast document boundaries.
-  const blurred = boxBlur(gray, w, h, 4);
-  const { gx, gy } = sobelComponents(blurred, w, h);
+  // overpower the long document boundaries. Luminance keeps white-paper
+  // detection stable, while colour intensity preserves edges such as a red
+  // or blue cover against a dark, low-luminance-contrast surface.
+  const luminance = sobelComponents(boxBlur(color.luminance, w, h, 4), w, h);
+  const chroma = sobelComponents(boxBlur(color.chroma, w, h, 4), w, h);
+  const { gx, gy } = combineGradients(luminance, chroma);
 
   const bounds = findDocumentBounds(gx, gy, w, h);
   if (!bounds) return null;
@@ -300,14 +307,19 @@ function intersect(horizontal: HorizontalLine, vertical: VerticalLine): Point {
 
 /* ── Image helpers ────────────────────────────────────────────────────────── */
 
-function toGrayscale(img: ImageData): Float32Array {
+function toColorSignals(img: ImageData): ColorSignals {
   const { data, width, height } = img;
-  const out = new Float32Array(width * height);
-  for (let i = 0; i < out.length; i++) {
+  const luminance = new Float32Array(width * height);
+  const chroma = new Float32Array(width * height);
+  for (let i = 0; i < luminance.length; i++) {
     const p = i * 4;
-    out[i] = 0.299 * data[p] + 0.587 * data[p + 1] + 0.114 * data[p + 2];
+    const red = data[p];
+    const green = data[p + 1];
+    const blue = data[p + 2];
+    luminance[i] = 0.299 * red + 0.587 * green + 0.114 * blue;
+    chroma[i] = Math.max(red, green, blue) - Math.min(red, green, blue);
   }
-  return out;
+  return { luminance, chroma };
 }
 
 function boxBlur(input: Float32Array, w: number, h: number, radius: number): Float32Array {
@@ -351,6 +363,29 @@ function sobelComponents(gray: Float32Array, w: number, h: number): Gradients {
       gx[idx] = -tl - 2 * ml - bl + tr + 2 * mr + br;
       gy[idx] = -tl - 2 * tc - tr + bl + 2 * bc + br;
     }
+  }
+  return { gx, gy };
+}
+
+function combineGradients(
+  luminance: Gradients,
+  chroma: Gradients,
+): Gradients {
+  const gx = new Float32Array(luminance.gx.length);
+  const gy = new Float32Array(luminance.gy.length);
+  // Colour changes are a support signal, not a replacement for luminance.
+  // Keeping their contribution lower avoids promoting coloured text or glare
+  // over a long, coherent document edge.
+  const chromaWeight = 0.45;
+  for (let i = 0; i < gx.length; i++) {
+    gx[i] = Math.hypot(
+      luminance.gx[i],
+      chroma.gx[i] * chromaWeight,
+    );
+    gy[i] = Math.hypot(
+      luminance.gy[i],
+      chroma.gy[i] * chromaWeight,
+    );
   }
   return { gx, gy };
 }

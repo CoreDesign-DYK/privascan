@@ -555,34 +555,42 @@ export default function ScannerScreen() {
       addPage(generateMockBookHalf('right', base + 2, settingsRef.current));
     } else {
       const video = videoRef.current;
-      const vw = video.videoWidth, vh = video.videoHeight;
-      const half = Math.floor(vw / 2);
-      const pull = Math.floor(vh * 0.025); // 2.5% trapezoid correction at binding edge
 
-      // Capture full frame
+      // Capture and validate the exact frame before splitting the corrected
+      // book spread. Book mode must not turn an arbitrary camera frame into
+      // two saved pages.
       const full = document.createElement('canvas');
-      full.width = vw; full.height = vh;
+      full.width = video.videoWidth; full.height = video.videoHeight;
       const fctx = full.getContext('2d')!;
       if (grey) fctx.filter = 'grayscale(100%)';
       fctx.drawImage(video, 0, 0);
 
-      // Left page: binding on the right side → right edge pulled inward
-      const leftCorners: [Point, Point, Point, Point] = [
-        { x: 0,        y: 0          },
-        { x: half - 1, y: pull        },
-        { x: half - 1, y: vh - pull   },
-        { x: 0,        y: vh - 1     },
-      ];
-      const leftOut = warpPerspective(full, leftCorners, half, vh);
+      const corners = detectCornersFromCanvas(full);
+      if (!corners) {
+        toast.error('문서 경계 또는 초점을 확인한 뒤 다시 촬영하세요');
+        return;
+      }
+      const { w, h } = estimateOutputSize(corners);
+      const spread = warpPerspective(full, corners, w, h);
+      if (measureSharpness(spread) < 18) {
+        toast.error('문서 경계 또는 초점을 확인한 뒤 다시 촬영하세요');
+        return;
+      }
 
-      // Right page: binding on the left side → left edge pulled inward
-      const rightCorners: [Point, Point, Point, Point] = [
-        { x: half,     y: pull        },
-        { x: vw - 1,   y: 0          },
-        { x: vw - 1,   y: vh - 1     },
-        { x: half,     y: vh - pull   },
-      ];
-      const rightOut = warpPerspective(full, rightCorners, half, vh);
+      const halfWidth = Math.floor(spread.width / 2);
+      const leftOut = document.createElement('canvas');
+      leftOut.width = halfWidth; leftOut.height = spread.height;
+      leftOut.getContext('2d')!.drawImage(
+        spread, 0, 0, halfWidth, spread.height,
+        0, 0, halfWidth, spread.height,
+      );
+
+      const rightOut = document.createElement('canvas');
+      rightOut.width = spread.width - halfWidth; rightOut.height = spread.height;
+      rightOut.getContext('2d')!.drawImage(
+        spread, halfWidth, 0, spread.width - halfWidth, spread.height,
+        0, 0, spread.width - halfWidth, spread.height,
+      );
 
       addPage(leftOut.toDataURL('image/jpeg', q));
       addPage(rightOut.toDataURL('image/jpeg', q));
@@ -615,11 +623,13 @@ export default function ScannerScreen() {
       const sctx = src.getContext('2d')!;
       if (grey) sctx.filter = 'grayscale(100%)';
       sctx.drawImage(video, 0, 0);
-      // Use detected edge corners or full frame; output 16:9
-      const corners: [Point, Point, Point, Point] = edgeCorners ?? [
-        { x: 0,      y: 0      }, { x: vw - 1, y: 0      },
-        { x: vw - 1, y: vh - 1 }, { x: 0,      y: vh - 1 },
-      ];
+       // Re-detect the exact frame. Never promote an unverified camera frame
+       // to a saved presentation image.
+       const corners = detectCornersFromCanvas(src);
+       if (!corners) {
+         toast.error('문서 경계 또는 초점을 확인한 뒤 다시 촬영하세요');
+         return;
+       }
       const outW = Math.max(vw, 1280);
       const outH = Math.round(outW * 9 / 16);
       addPage(warpPerspective(src, corners, outW, outH).toDataURL('image/jpeg', q));
@@ -629,7 +639,7 @@ export default function ScannerScreen() {
     setTimeout(() => setCapturedLabel(null), 1800);
     setActivePageIndex(pageNum - 1);
     setLocation('/preview');
-  }, [isMockMode, focusReady, videoRef, addPage, edgeCorners, setActivePageIndex, setLocation, triggerCaptureEffects]);
+   }, [isMockMode, focusReady, videoRef, addPage, setActivePageIndex, setLocation, triggerCaptureEffects]);
 
   /* ── ID Cards capture (2-stage) ─────────────────────────────────────────── */
   const idCardsCapture = useCallback(() => {
@@ -641,7 +651,7 @@ export default function ScannerScreen() {
     const q    = QUALITY_VALUES[settingsRef.current.imageQuality];
     const grey = settingsRef.current.colorMode === 'greyscale';
 
-    const captureCardDataUrl = (): string => {
+     const captureCardDataUrl = (): string | null => {
       if (isMockMode || !videoRef.current) return 'mock';
       const video = videoRef.current;
       const vw = video.videoWidth, vh = video.videoHeight;
@@ -650,17 +660,20 @@ export default function ScannerScreen() {
       const sctx = src.getContext('2d')!;
       if (grey) sctx.filter = 'grayscale(100%)';
       sctx.drawImage(video, 0, 0);
-      const corners: [Point, Point, Point, Point] = edgeCorners ?? [
-        { x: 0, y: 0 }, { x: vw - 1, y: 0 },
-        { x: vw - 1, y: vh - 1 }, { x: 0, y: vh - 1 },
-      ];
+       const corners = detectCornersFromCanvas(src);
+       if (!corners) return null;
       const outW = Math.min(vw, 1004);
       const outH = Math.round(outW / 1.585); // ID card aspect ratio
       return warpPerspective(src, corners, outW, outH).toDataURL('image/jpeg', q);
     };
 
     if (idStage === 'front') {
-      idFrontRef.current = captureCardDataUrl();
+       const frontData = captureCardDataUrl();
+       if (!frontData) {
+         toast.error('문서 경계 또는 초점을 확인한 뒤 다시 촬영하세요');
+         return;
+       }
+       idFrontRef.current = frontData;
       setIdStage('back');
       toast('Front captured — flip the card and shoot the back');
     } else {
@@ -672,7 +685,11 @@ export default function ScannerScreen() {
         setActivePageIndex(pagesLenRef.current);
         setLocation('/preview');
       } else {
-        const backData = captureCardDataUrl();
+         const backData = captureCardDataUrl();
+         if (!backData) {
+           toast.error('문서 경계 또는 초점을 확인한 뒤 다시 촬영하세요');
+           return;
+         }
         const fImg = new Image(), bImg = new Image();
         fImg.src = frontData; bImg.src = backData;
         Promise.all([

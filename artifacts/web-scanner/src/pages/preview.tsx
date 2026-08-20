@@ -39,10 +39,27 @@ type ActiveTool = 'none' | 'filters' | 'adjust' | 'crop';
 type DragTarget =
   | 'corner-0' | 'corner-1' | 'corner-2' | 'corner-3'
   | 'edge-top' | 'edge-right' | 'edge-bottom' | 'edge-left';
+type PreviewPointer = { x: number; y: number };
+type PinchGesture = {
+  startDistance: number;
+  startScale: number;
+  originX: number;
+  originY: number;
+};
 
 const FILTERS: FilterType[] = ['original', 'auto', 'bw', 'highcontrast'];
+const MIN_PREVIEW_ZOOM = 1;
+const MAX_PREVIEW_ZOOM = 3;
 
 function midpoint(a: Point, b: Point): Point {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+function pointerDistance([a, b]: PreviewPointer[]): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function pointerMidpoint([a, b]: PreviewPointer[]): PreviewPointer {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
 
@@ -71,6 +88,12 @@ export default function PreviewScreen() {
   const [pendingFilter,     setPendingFilter]     = useState<FilterType>('original');
   const [pendingBrightness, setPendingBrightness] = useState(0);
   const [pendingContrast,   setPendingContrast]   = useState(0);
+
+  /* ── Preview zoom: pinch-only, no pan or rotate ─────────────────────────── */
+  const [previewZoom, setPreviewZoom] = useState(MIN_PREVIEW_ZOOM);
+  const [zoomOrigin, setZoomOrigin]   = useState('50% 50%');
+  const previewPointers = useRef(new Map<number, PreviewPointer>());
+  const pinchGesture = useRef<PinchGesture | null>(null);
 
   /* ── Crop overlay state ─────────────────────────────────────────────────── */
   const [cropCorners,  setCropCorners]  = useState<[Point, Point, Point, Point] | null>(null);
@@ -109,6 +132,55 @@ export default function PreviewScreen() {
     setPendingBrightness(0);
     setPendingContrast(0);
   }, [selectedIdx]);
+
+  // A selected page always opens at its fitted, unzoomed size.
+  useEffect(() => {
+    setPreviewZoom(MIN_PREVIEW_ZOOM);
+    setZoomOrigin('50% 50%');
+    previewPointers.current.clear();
+    pinchGesture.current = null;
+  }, [selectedIdx]);
+
+  const beginPinch = useCallback((container: HTMLDivElement) => {
+    const pointers = [...previewPointers.current.values()];
+    if (pointers.length !== 2) return;
+    const midpoint = pointerMidpoint(pointers);
+    const bounds = container.getBoundingClientRect();
+    pinchGesture.current = {
+      startDistance: Math.max(1, pointerDistance(pointers)),
+      startScale: previewZoom,
+      originX: Math.max(0, Math.min(1, (midpoint.x - bounds.left) / bounds.width)),
+      originY: Math.max(0, Math.min(1, (midpoint.y - bounds.top) / bounds.height)),
+    };
+    setZoomOrigin(`${pinchGesture.current.originX * 100}% ${pinchGesture.current.originY * 100}%`);
+  }, [previewZoom]);
+
+  const onPreviewPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'touch') return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    previewPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (previewPointers.current.size === 2) beginPinch(event.currentTarget);
+  }, [beginPinch]);
+
+  const onPreviewPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'touch' || !previewPointers.current.has(event.pointerId)) return;
+    previewPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const gesture = pinchGesture.current;
+    const pointers = [...previewPointers.current.values()];
+    if (!gesture || pointers.length !== 2) return;
+
+    event.preventDefault();
+    const scale = Math.max(
+      MIN_PREVIEW_ZOOM,
+      Math.min(MAX_PREVIEW_ZOOM, gesture.startScale * pointerDistance(pointers) / gesture.startDistance),
+    );
+    setPreviewZoom(scale);
+  }, []);
+
+  const endPreviewPointer = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    previewPointers.current.delete(event.pointerId);
+    pinchGesture.current = null;
+  }, []);
 
   /* ── Rotate 90° CW ──────────────────────────────────────────────────────── */
   const handleRotate = useCallback(async () => {
@@ -305,13 +377,22 @@ export default function PreviewScreen() {
       </div>
 
       {/* ════ Main preview ════ */}
-      <div className="flex-1 flex items-center justify-center overflow-hidden px-6 py-2 min-h-0">
+      <div
+        className="flex-1 flex items-center justify-center overflow-hidden px-6 py-2 min-h-0 touch-none"
+        style={{ touchAction: 'none' }}
+        onPointerDown={onPreviewPointerDown}
+        onPointerMove={onPreviewPointerMove}
+        onPointerUp={endPreviewPointer}
+        onPointerCancel={endPreviewPointer}
+      >
         {currentPage && (
           <img
             key={selectedIdx}
             src={currentPage}
             alt={`Page ${selectedIdx + 1}`}
-            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+            className="max-w-full max-h-full object-contain rounded-none shadow-2xl will-change-transform"
+            style={{ transform: `scale(${previewZoom})`, transformOrigin: zoomOrigin }}
+            draggable={false}
           />
         )}
       </div>
@@ -506,7 +587,7 @@ export default function PreviewScreen() {
                   ref={cropImgRef}
                   src={currentPage}
                   onLoad={onCropImgLoad}
-                  className="block rounded-md"
+                  className="block rounded-none"
                   style={{
                     width:   cropDisplayW || undefined,
                     height:  cropDisplayH || undefined,
