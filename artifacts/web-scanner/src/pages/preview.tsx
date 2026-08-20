@@ -57,6 +57,7 @@ const MIN_PREVIEW_ZOOM = 1;
 const MAX_PREVIEW_ZOOM = 3;
 const PAGE_SWIPE_DISTANCE = 48;
 const PAGE_SWIPE_DIRECTION_RATIO = 1.2;
+const PAGE_SWIPE_ANIMATION_MS = 280;
 
 function midpoint(a: Point, b: Point): Point {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
@@ -99,9 +100,14 @@ export default function PreviewScreen() {
   /* ── Preview zoom: pinch-only, no pan or rotate ─────────────────────────── */
   const [previewZoom, setPreviewZoom] = useState(MIN_PREVIEW_ZOOM);
   const [zoomOrigin, setZoomOrigin]   = useState('50% 50%');
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [swipeAnimating, setSwipeAnimating] = useState(false);
   const previewPointers = useRef(new Map<number, PreviewPointer>());
   const pinchGesture = useRef<PinchGesture | null>(null);
   const swipeGesture = useRef<SwipeGesture | null>(null);
+  const previewViewportRef = useRef<HTMLDivElement>(null);
+  const pendingSwipeIdx = useRef<number | null>(null);
+  const swipeAnimationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const thumbnailRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   /* ── Crop overlay state ─────────────────────────────────────────────────── */
@@ -161,14 +167,22 @@ export default function PreviewScreen() {
   useEffect(() => {
     setPreviewZoom(MIN_PREVIEW_ZOOM);
     setZoomOrigin('50% 50%');
+    setSwipeOffset(0);
+    setSwipeAnimating(false);
     previewPointers.current.clear();
     pinchGesture.current = null;
     swipeGesture.current = null;
+    pendingSwipeIdx.current = null;
+    if (swipeAnimationTimer.current) {
+      clearTimeout(swipeAnimationTimer.current);
+      swipeAnimationTimer.current = null;
+    }
   }, [selectedIdx]);
 
   const beginPinch = useCallback((container: HTMLDivElement) => {
     const pointers = [...previewPointers.current.values()];
     if (pointers.length !== 2) return;
+    setSwipeOffset(0);
     const midpoint = pointerMidpoint(pointers);
     const bounds = container.getBoundingClientRect();
     pinchGesture.current = {
@@ -180,8 +194,40 @@ export default function PreviewScreen() {
     setZoomOrigin(`${pinchGesture.current.originX * 100}% ${pinchGesture.current.originY * 100}%`);
   }, [previewZoom]);
 
+  const finishSwipeAnimation = useCallback(() => {
+    const nextIdx = pendingSwipeIdx.current;
+    pendingSwipeIdx.current = null;
+    if (swipeAnimationTimer.current) {
+      clearTimeout(swipeAnimationTimer.current);
+      swipeAnimationTimer.current = null;
+    }
+    setSwipeAnimating(false);
+    setSwipeOffset(0);
+    if (nextIdx !== null) selectPage(nextIdx);
+  }, [selectPage]);
+
+  const animateSwipeBack = useCallback(() => {
+    pendingSwipeIdx.current = null;
+    if (swipeAnimationTimer.current) clearTimeout(swipeAnimationTimer.current);
+    setSwipeAnimating(true);
+    setSwipeOffset(0);
+    swipeAnimationTimer.current = setTimeout(() => {
+      swipeAnimationTimer.current = null;
+      setSwipeAnimating(false);
+    }, PAGE_SWIPE_ANIMATION_MS);
+  }, []);
+
+  const startSwipeAnimation = useCallback((nextIdx: number, offset: number) => {
+    pendingSwipeIdx.current = nextIdx;
+    if (swipeAnimationTimer.current) clearTimeout(swipeAnimationTimer.current);
+    setSwipeAnimating(true);
+    setSwipeOffset(offset);
+    swipeAnimationTimer.current = setTimeout(finishSwipeAnimation, PAGE_SWIPE_ANIMATION_MS + 40);
+  }, [finishSwipeAnimation]);
+
   const onPreviewPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType !== 'touch') return;
+    if (swipeAnimating) return;
     // Some embedded browser test drivers emit synthetic touch pointers that
     // cannot be captured. Real touch input still uses capture so a swipe can
     // complete after the finger leaves the image bounds.
@@ -203,7 +249,7 @@ export default function PreviewScreen() {
       swipeGesture.current = null;
       beginPinch(event.currentTarget);
     }
-  }, [beginPinch]);
+  }, [beginPinch, swipeAnimating]);
 
   const onPreviewPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType !== 'touch' || !previewPointers.current.has(event.pointerId)) return;
@@ -229,6 +275,8 @@ export default function PreviewScreen() {
       Math.abs(deltaX) > Math.abs(deltaY) * PAGE_SWIPE_DIRECTION_RATIO
     ) {
       event.preventDefault();
+      const width = previewViewportRef.current?.clientWidth ?? 320;
+      setSwipeOffset(Math.max(-width, Math.min(width, deltaX)));
     }
   }, []);
 
@@ -249,16 +297,34 @@ export default function PreviewScreen() {
         Math.abs(deltaX) >= PAGE_SWIPE_DISTANCE &&
         Math.abs(deltaX) > Math.abs(deltaY) * PAGE_SWIPE_DIRECTION_RATIO
       ) {
-        selectPage(selectedIdx + (deltaX < 0 ? 1 : -1));
+        const nextIdx = Math.max(
+          0,
+          Math.min(pages.length - 1, selectedIdx + (deltaX < 0 ? 1 : -1)),
+        );
+        if (nextIdx !== selectedIdx) {
+          const width = previewViewportRef.current?.clientWidth ?? 320;
+          startSwipeAnimation(nextIdx, deltaX < 0 ? -width : width);
+        } else if (Math.abs(deltaX) > 1) {
+          animateSwipeBack();
+        }
+      } else if (Math.abs(deltaX) > 1) {
+        animateSwipeBack();
       }
     }
     swipeGesture.current = null;
-  }, [selectPage, selectedIdx]);
+  }, [animateSwipeBack, pages.length, selectedIdx, startSwipeAnimation]);
 
   const cancelPreviewPointer = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     previewPointers.current.delete(event.pointerId);
     pinchGesture.current = null;
     swipeGesture.current = null;
+    pendingSwipeIdx.current = null;
+    if (swipeAnimationTimer.current) {
+      clearTimeout(swipeAnimationTimer.current);
+      swipeAnimationTimer.current = null;
+    }
+    setSwipeAnimating(false);
+    setSwipeOffset(0);
   }, []);
 
   /* ── Rotate 90° CW ──────────────────────────────────────────────────────── */
@@ -423,6 +489,12 @@ export default function PreviewScreen() {
   } : null;
 
   const currentPage = pages[selectedIdx];
+  const previewSlides = [
+    selectedIdx > 0 ? { index: selectedIdx - 1, position: -1 } : null,
+    { index: selectedIdx, position: 0 },
+    selectedIdx < pages.length - 1 ? { index: selectedIdx + 1, position: 1 } : null,
+  ].filter((slide): slide is { index: number; position: number } => slide !== null);
+
   if (!draftHydrated) {
     return (
       <div className="min-h-[100dvh] bg-gray-950 flex items-center justify-center">
@@ -462,18 +534,34 @@ export default function PreviewScreen() {
         onPointerDown={onPreviewPointerDown}
         onPointerMove={onPreviewPointerMove}
         onPointerUp={endPreviewPointer}
-          onPointerCancel={cancelPreviewPointer}
+        onPointerCancel={cancelPreviewPointer}
+        onTransitionEnd={finishSwipeAnimation}
       >
-        {currentPage && (
-          <img
-            key={selectedIdx}
-            src={currentPage}
-            alt={`Page ${selectedIdx + 1}`}
-            className="max-w-full max-h-full object-contain rounded-none shadow-2xl will-change-transform"
-            style={{ transform: `scale(${previewZoom})`, transformOrigin: zoomOrigin }}
-            draggable={false}
-          />
-        )}
+        <div ref={previewViewportRef} className="relative w-full h-full overflow-hidden">
+          {previewSlides.map(({ index, position }) => (
+            <div
+              key={index}
+              className="absolute inset-0 flex items-center justify-center will-change-transform"
+              style={{
+                transform: `translate3d(calc(${position * 100}% + ${swipeOffset}px), 0, 0)`,
+                transition: swipeAnimating
+                  ? `transform ${PAGE_SWIPE_ANIMATION_MS}ms cubic-bezier(0.22, 0.61, 0.36, 1)`
+                  : 'none',
+              }}
+            >
+              <img
+                src={pages[index]}
+                alt={`Page ${index + 1}`}
+                className="max-w-full max-h-full object-contain rounded-none shadow-2xl will-change-transform"
+                style={{
+                  transform: `scale(${index === selectedIdx ? previewZoom : MIN_PREVIEW_ZOOM})`,
+                  transformOrigin: index === selectedIdx ? zoomOrigin : '50% 50%',
+                }}
+                draggable={false}
+              />
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* ════ Thumbnail strip ════ */}
