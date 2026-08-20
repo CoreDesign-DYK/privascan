@@ -29,6 +29,11 @@ const EDGE_INTERVAL_MS = 200;
 const STABLE_TARGET = 8;
 const MIN_SHARPNESS_VARIANCE = 28;
 const MIN_DETAIL_COVERAGE = 0.006;
+const TRACK_BLEND = 0.24;
+const MAX_TRACK_JUMP = 0.04;
+const JUMP_CONFIRM_FRAMES = 3;
+const INITIAL_TRACK_CONFIRM_FRAMES = 2;
+const MAX_MISSED_EDGE_FRAMES = 3;
 
 /* ─────────────────────────────────────────────────────────────────────────── */
 /*  Mock page generator                                                         */
@@ -130,6 +135,30 @@ function documentMoved(
     0,
   ) / previous.length;
   return averageDistance > Math.hypot(frameWidth, frameHeight) * 0.035;
+}
+
+function cornerDistance(
+  first: [Point, Point, Point, Point],
+  second: [Point, Point, Point, Point],
+  frameWidth: number,
+  frameHeight: number,
+): number {
+  const average = first.reduce(
+    (sum, point, index) => sum + Math.hypot(point.x - second[index].x, point.y - second[index].y),
+    0,
+  ) / first.length;
+  return average / Math.hypot(frameWidth, frameHeight);
+}
+
+function blendCorners(
+  previous: [Point, Point, Point, Point],
+  next: [Point, Point, Point, Point],
+  amount: number,
+): [Point, Point, Point, Point] {
+  return previous.map((point, index) => ({
+    x: point.x + (next[index].x - point.x) * amount,
+    y: point.y + (next[index].y - point.y) * amount,
+  })) as [Point, Point, Point, Point];
 }
 
 /* ── Mock generators for special scan modes ───────────────────────────────── */
@@ -333,6 +362,11 @@ export default function ScannerScreen() {
   const settingsRef      = useRef(settings);
   const edgeTimerRef     = useRef<ReturnType<typeof setInterval> | null>(null);
   const stableFrames     = useRef(0);
+  const trackedCornersRef = useRef<[Point, Point, Point, Point] | null>(null);
+  const pendingCornersRef = useRef<[Point, Point, Point, Point] | null>(null);
+  const pendingCornerFrames = useRef(0);
+  const missedEdgeFrames = useRef(0);
+  const trackConfirmFrames = useRef(0);
   const waitingClear     = useRef(false);        // true = waiting for doc to leave frame
   const rejectedCornersRef = useRef<[Point, Point, Point, Point] | null>(null);
   const needsClearerCaptureRef = useRef(false);
@@ -378,7 +412,25 @@ export default function ScannerScreen() {
     rejectedCornersRef.current = null;
     setStableProgress(0);
     setEdgeCorners(null);
+    trackedCornersRef.current = null;
+    pendingCornersRef.current = null;
+    pendingCornerFrames.current = 0;
+    missedEdgeFrames.current = 0;
+    trackConfirmFrames.current = 0;
   }, [mode]);
+
+  // A newly focused stream can resolve edge details differently. Start its
+  // hold-steady count fresh instead of inheriting an earlier camera frame.
+  useEffect(() => {
+    stableFrames.current = 0;
+    trackedCornersRef.current = null;
+    pendingCornersRef.current = null;
+    pendingCornerFrames.current = 0;
+    missedEdgeFrames.current = 0;
+    trackConfirmFrames.current = 0;
+    setStableProgress(0);
+    setEdgeCorners(null);
+  }, [focusReady]);
 
   /* ── Camera lifecycle ───────────────────────────────────────────────────── */
   useEffect(() => {
@@ -456,18 +508,82 @@ export default function ScannerScreen() {
   useEffect(() => {
     if (isMockMode) return;
 
+    const updateTrackedCorners = (
+      detected: [Point, Point, Point, Point] | null,
+      frameWidth: number,
+      frameHeight: number,
+    ): { corners: [Point, Point, Point, Point] | null; stable: boolean } => {
+      if (!detected) {
+        missedEdgeFrames.current += 1;
+        if (missedEdgeFrames.current >= MAX_MISSED_EDGE_FRAMES) {
+          trackedCornersRef.current = null;
+          pendingCornersRef.current = null;
+          pendingCornerFrames.current = 0;
+          trackConfirmFrames.current = 0;
+        }
+        return { corners: trackedCornersRef.current, stable: false };
+      }
+
+      missedEdgeFrames.current = 0;
+      const tracked = trackedCornersRef.current;
+      if (!tracked) {
+        trackedCornersRef.current = detected;
+        trackConfirmFrames.current = 1;
+        return { corners: detected, stable: false };
+      }
+
+      const jump = cornerDistance(tracked, detected, frameWidth, frameHeight);
+      if (jump <= MAX_TRACK_JUMP) {
+        trackedCornersRef.current = blendCorners(tracked, detected, TRACK_BLEND);
+        pendingCornersRef.current = null;
+        pendingCornerFrames.current = 0;
+        trackConfirmFrames.current = Math.min(
+          trackConfirmFrames.current + 1,
+          INITIAL_TRACK_CONFIRM_FRAMES,
+        );
+        return {
+          corners: trackedCornersRef.current,
+          stable: trackConfirmFrames.current >= INITIAL_TRACK_CONFIRM_FRAMES,
+        };
+      }
+
+      // A sudden candidate change is often a false edge from a moving hand,
+      // glare, or a nearby background line. Require the new candidate to
+      // repeat before allowing the visible frame to move to it.
+      if (
+        pendingCornersRef.current &&
+        cornerDistance(pendingCornersRef.current, detected, frameWidth, frameHeight) <= MAX_TRACK_JUMP
+      ) {
+        pendingCornerFrames.current += 1;
+      } else {
+        pendingCornersRef.current = detected;
+        pendingCornerFrames.current = 1;
+      }
+      trackConfirmFrames.current = 0;
+
+      if (pendingCornerFrames.current >= JUMP_CONFIRM_FRAMES) {
+        trackedCornersRef.current = blendCorners(tracked, detected, 0.5);
+        pendingCornersRef.current = null;
+        pendingCornerFrames.current = 0;
+        return { corners: trackedCornersRef.current, stable: false };
+      }
+
+      return { corners: tracked, stable: false };
+    };
+
     edgeTimerRef.current = setInterval(() => {
       const video = videoRef.current;
       if (!video || video.readyState < 2) return;
 
       const corners = detectDocumentCorners(video, video.videoWidth, video.videoHeight);
-      setEdgeCorners(corners);
+      const tracked = updateTrackedCorners(corners, video.videoWidth, video.videoHeight);
+      setEdgeCorners(tracked.corners);
 
       if (modeRef.current !== 'auto' || !focusReady) return;
 
       // ── Waiting-clear phase: hold until document leaves frame ──────────────
       if (waitingClear.current) {
-        if (!corners) {
+        if (!tracked.corners) {
           // Document removed — ready for next scan
           waitingClear.current = false;
           setIsWaitingClear(false);
@@ -479,7 +595,7 @@ export default function ScannerScreen() {
         } else if (
           needsClearerCaptureRef.current &&
           rejectedCornersRef.current &&
-          documentMoved(rejectedCornersRef.current, corners, video.videoWidth, video.videoHeight)
+          documentMoved(rejectedCornersRef.current, tracked.corners, video.videoWidth, video.videoHeight)
         ) {
           // A meaningful reposition gives the camera a fresh opportunity to
           // focus without repeatedly saving the same blurry frame.
@@ -495,7 +611,7 @@ export default function ScannerScreen() {
       }
 
       // ── Normal detection phase ─────────────────────────────────────────────
-      if (corners) {
+      if (corners && tracked.stable) {
         stableFrames.current = Math.min(stableFrames.current + 1, STABLE_TARGET);
       } else {
         stableFrames.current = Math.max(stableFrames.current - 2, 0);
@@ -1185,7 +1301,7 @@ export default function ScannerScreen() {
                 'text-sm font-medium transition-colors',
                 isStable ? 'text-green-400' : 'text-blue-400',
               )}>
-                {isStable ? 'Hold still…' : 'Document detected — hold steady'}
+                {isStable ? 'Frame locked — capturing…' : 'Document detected — hold steady'}
               </span>
             ) : (
               <span className="text-white/35 text-sm">Point camera at a document</span>

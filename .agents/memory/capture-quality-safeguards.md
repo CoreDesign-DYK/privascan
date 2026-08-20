@@ -14,3 +14,9 @@ When an edge fit is weak or incoherent, reject it rather than forcing its corner
 **Why:** Axis snapping can turn a legitimate small camera roll into an inaccurate crop, while a rejected frame cannot silently create a bad scan.
 
 **How to apply:** Require coherent support along all four fitted edges and propagate any failed side or intersection as a failed detection; retain genuine perspective or rotation for the projective correction step.
+
+Live scan-frame tracking may smooth small movement and hold a known-good quad through brief detection misses, but it must never supply crop corners for the saved image.
+
+**Why:** A calm overlay helps users hold the camera steady, while stale corners can crop a moving document incorrectly.
+
+**How to apply:** Require repeated confirmation before switching to a distant candidate, restart stability after a focus transition, and always re-detect the exact high-resolution capture frame before saving.
