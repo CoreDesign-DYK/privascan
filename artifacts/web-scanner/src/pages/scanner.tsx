@@ -1137,7 +1137,7 @@ export default function ScannerScreen() {
             className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 transition-all shrink-0"
             aria-label="Home"
           >
-            <House className="w-[18px] h-[18px]" />
+            <House className="w-[22px] h-[22px]" />
           </button>
           <div className="text-white/70">
             <SettingsSheet />
