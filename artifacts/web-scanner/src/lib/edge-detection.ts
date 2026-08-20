@@ -88,7 +88,25 @@ function detectCornersFromImageData(
   if (!TL || !TR || !BR || !BL) return null;
   const corners: [Point, Point, Point, Point] = [TL, TR, BR, BL];
 
-  return isValidDocumentQuad(corners, w, h) ? corners : null;
+  // A refined bottom edge can occasionally drift back to a strong horizontal
+  // divider within the document. Do not turn that uncertain result into a
+  // crop: the same guard used when scoring candidates must also approve the
+  // final corners used for perspective correction.
+  if (
+    !isValidDocumentQuad(corners, w, h) ||
+    hasVerticalContinuationBelow(
+      gx,
+      w,
+      h,
+      Math.min(TL.y, TR.y),
+      BL.x,
+      BL.y,
+      BR.x,
+      BR.y,
+    )
+  ) return null;
+
+  return corners;
 }
 
 function scaleCorners(
@@ -164,6 +182,13 @@ function findDocumentBounds(
           const verticalSupport =
             edgeSupportVertical(gx, w, h, left, top, bottom, 4) +
             edgeSupportVertical(gx, w, h, right, top, bottom, 4);
+          // An interior horizontal divider can look stronger than the real
+          // bottom edge on a cover with a barcode, photo, or footer. Its
+          // giveaway is that both vertical document sides continue well below
+          // the proposed "bottom". A real outer boundary terminates those
+          // sides instead. Reject only when both sides continue, so a one-sided
+          // shadow or an occluded corner does not discard a valid document.
+          if (hasVerticalContinuationBelow(gx, w, h, top, left, bottom, right, bottom)) continue;
            const cornerContinuity =
              Math.min(
                directionalEdgeSupport(gy, w, h, left, top, 'horizontal', 1),
@@ -255,6 +280,50 @@ function edgeSupportVertical(
     sum += strongest;
   }
   return sum / Math.max(1, Math.ceil((bottom - top + 1) / 3)) / 24;
+}
+
+/**
+ * True bottom corners end both vertical sides. If the same two side edges keep
+ * running below the proposed bottom, it is an internal horizontal divider—not
+ * a crop-safe document boundary.
+ */
+function hasVerticalContinuationBelow(
+  gx: Float32Array,
+  w: number,
+  h: number,
+  top: number,
+  leftX: number,
+  leftBottomY: number,
+  rightX: number,
+  rightBottomY: number,
+): boolean {
+  const sideContinues = (x: number, cornerY: number) => {
+    const desiredBand = Math.max(8, Math.round(h * 0.07));
+    const minimumBand = Math.max(6, Math.round(h * 0.02));
+    const outsideStart = Math.round(cornerY) + 2;
+    const outsideEnd = Math.min(h - 2, outsideStart + desiredBand);
+    const insideEnd = Math.round(cornerY) - 2;
+    const insideStart = Math.max(Math.round(top) + minimumBand, insideEnd - desiredBand);
+
+    // When the document ends too near the camera frame, there is not enough
+    // exterior to distinguish a real boundary from a divider. Leave the
+    // existing conservative bounds checks in charge in that case.
+    if (
+      outsideEnd - outsideStart + 1 < minimumBand ||
+      insideEnd - insideStart + 1 < minimumBand
+    ) return false;
+
+    const radius = Math.max(4, Math.round(Math.min(w, h) * 0.015));
+    const insideSupport = edgeSupportVertical(gx, w, h, Math.round(x), insideStart, insideEnd, radius);
+    const outsideSupport = edgeSupportVertical(gx, w, h, Math.round(x), outsideStart, outsideEnd, radius);
+
+    // Ignore weak or isolated texture. A continuing document side should be
+    // clearly visible inside the candidate and retain most of that strength
+    // immediately below it.
+    return insideSupport >= 0.8 && outsideSupport >= 0.8 && outsideSupport >= insideSupport * 0.58;
+  };
+
+  return sideContinues(leftX, leftBottomY) && sideContinues(rightX, rightBottomY);
 }
 
 function directionalEdgeSupport(

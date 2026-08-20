@@ -32,3 +32,9 @@ When a coloured document lies near a parallel background edge, prefer candidates
 **Why:** A strong desk or shadow line can otherwise win a row-profile peak and pull a document boundary outward, leaving background strips in the saved crop.
 
 **How to apply:** Score corner continuity as paired directional support, and penalize refinement samples farther from the selected profile boundary rather than letting the strongest nearby line always win.
+
+When a strong internal divider might be mistaken for the document bottom, require the adjacent left and right edges to terminate there. If both side edges continue below that line, reject it as an internal boundary rather than crop the document.
+
+**Why:** Covers with photos, barcodes, or footer rules can contain a stronger horizontal transition than the physical lower edge; warping an otherwise valid quad still cuts content when its bottom corners are wrong.
+
+**How to apply:** Apply the continuation check while scoring coarse candidates and again after line refinement. Require sustained support on both sides, skip the check when there is too little exterior frame to judge, and reject uncertainty instead of using a stale or interior crop.
