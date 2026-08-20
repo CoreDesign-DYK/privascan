@@ -378,7 +378,7 @@ export default function PreviewScreen() {
     const dw = Math.round(nw * scale), dh = Math.round(nh * scale);
     setCropNatW(nw); setCropNatH(nh);
     setCropDisplayW(dw); setCropDisplayH(dh);
-    setCropCorners(defaultCorners(dw, dh));
+    setCropCorners(defaultCorners(dw, dh, 0));
     setCropImgLoaded(true);
   }, []);
 
@@ -424,7 +424,6 @@ export default function PreviewScreen() {
       const warped = warpPerspective(srcCanvas, natCorners, outW, outH);
       updatePage(selectedIdx, warped.toDataURL('image/jpeg', 0.92));
       setActiveTool('none'); setCropImgLoaded(false);
-      toast.success('Crop applied');
     } catch { toast.error('Crop failed'); }
     finally { setApplying(false); }
   }, [cropCorners, pages, selectedIdx, cropNatW, cropNatH, cropDisplayW, cropDisplayH, updatePage]);
@@ -828,7 +827,7 @@ export default function PreviewScreen() {
             <button
               onClick={() => {
                 if (cropDisplayW && cropDisplayH)
-                  setCropCorners(defaultCorners(cropDisplayW, cropDisplayH));
+                  setCropCorners(defaultCorners(cropDisplayW, cropDisplayH, 0));
               }}
               className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors"
             >
