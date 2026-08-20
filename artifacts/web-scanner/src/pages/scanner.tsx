@@ -11,7 +11,7 @@
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocation } from 'wouter';
-import { Zap, ZapOff, ChevronRight, Smartphone, Edit2, ScanLine, FileText, House, Camera, Crop, RotateCw, Type, Trash2, Check, X as XIcon } from 'lucide-react';
+import { Zap, ZapOff, ChevronRight, Smartphone, Edit2, ScanLine, FolderArchive, House, Camera, Crop, RotateCw, Type, Trash2, Check, X as XIcon } from 'lucide-react';
 import { useCamera } from '@/hooks/use-camera';
 import { useScannerContext } from '@/contexts/scanner-context';
 import { SettingsSheet } from '@/components/settings-sheet';
@@ -354,7 +354,6 @@ export default function ScannerScreen() {
   const [textApplying,   setTextApplying]   = useState(false);
 
   const { data: localScans = [] } = useLocalScans();
-  const lastScan = localScans[0] ?? null;
   const [idStage,  setIdStage]  = useState<'front' | 'back'>('front');
   const idFrontRef = useRef<string | null>(null);
 
@@ -1521,19 +1520,10 @@ export default function ScannerScreen() {
           {/* Gallery thumbnail button — iOS camera style */}
           <button
             onClick={() => setGalleryOpen(true)}
-            className="relative w-12 h-12 rounded-xl overflow-hidden border-2 border-white/25 hover:border-white/50 transition-all active:scale-95 shrink-0 bg-white/8"
+            aria-label={`Open saved scans${localScans.length > 0 ? ` (${localScans.length})` : ''}`}
+            className="relative w-12 h-12 rounded-xl border-2 border-white/25 hover:border-white/50 transition-all active:scale-95 shrink-0 bg-white/8 flex items-center justify-center"
           >
-            {lastScan?.thumbnail ? (
-              <img
-                src={lastScan.thumbnail}
-                alt="Last scan"
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <FileText className="w-5 h-5 text-white/40" />
-              </div>
-            )}
+            <FolderArchive className="w-6 h-6 text-white/70" strokeWidth={1.8} />
             {localScans.length > 0 && (
               <span className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-sky-500 text-white text-[9px] font-bold leading-4 text-center">
                 {localScans.length > 99 ? '99+' : localScans.length}
