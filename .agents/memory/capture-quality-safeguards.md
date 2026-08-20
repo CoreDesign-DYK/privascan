@@ -21,6 +21,12 @@ Live scan-frame tracking may smooth small movement and hold a known-good quad th
 
 **How to apply:** Require repeated confirmation before switching to a distant candidate, restart stability after a focus transition, and always re-detect the exact high-resolution capture frame before saving.
 
+The live frame must visibly follow sustained subject movement; it is not a static placement guide. Brief detection gaps may keep a dim last-known frame, but never contribute toward automatic capture.
+
+**Why:** Excessive smoothing makes users move the phone to a frozen rectangle instead of seeing the scanner actively catch the document edges, while immediate disappearance makes valid detection feel unreliable.
+
+**How to apply:** Use only short confirmation for a large candidate change, blend accepted motion responsively, and keep display persistence separate from fresh-frame stability.
+
 When a coloured document lies near a parallel background edge, prefer candidates whose horizontal and vertical edges both continue inward from every corner, and keep final line fitting anchored to the coarse candidate.
 
 **Why:** A strong desk or shadow line can otherwise win a row-profile peak and pull a document boundary outward, leaving background strips in the saved crop.

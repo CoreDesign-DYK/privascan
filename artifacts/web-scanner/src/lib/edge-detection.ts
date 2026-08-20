@@ -195,7 +195,7 @@ function findDocumentBounds(
           );
            const score =
              profileScore + horizontalSupport + verticalSupport +
-             cornerContinuity * 2 + centerBonus * 0.25;
+             cornerContinuity * 1.15 + centerBonus * 0.25;
 
           if (!best || score > best.score) {
             best = { bounds: { top, right, bottom, left }, score };
@@ -307,7 +307,7 @@ function fitHorizontalEdge(
       // The profile candidate is the boundary's most reliable coarse position.
       // Prefer it decisively over a nearby, stronger background line so a desk
       // edge just above a coloured cover cannot pull the fitted top edge away.
-      const distanceBias = 1 - 0.55 * Math.abs(y - expectedY) / Math.max(1, radius);
+      const distanceBias = 1 - 0.42 * Math.abs(y - expectedY) / Math.max(1, radius);
       const value = Math.abs(gy[y * w + x]) * distanceBias;
       if (value > bestValue) { bestValue = value; bestY = y; }
     }
@@ -324,7 +324,7 @@ function fitVerticalEdge(
     let bestX = expectedX;
     let bestValue = -1;
     for (let x = Math.max(1, expectedX - radius); x <= Math.min(w - 2, expectedX + radius); x++) {
-      const distanceBias = 1 - 0.55 * Math.abs(x - expectedX) / Math.max(1, radius);
+      const distanceBias = 1 - 0.42 * Math.abs(x - expectedX) / Math.max(1, radius);
       const value = Math.abs(gx[y * w + x]) * distanceBias;
       if (value > bestValue) { bestValue = value; bestX = x; }
     }

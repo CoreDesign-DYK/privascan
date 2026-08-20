@@ -25,15 +25,16 @@ import { detectDocumentCorners, detectCornersFromCanvas } from '@/lib/edge-detec
 import { estimateOutputSize, type Point, warpPerspective } from '@/lib/perspective';
 import { type ScannerSettings, QUALITY_VALUES, type ScanMode } from '@/lib/scanner-types';
 
-const EDGE_INTERVAL_MS = 200;
-const STABLE_TARGET = 8;
+const EDGE_INTERVAL_MS = 150;
+const STABLE_TARGET = 10;
 const MIN_SHARPNESS_VARIANCE = 28;
 const MIN_DETAIL_COVERAGE = 0.006;
-const TRACK_BLEND = 0.24;
-const MAX_TRACK_JUMP = 0.04;
-const JUMP_CONFIRM_FRAMES = 3;
+const TRACK_BLEND = 0.58;
+const MAX_TRACK_JUMP = 0.08;
+const JUMP_CONFIRM_FRAMES = 2;
+const JUMP_BLEND = 0.78;
 const INITIAL_TRACK_CONFIRM_FRAMES = 2;
-const MAX_MISSED_EDGE_FRAMES = 3;
+const MAX_MISSED_EDGE_FRAMES = 6;
 
 /* ─────────────────────────────────────────────────────────────────────────── */
 /*  Mock page generator                                                         */
@@ -331,6 +332,7 @@ export default function ScannerScreen() {
   const [isCapturing,    setIsCapturing]    = useState(false);
   const [showScanLine,   setShowScanLine]   = useState(false);   // B
   const [edgeCorners,    setEdgeCorners]    = useState<[Point, Point, Point, Point] | null>(null);
+  const [edgeIsLive,     setEdgeIsLive]     = useState(false);
   const [stableProgress, setStableProgress] = useState(0);
   const [capturedLabel,  setCapturedLabel]  = useState<number | null>(null);
   const [selectedThumb,  setSelectedThumb]  = useState(-1);
@@ -412,6 +414,7 @@ export default function ScannerScreen() {
     rejectedCornersRef.current = null;
     setStableProgress(0);
     setEdgeCorners(null);
+    setEdgeIsLive(false);
     trackedCornersRef.current = null;
     pendingCornersRef.current = null;
     pendingCornerFrames.current = 0;
@@ -430,6 +433,7 @@ export default function ScannerScreen() {
     trackConfirmFrames.current = 0;
     setStableProgress(0);
     setEdgeCorners(null);
+    setEdgeIsLive(false);
   }, [focusReady]);
 
   /* ── Camera lifecycle ───────────────────────────────────────────────────── */
@@ -562,7 +566,7 @@ export default function ScannerScreen() {
       trackConfirmFrames.current = 0;
 
       if (pendingCornerFrames.current >= JUMP_CONFIRM_FRAMES) {
-        trackedCornersRef.current = blendCorners(tracked, detected, 0.5);
+        trackedCornersRef.current = blendCorners(tracked, detected, JUMP_BLEND);
         pendingCornersRef.current = null;
         pendingCornerFrames.current = 0;
         return { corners: trackedCornersRef.current, stable: false };
@@ -578,6 +582,7 @@ export default function ScannerScreen() {
       const corners = detectDocumentCorners(video, video.videoWidth, video.videoHeight);
       const tracked = updateTrackedCorners(corners, video.videoWidth, video.videoHeight);
       setEdgeCorners(tracked.corners);
+      setEdgeIsLive(Boolean(corners));
 
       if (modeRef.current !== 'auto' || !focusReady) return;
 
@@ -925,7 +930,11 @@ export default function ScannerScreen() {
   /* ── Derived colours ────────────────────────────────────────────────────── */
   const isStable   = stableProgress > 0.85;
   const edgeStroke = '#4ade80';
-  const edgeFill   = isStable ? 'rgba(74,222,128,0.12)' : 'rgba(74,222,128,0.07)';
+  const edgeFill   = isStable
+    ? 'rgba(74,222,128,0.12)'
+    : edgeIsLive
+      ? 'rgba(74,222,128,0.07)'
+      : 'rgba(74,222,128,0.035)';
   const bracketColor = edgeCorners
     ? (isStable ? '#4ade80' : '#60a5fa')
     : 'rgba(255,255,255,0.45)';
@@ -1237,7 +1246,10 @@ export default function ScannerScreen() {
               stroke={edgeStroke}
                 strokeWidth="10"
               strokeLinejoin="round"
-              style={{ transition: 'fill 0.3s, stroke 0.3s ease' }}
+              style={{
+                opacity: edgeIsLive ? 1 : 0.62,
+                transition: 'opacity 0.18s ease, fill 0.3s, stroke 0.3s ease',
+              }}
             />
           </svg>
         )}
@@ -1299,9 +1311,13 @@ export default function ScannerScreen() {
             ) : edgeCorners ? (
               <span className={cn(
                 'text-sm font-medium transition-colors',
-                isStable ? 'text-green-400' : 'text-blue-400',
+                isStable || edgeIsLive ? 'text-green-400' : 'text-white/65',
               )}>
-                {isStable ? 'Frame locked — capturing…' : 'Document detected — hold steady'}
+                {isStable
+                  ? 'Frame locked — capturing…'
+                  : edgeIsLive
+                    ? 'Document detected — tracking edges'
+                    : 'Keeping frame — reacquiring edges…'}
               </span>
             ) : (
               <span className="text-white/35 text-sm">Point camera at a document</span>
