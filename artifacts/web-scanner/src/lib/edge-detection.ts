@@ -164,6 +164,23 @@ function findDocumentBounds(
           const verticalSupport =
             edgeSupportVertical(gx, w, h, left, top, bottom, 4) +
             edgeSupportVertical(gx, w, h, right, top, bottom, 4);
+           const cornerContinuity =
+             Math.min(
+               directionalEdgeSupport(gy, w, h, left, top, 'horizontal', 1),
+               directionalEdgeSupport(gx, w, h, left, top, 'vertical', 1),
+             ) +
+             Math.min(
+               directionalEdgeSupport(gy, w, h, right, top, 'horizontal', -1),
+               directionalEdgeSupport(gx, w, h, right, top, 'vertical', 1),
+             ) +
+             Math.min(
+               directionalEdgeSupport(gy, w, h, right, bottom, 'horizontal', -1),
+               directionalEdgeSupport(gx, w, h, right, bottom, 'vertical', -1),
+             ) +
+             Math.min(
+               directionalEdgeSupport(gy, w, h, left, bottom, 'horizontal', 1),
+               directionalEdgeSupport(gx, w, h, left, bottom, 'vertical', -1),
+             );
           const profileScore =
             rowProfile[top] / rowMean + rowProfile[bottom] / rowMean +
             colProfile[left] / colMean + colProfile[right] / colMean;
@@ -176,7 +193,9 @@ function findDocumentBounds(
             1,
             Math.hypot(centerX - w / 2, centerY - h / 2) / Math.hypot(w / 2, h / 2),
           );
-          const score = profileScore + horizontalSupport + verticalSupport + centerBonus * 0.25;
+           const score =
+             profileScore + horizontalSupport + verticalSupport +
+             cornerContinuity * 2 + centerBonus * 0.25;
 
           if (!best || score > best.score) {
             best = { bounds: { top, right, bottom, left }, score };
@@ -238,6 +257,39 @@ function edgeSupportVertical(
   return sum / Math.max(1, Math.ceil((bottom - top + 1) / 3)) / 24;
 }
 
+function directionalEdgeSupport(
+  gradient: Float32Array,
+  w: number,
+  h: number,
+  x: number,
+  y: number,
+  axis: 'horizontal' | 'vertical',
+  direction: -1 | 1,
+): number {
+  const alongRadius = 10;
+  const acrossRadius = 4;
+  let sum = 0;
+  let samples = 0;
+
+  for (let distance = 2; distance <= alongRadius; distance += 2) {
+    let strongest = 0;
+    for (let across = -acrossRadius; across <= acrossRadius; across++) {
+      const sampleX = axis === 'horizontal'
+        ? Math.round(x + direction * distance)
+        : Math.round(x + across);
+      const sampleY = axis === 'horizontal'
+        ? Math.round(y + across)
+        : Math.round(y + direction * distance);
+      if (sampleX < 1 || sampleX >= w - 1 || sampleY < 1 || sampleY >= h - 1) continue;
+      strongest = Math.max(strongest, Math.abs(gradient[sampleY * w + sampleX]));
+    }
+    sum += strongest;
+    samples += 1;
+  }
+
+  return sum / Math.max(1, samples) / 24;
+}
+
 /* ── Line refinement ──────────────────────────────────────────────────────── */
 
 type HorizontalLine = { m: number; b: number };
@@ -252,7 +304,10 @@ function fitHorizontalEdge(
     let bestY = expectedY;
     let bestValue = -1;
     for (let y = Math.max(1, expectedY - radius); y <= Math.min(h - 2, expectedY + radius); y++) {
-      const distanceBias = 1 - 0.25 * Math.abs(y - expectedY) / Math.max(1, radius);
+      // The profile candidate is the boundary's most reliable coarse position.
+      // Prefer it decisively over a nearby, stronger background line so a desk
+      // edge just above a coloured cover cannot pull the fitted top edge away.
+      const distanceBias = 1 - 0.55 * Math.abs(y - expectedY) / Math.max(1, radius);
       const value = Math.abs(gy[y * w + x]) * distanceBias;
       if (value > bestValue) { bestValue = value; bestY = y; }
     }
@@ -269,7 +324,7 @@ function fitVerticalEdge(
     let bestX = expectedX;
     let bestValue = -1;
     for (let x = Math.max(1, expectedX - radius); x <= Math.min(w - 2, expectedX + radius); x++) {
-      const distanceBias = 1 - 0.25 * Math.abs(x - expectedX) / Math.max(1, radius);
+      const distanceBias = 1 - 0.55 * Math.abs(x - expectedX) / Math.max(1, radius);
       const value = Math.abs(gx[y * w + x]) * distanceBias;
       if (value > bestValue) { bestValue = value; bestX = x; }
     }
