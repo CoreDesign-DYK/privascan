@@ -94,6 +94,7 @@ function detectCornersFromImageData(
   // final corners used for perspective correction.
   if (
     !isValidDocumentQuad(corners, w, h) ||
+    !hasReliableTopBoundary(gx, gy, w, h, TL, TR, BL, BR) ||
     hasVerticalContinuationBelow(
       gx,
       w,
@@ -324,6 +325,66 @@ function hasVerticalContinuationBelow(
   };
 
   return sideContinues(leftX, leftBottomY) && sideContinues(rightX, rightBottomY);
+}
+
+/**
+ * A background line can be long and strong enough to win the row profile while
+ * having no real connection to the document's vertical sides. A true top edge
+ * must close into both upper corners: each corner needs horizontal support
+ * along the top edge and vertical support continuing into the page.
+ */
+function hasReliableTopBoundary(
+  gx: Float32Array,
+  gy: Float32Array,
+  w: number,
+  h: number,
+  topLeft: Point,
+  topRight: Point,
+  bottomLeft: Point,
+  bottomRight: Point,
+): boolean {
+  const cornerIsClosed = (corner: Point, direction: -1 | 1) => {
+    const horizontal = directionalEdgeSupport(
+      gy,
+      w,
+      h,
+      corner.x,
+      corner.y,
+      'horizontal',
+      direction,
+    );
+    const vertical = directionalEdgeSupport(
+      gx,
+      w,
+      h,
+      corner.x,
+      corner.y,
+      'vertical',
+      1,
+    );
+
+    // Keep this deliberately conservative. If either side of the corner is
+    // missing, the detector must not extrapolate a background line into a
+    // document corner and let perspective correction magnify the error.
+    return horizontal >= 0.35 && vertical >= 0.35;
+  };
+
+  if (
+    !cornerIsClosed(topLeft, 1) ||
+    !cornerIsClosed(topRight, -1)
+  ) return false;
+
+  // The top edge must not form a severe, unsupported trapezoid. Mild
+  // perspective is valid, but a background line pulled far above one side is
+  // a common signature of the failure this guard is meant to reject.
+  const topAngle = Math.atan2(topRight.y - topLeft.y, topRight.x - topLeft.x);
+  const bottomAngle = Math.atan2(bottomRight.y - bottomLeft.y, bottomRight.x - bottomLeft.x);
+  const angleDelta = Math.abs(normalizeLineAngle(topAngle - bottomAngle));
+  const topWidth = distance(topLeft, topRight);
+  const bottomWidth = distance(bottomLeft, bottomRight);
+  const widthRatio = Math.min(topWidth, bottomWidth) / Math.max(topWidth, bottomWidth);
+
+  return widthRatio >= 0.58 && angleDelta <= Math.PI / 6;
 }
 
 function directionalEdgeSupport(
@@ -664,6 +725,13 @@ function distance(a: Point, b: Point): number {
 
 function cross(a: Point, b: Point, c: Point): number {
   return (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+}
+
+function normalizeLineAngle(angle: number): number {
+  let normalized = angle % Math.PI;
+  if (normalized > Math.PI / 2) normalized -= Math.PI;
+  if (normalized < -Math.PI / 2) normalized += Math.PI;
+  return normalized;
 }
 
 /** Default corners — used only when no reliable document boundary was found. */
