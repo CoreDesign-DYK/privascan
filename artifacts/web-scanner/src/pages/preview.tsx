@@ -46,10 +46,17 @@ type PinchGesture = {
   originX: number;
   originY: number;
 };
+type SwipeGesture = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+};
 
 const FILTERS: FilterType[] = ['original', 'auto', 'bw', 'highcontrast'];
 const MIN_PREVIEW_ZOOM = 1;
 const MAX_PREVIEW_ZOOM = 3;
+const PAGE_SWIPE_DISTANCE = 48;
+const PAGE_SWIPE_DIRECTION_RATIO = 1.2;
 
 function midpoint(a: Point, b: Point): Point {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
@@ -94,6 +101,8 @@ export default function PreviewScreen() {
   const [zoomOrigin, setZoomOrigin]   = useState('50% 50%');
   const previewPointers = useRef(new Map<number, PreviewPointer>());
   const pinchGesture = useRef<PinchGesture | null>(null);
+  const swipeGesture = useRef<SwipeGesture | null>(null);
+  const thumbnailRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   /* ── Crop overlay state ─────────────────────────────────────────────────── */
   const [cropCorners,  setCropCorners]  = useState<[Point, Point, Point, Point] | null>(null);
@@ -126,6 +135,21 @@ export default function PreviewScreen() {
     setActivePageIndex(selectedIdx);
   }, [selectedIdx, setActivePageIndex]);
 
+  const selectPage = useCallback((nextIdx: number) => {
+    const next = Math.max(0, Math.min(pages.length - 1, nextIdx));
+    if (next === selectedIdx) return;
+    setSelectedIdx(next);
+    setActiveTool('none');
+  }, [pages.length, selectedIdx]);
+
+  useEffect(() => {
+    thumbnailRefs.current[selectedIdx]?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'center',
+    });
+  }, [selectedIdx, pages.length]);
+
   /* ── Reset pending edits when page changes ──────────────────────────────── */
   useEffect(() => {
     setPendingFilter('original');
@@ -139,6 +163,7 @@ export default function PreviewScreen() {
     setZoomOrigin('50% 50%');
     previewPointers.current.clear();
     pinchGesture.current = null;
+    swipeGesture.current = null;
   }, [selectedIdx]);
 
   const beginPinch = useCallback((container: HTMLDivElement) => {
@@ -157,9 +182,27 @@ export default function PreviewScreen() {
 
   const onPreviewPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType !== 'touch') return;
-    event.currentTarget.setPointerCapture(event.pointerId);
+    // Some embedded browser test drivers emit synthetic touch pointers that
+    // cannot be captured. Real touch input still uses capture so a swipe can
+    // complete after the finger leaves the image bounds.
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Continue tracking the pointer when capture is unavailable.
+    }
     previewPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (previewPointers.current.size === 2) beginPinch(event.currentTarget);
+    if (previewPointers.current.size === 1) {
+      swipeGesture.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+      };
+    } else if (previewPointers.current.size === 2) {
+      // A second finger promotes the interaction to pinch-only. Never let the
+      // first finger's horizontal movement also change pages.
+      swipeGesture.current = null;
+      beginPinch(event.currentTarget);
+    }
   }, [beginPinch]);
 
   const onPreviewPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
@@ -167,19 +210,55 @@ export default function PreviewScreen() {
     previewPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     const gesture = pinchGesture.current;
     const pointers = [...previewPointers.current.values()];
-    if (!gesture || pointers.length !== 2) return;
+    if (gesture && pointers.length === 2) {
+      event.preventDefault();
+      const scale = Math.max(
+        MIN_PREVIEW_ZOOM,
+        Math.min(MAX_PREVIEW_ZOOM, gesture.startScale * pointerDistance(pointers) / gesture.startDistance),
+      );
+      setPreviewZoom(scale);
+      return;
+    }
 
-    event.preventDefault();
-    const scale = Math.max(
-      MIN_PREVIEW_ZOOM,
-      Math.min(MAX_PREVIEW_ZOOM, gesture.startScale * pointerDistance(pointers) / gesture.startDistance),
-    );
-    setPreviewZoom(scale);
+    const swipe = swipeGesture.current;
+    if (!swipe || pointers.length !== 1 || swipe.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - swipe.startX;
+    const deltaY = event.clientY - swipe.startY;
+    if (
+      Math.abs(deltaX) > 8 &&
+      Math.abs(deltaX) > Math.abs(deltaY) * PAGE_SWIPE_DIRECTION_RATIO
+    ) {
+      event.preventDefault();
+    }
   }, []);
 
   const endPreviewPointer = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const wasPinching = Boolean(pinchGesture.current);
+    const swipe = swipeGesture.current;
+    previewPointers.current.delete(event.pointerId);
+    if (wasPinching) {
+      if (previewPointers.current.size < 2) pinchGesture.current = null;
+      swipeGesture.current = null;
+      return;
+    }
+
+    if (swipe && swipe.pointerId === event.pointerId) {
+      const deltaX = event.clientX - swipe.startX;
+      const deltaY = event.clientY - swipe.startY;
+      if (
+        Math.abs(deltaX) >= PAGE_SWIPE_DISTANCE &&
+        Math.abs(deltaX) > Math.abs(deltaY) * PAGE_SWIPE_DIRECTION_RATIO
+      ) {
+        selectPage(selectedIdx + (deltaX < 0 ? 1 : -1));
+      }
+    }
+    swipeGesture.current = null;
+  }, [selectPage, selectedIdx]);
+
+  const cancelPreviewPointer = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     previewPointers.current.delete(event.pointerId);
     pinchGesture.current = null;
+    swipeGesture.current = null;
   }, []);
 
   /* ── Rotate 90° CW ──────────────────────────────────────────────────────── */
@@ -383,7 +462,7 @@ export default function PreviewScreen() {
         onPointerDown={onPreviewPointerDown}
         onPointerMove={onPreviewPointerMove}
         onPointerUp={endPreviewPointer}
-        onPointerCancel={endPreviewPointer}
+          onPointerCancel={cancelPreviewPointer}
       >
         {currentPage && (
           <img
@@ -403,7 +482,8 @@ export default function PreviewScreen() {
           {pages.map((p, i) => (
             <button
               key={i}
-              onClick={() => { setSelectedIdx(i); setActiveTool('none'); }}
+              ref={element => { thumbnailRefs.current[i] = element; }}
+              onClick={() => selectPage(i)}
               className={cn(
                 'shrink-0 w-14 h-16 rounded-none overflow-hidden border-2 transition-all relative',
                 i === selectedIdx
