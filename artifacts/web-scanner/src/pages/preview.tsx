@@ -373,7 +373,11 @@ export default function PreviewScreen() {
     const con = cropContainerRef.current;
     if (!img || !con) return;
     const nw = img.naturalWidth, nh = img.naturalHeight;
-    const cw = con.clientWidth,  ch = con.clientHeight;
+    const styles = window.getComputedStyle(con);
+    const paddingX = parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
+    const paddingY = parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
+    const cw = Math.max(1, con.clientWidth - paddingX);
+    const ch = Math.max(1, con.clientHeight - paddingY);
     const scale = Math.min(cw / nw, ch / nh, 1);
     const dw = Math.round(nw * scale), dh = Math.round(nh * scale);
     setCropNatW(nw); setCropNatH(nh);
@@ -742,7 +746,7 @@ export default function PreviewScreen() {
           {/* Crop canvas */}
           <div
             ref={cropContainerRef}
-            className="flex-1 flex items-center justify-center overflow-hidden px-4 py-2"
+            className="flex-1 flex items-center justify-center overflow-hidden px-7 py-2"
             style={{ minHeight: 0 }}
           >
             {currentPage && (
