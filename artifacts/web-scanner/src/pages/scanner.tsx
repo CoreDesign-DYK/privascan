@@ -11,7 +11,7 @@
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocation } from 'wouter';
-import { Zap, ZapOff, ChevronRight, Smartphone, Edit2, ScanLine, FolderArchive, House, Camera, Crop, RotateCw, Type, Trash2, Check, X as XIcon } from 'lucide-react';
+import { Zap, ZapOff, ChevronRight, Smartphone, Edit2, ScanLine, House, Camera, Crop, RotateCw, Type, Trash2, Check, X as XIcon } from 'lucide-react';
 import { useCamera } from '@/hooks/use-camera';
 import { useScannerContext } from '@/contexts/scanner-context';
 import { SettingsSheet } from '@/components/settings-sheet';
@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 import { detectDocumentCorners, detectCornersFromCanvas } from '@/lib/edge-detection';
 import { estimateOutputSize, type Point, warpPerspective } from '@/lib/perspective';
 import { type ScannerSettings, QUALITY_VALUES, type ScanMode } from '@/lib/scanner-types';
+import fileBoxIcon from '@/assets/file-box-icon.png';
 
 const EDGE_INTERVAL_MS = 150;
 const STABLE_TARGET = 10;
@@ -1523,7 +1524,12 @@ export default function ScannerScreen() {
             aria-label={`Open saved scans${localScans.length > 0 ? ` (${localScans.length})` : ''}`}
             className="relative w-12 h-12 rounded-xl border-2 border-white/25 hover:border-white/50 transition-all active:scale-95 shrink-0 bg-white/8 flex items-center justify-center"
           >
-            <FolderArchive className="w-6 h-6 text-white/70" strokeWidth={1.8} />
+            <img
+              src={fileBoxIcon}
+              alt=""
+              aria-hidden="true"
+              className="w-8 h-8 object-contain brightness-0 invert"
+            />
             {localScans.length > 0 && (
               <span className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-sky-500 text-white text-[9px] font-bold leading-4 text-center">
                 {localScans.length > 99 ? '99+' : localScans.length}
