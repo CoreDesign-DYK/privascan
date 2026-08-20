@@ -27,6 +27,8 @@ import { type ScannerSettings, QUALITY_VALUES, type ScanMode } from '@/lib/scann
 
 const EDGE_INTERVAL_MS = 200;
 const STABLE_TARGET = 8;
+const MIN_SHARPNESS_VARIANCE = 28;
+const MIN_DETAIL_COVERAGE = 0.006;
 
 /* ─────────────────────────────────────────────────────────────────────────── */
 /*  Mock page generator                                                         */
@@ -77,36 +79,44 @@ function createDocumentPage(
 
   const { w, h } = estimateOutputSize(corners);
   const warped = warpPerspective(source, corners, w, h);
-  const sharpness = measureSharpness(warped);
-  if (sharpness < 18) return null;
+  if (!hasRequiredSharpness(warped)) return null;
   return warped.toDataURL('image/jpeg', Math.max(quality, 0.96));
 }
 
-function measureSharpness(canvas: HTMLCanvasElement): number {
+function hasRequiredSharpness(canvas: HTMLCanvasElement): boolean {
+  const { variance, detailCoverage } = measureSharpness(canvas);
+  return variance >= MIN_SHARPNESS_VARIANCE && detailCoverage >= MIN_DETAIL_COVERAGE;
+}
+
+function measureSharpness(canvas: HTMLCanvasElement): { variance: number; detailCoverage: number } {
   const sample = document.createElement('canvas');
   const width = 180;
   const height = Math.max(120, Math.round(width * canvas.height / canvas.width));
   sample.width = width;
   sample.height = height;
   const ctx = sample.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return 0;
+  if (!ctx) return { variance: 0, detailCoverage: 0 };
   ctx.drawImage(canvas, 0, 0, width, height);
   const { data } = ctx.getImageData(0, 0, width, height);
   const laplacian: number[] = [];
+  const inset = Math.max(4, Math.round(Math.min(width, height) * 0.07));
+  let detailPixels = 0;
   const gray = (x: number, y: number) => {
     const i = (y * width + x) * 4;
     return 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
   };
-  for (let y = 1; y < height - 1; y++) {
-    for (let x = 1; x < width - 1; x++) {
+  for (let y = inset; y < height - inset; y++) {
+    for (let x = inset; x < width - inset; x++) {
       const value = 4 * gray(x, y) - gray(x - 1, y) - gray(x + 1, y) -
         gray(x, y - 1) - gray(x, y + 1);
       laplacian.push(value);
+      if (Math.abs(value) >= 10) detailPixels += 1;
     }
   }
-  if (!laplacian.length) return 0;
+  if (!laplacian.length) return { variance: 0, detailCoverage: 0 };
   const mean = laplacian.reduce((sum, value) => sum + value, 0) / laplacian.length;
-  return laplacian.reduce((sum, value) => sum + (value - mean) ** 2, 0) / laplacian.length;
+  const variance = laplacian.reduce((sum, value) => sum + (value - mean) ** 2, 0) / laplacian.length;
+  return { variance, detailCoverage: detailPixels / laplacian.length };
 }
 
 function documentMoved(
@@ -572,7 +582,7 @@ export default function ScannerScreen() {
       }
       const { w, h } = estimateOutputSize(corners);
       const spread = warpPerspective(full, corners, w, h);
-      if (measureSharpness(spread) < 18) {
+      if (!hasRequiredSharpness(spread)) {
         toast.error('문서 경계 또는 초점을 확인한 뒤 다시 촬영하세요');
         return;
       }
@@ -630,9 +640,14 @@ export default function ScannerScreen() {
          toast.error('문서 경계 또는 초점을 확인한 뒤 다시 촬영하세요');
          return;
        }
-      const outW = Math.max(vw, 1280);
-      const outH = Math.round(outW * 9 / 16);
-      addPage(warpPerspective(src, corners, outW, outH).toDataURL('image/jpeg', q));
+       const outW = Math.max(vw, 1280);
+       const outH = Math.round(outW * 9 / 16);
+       const warped = warpPerspective(src, corners, outW, outH);
+       if (!hasRequiredSharpness(warped)) {
+         toast.error('초점이 맞지 않았습니다. 잠시 기다린 뒤 다시 촬영하세요');
+         return;
+       }
+       addPage(warped.toDataURL('image/jpeg', q));
     }
 
     setCapturedLabel(pageNum);
@@ -662,9 +677,10 @@ export default function ScannerScreen() {
       sctx.drawImage(video, 0, 0);
        const corners = detectCornersFromCanvas(src);
        if (!corners) return null;
-      const outW = Math.min(vw, 1004);
-      const outH = Math.round(outW / 1.585); // ID card aspect ratio
-      return warpPerspective(src, corners, outW, outH).toDataURL('image/jpeg', q);
+       const outW = Math.min(vw, 1004);
+       const outH = Math.round(outW / 1.585); // ID card aspect ratio
+       const warped = warpPerspective(src, corners, outW, outH);
+       return hasRequiredSharpness(warped) ? warped.toDataURL('image/jpeg', q) : null;
     };
 
     if (idStage === 'front') {
@@ -1146,7 +1162,11 @@ export default function ScannerScreen() {
         {/* Auto-mode status hint */}
         {mode === 'auto' && (
           <div className="flex justify-center min-h-[20px]">
-            {isWaitingClear ? (
+            {!isMockMode && !focusReady ? (
+              <span className="text-amber-300 text-sm font-semibold animate-pulse">
+                Focusing camera…
+              </span>
+            ) : isWaitingClear ? (
               <span className="text-amber-400 text-sm font-semibold animate-in fade-in flex items-center gap-1.5">
                 <span>↑</span> {needsClearerCapture
                   ? 'Image was unclear — move document and try again'
@@ -1412,10 +1432,12 @@ export default function ScannerScreen() {
             {/* iOS shutter button */}
             <button
               onClick={handleCaptureButton}
+              disabled={!isMockMode && !focusReady}
+              aria-label={!isMockMode && !focusReady ? 'Focusing camera' : 'Capture scan'}
               className={cn(
                 'absolute inset-0 rounded-full border-[3px] border-white',
                 'flex items-center justify-center',
-                'active:scale-95 transition-transform duration-100',
+                'active:scale-95 transition-transform duration-100 disabled:opacity-45 disabled:cursor-wait disabled:active:scale-100',
                 isStable && mode === 'auto' && 'animate-capture-glow',
               )}
             >

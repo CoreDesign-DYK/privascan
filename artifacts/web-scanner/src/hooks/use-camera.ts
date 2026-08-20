@@ -7,6 +7,7 @@ export function useCamera() {
   const videoRef   = useRef<HTMLVideoElement>(null);
   const streamRef  = useRef<MediaStream | null>(null);   // ref, not state → no re-render loop
   const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const focusFrameListenerRef = useRef<{ video: HTMLVideoElement; listener: () => void } | null>(null);
   const cameraSessionRef = useRef(0);
   const pendingStartRef = useRef<Promise<void> | null>(null);
   const [hasPermission, setHasPermission] = useState<boolean | null>(IS_DEV ? true : null);
@@ -24,6 +25,11 @@ export function useCamera() {
     if (focusTimerRef.current) {
       clearTimeout(focusTimerRef.current);
       focusTimerRef.current = null;
+    }
+    if (focusFrameListenerRef.current) {
+      const { video, listener } = focusFrameListenerRef.current;
+      video.removeEventListener('loadeddata', listener);
+      focusFrameListenerRef.current = null;
     }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
@@ -100,14 +106,44 @@ export function useCamera() {
         if (cameraSessionRef.current !== session || streamRef.current !== mediaStream) return;
         setFocusMode(selectedFocusMode);
 
-        // Give the camera time to settle after the stream starts and after the
-        // autofocus constraint is applied. Unsupported-focus devices also wait
-        // so manual and automatic capture share the same safe timing.
-        focusTimerRef.current = setTimeout(() => {
-          if (cameraSessionRef.current === session && streamRef.current === mediaStream) {
-            setFocusReady(true);
+        // Start the focus settle window only after the preview has produced a
+        // real frame. On iOS, a stream can be attached before the rear camera
+        // has started focusing, so a fixed timer from getUserMedia() can allow
+        // a soft first capture.
+        const settleDelay = selectedFocusMode === 'continuous' ? 1_200 : 1_500;
+        const armFocusReady = () => {
+          if (cameraSessionRef.current !== session || streamRef.current !== mediaStream) return;
+          if (focusTimerRef.current) clearTimeout(focusTimerRef.current);
+          if (focusFrameListenerRef.current) {
+            const { video, listener } = focusFrameListenerRef.current;
+            video.removeEventListener('loadeddata', listener);
+            focusFrameListenerRef.current = null;
           }
-        }, 700);
+          focusTimerRef.current = setTimeout(() => {
+            if (cameraSessionRef.current === session && streamRef.current === mediaStream) {
+              setFocusReady(true);
+            }
+          }, settleDelay);
+        };
+        const preview = videoRef.current;
+        if (preview && preview.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+          focusFrameListenerRef.current = { video: preview, listener: armFocusReady };
+          preview.addEventListener('loadeddata', armFocusReady, { once: true });
+          // WebKit may delay or omit loadeddata for a live srcObject. Do not
+          // leave the shutter locked forever when the preview is already live.
+          focusTimerRef.current = setTimeout(() => {
+            if (cameraSessionRef.current === session && streamRef.current === mediaStream) {
+              if (focusFrameListenerRef.current) {
+                const { video, listener } = focusFrameListenerRef.current;
+                video.removeEventListener('loadeddata', listener);
+                focusFrameListenerRef.current = null;
+              }
+              setFocusReady(true);
+            }
+          }, settleDelay + 600);
+        } else {
+          armFocusReady();
+        }
       } catch (err) {
         if (cameraSessionRef.current !== session) return;
         setHasPermission(false);
