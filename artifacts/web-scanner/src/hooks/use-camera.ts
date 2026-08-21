@@ -1,11 +1,17 @@
 import { useState, useRef, useCallback } from 'react';
+import { isAndroid } from '@/lib/platform';
 
 const IS_DEV = false;
 type FocusMode = 'continuous' | 'single-shot' | 'unsupported' | 'unknown';
 
+/**
+ * 단일 훅으로 웹(getUserMedia)과 Android 네이티브(Capacitor Camera) 모두 지원.
+ *  - 웹:     기존 스트림 + videoRef 방식 유지
+ *  - Android: startCamera → 권한 요청, captureNativePhoto → 네이티브 촬영
+ */
 export function useCamera() {
   const videoRef   = useRef<HTMLVideoElement>(null);
-  const streamRef  = useRef<MediaStream | null>(null);   // ref, not state → no re-render loop
+  const streamRef  = useRef<MediaStream | null>(null);
   const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const focusFrameListenerRef = useRef<{ video: HTMLVideoElement; listener: () => void } | null>(null);
   const cameraSessionRef = useRef(0);
@@ -15,12 +21,11 @@ export function useCamera() {
   const [focusMode, setFocusMode]         = useState<FocusMode>(IS_DEV ? 'continuous' : 'unknown');
   const [focusReady, setFocusReady]       = useState(IS_DEV);
 
+  const nativeMode = isAndroid(); // 컴파일 타임 상수처럼 동작 (플랫폼 변경 없음)
+
+  /* ── 공통: 카메라 중지 ─────────────────────────────────────────────────── */
   const stopCamera = useCallback(() => {
-    // Invalidate an outstanding permission prompt or camera request before
-    // stopping the active stream. A late getUserMedia resolution is discarded.
     cameraSessionRef.current += 1;
-    // Allow an immediate remount/retry to create a new request. The stale
-    // request's identity-checked finally block cannot clear a newer request.
     pendingStartRef.current = null;
     if (focusTimerRef.current) {
       clearTimeout(focusTimerRef.current);
@@ -36,18 +41,34 @@ export function useCamera() {
       streamRef.current = null;
     }
     if (videoRef.current) videoRef.current.srcObject = null;
-    setFocusReady(false);
-    setFocusMode('unknown');
-  }, []); // stable — no state deps
+    if (!nativeMode) {
+      setFocusReady(false);
+      setFocusMode('unknown');
+    }
+  }, [nativeMode]);
 
-  const startCamera = useCallback((): Promise<void> => {
+  /* ── Android 전용: 권한 요청 ────────────────────────────────────────────── */
+  const startCameraNative = useCallback(async (): Promise<void> => {
+    try {
+      const { Camera } = await import('@capacitor/camera');
+      const result = await Camera.requestPermissions({ permissions: ['camera'] });
+      const granted = result.camera === 'granted' || result.camera === 'limited';
+      setHasPermission(granted);
+      if (!granted) setError(new Error('Camera permission denied'));
+    } catch (err) {
+      setHasPermission(false);
+      setError(err instanceof Error ? err : new Error('Permission request failed'));
+    }
+  }, []);
+
+  /* ── 웹 전용: getUserMedia ──────────────────────────────────────────────── */
+  const startCameraWeb = useCallback((): Promise<void> => {
     if (IS_DEV) {
       setHasPermission(true);
       setFocusReady(true);
       return Promise.resolve();
     }
 
-    // Already running — don't request again
     if (streamRef.current) return Promise.resolve();
     if (pendingStartRef.current) return pendingStartRef.current;
 
@@ -55,18 +76,14 @@ export function useCamera() {
     const request = (async () => {
       try {
         const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'environment',
-          // Prefer a 4:3 high-resolution stream so portrait documents retain
-          // more vertical pixels instead of being squeezed into 16:9.
-          aspectRatio: { ideal: 4 / 3 },
-          width:  { ideal: 2560 },
-          height: { ideal: 1920 },
-        },
+          video: {
+            facingMode: 'environment',
+            aspectRatio: { ideal: 4 / 3 },
+            width:  { ideal: 2560 },
+            height: { ideal: 1920 },
+          },
         });
 
-        // The view was closed or another request superseded this one while
-        // camera permission was being resolved.
         if (cameraSessionRef.current !== session || streamRef.current) {
           mediaStream.getTracks().forEach(track => track.stop());
           return;
@@ -98,18 +115,12 @@ export function useCamera() {
             selectedFocusMode = 'single-shot';
           }
         } catch {
-          // Some browsers expose focusMode but reject applying it. The camera's
-          // native default remains usable, so capture can continue safely.
           selectedFocusMode = 'unknown';
         }
 
         if (cameraSessionRef.current !== session || streamRef.current !== mediaStream) return;
         setFocusMode(selectedFocusMode);
 
-        // Start the focus settle window only after the preview has produced a
-        // real frame. On iOS, a stream can be attached before the rear camera
-        // has started focusing, so a fixed timer from getUserMedia() can allow
-        // a soft first capture.
         const settleDelay = selectedFocusMode === 'continuous' ? 1_200 : 1_500;
         const armFocusReady = () => {
           if (cameraSessionRef.current !== session || streamRef.current !== mediaStream) return;
@@ -129,8 +140,6 @@ export function useCamera() {
         if (preview && preview.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
           focusFrameListenerRef.current = { video: preview, listener: armFocusReady };
           preview.addEventListener('loadeddata', armFocusReady, { once: true });
-          // WebKit may delay or omit loadeddata for a live srcObject. Do not
-          // leave the shutter locked forever when the preview is already live.
           focusTimerRef.current = setTimeout(() => {
             if (cameraSessionRef.current === session && streamRef.current === mediaStream) {
               if (focusFrameListenerRef.current) {
@@ -157,7 +166,42 @@ export function useCamera() {
       if (pendingStartRef.current === request) pendingStartRef.current = null;
     });
     return request;
-  }, []); // stable — no state deps
+  }, []);
+
+  /* ── 통합 startCamera ───────────────────────────────────────────────────── */
+  const startCamera = useCallback((): Promise<void> => {
+    return nativeMode ? startCameraNative() : startCameraWeb();
+  }, [nativeMode, startCameraNative, startCameraWeb]);
+
+  /* ── Android 전용: 네이티브 카메라로 한 장 촬영 → data URL 반환 ────────── */
+  const captureNativePhoto = useCallback(async (): Promise<string | null> => {
+    if (!nativeMode) return null;
+    try {
+      const { Camera, CameraResultType, CameraSource, CameraDirection } =
+        await import('@capacitor/camera');
+      const photo = await Camera.getPhoto({
+        resultType: CameraResultType.DataUrl,
+        source: CameraSource.Camera,
+        direction: CameraDirection.Rear,
+        quality: 95,
+        allowEditing: false,
+        saveToGallery: false,
+        correctOrientation: true,
+        // 최대 해상도: 플러그인 기본값 (기기 최대)
+        width: 4096,
+      });
+      return photo.dataUrl ?? null;
+    } catch (err) {
+      // 사용자가 취소한 경우는 오류가 아님
+      if (err instanceof Error &&
+          (err.message.includes('cancelled') || err.message.includes('cancel') ||
+           err.message.includes('dismiss'))) {
+        return null;
+      }
+      setError(err instanceof Error ? err : new Error('Native capture failed'));
+      return null;
+    }
+  }, [nativeMode]);
 
   return {
     videoRef,
@@ -167,6 +211,9 @@ export function useCamera() {
     error,
     isMockMode: IS_DEV,
     focusMode,
-    focusReady,
+    // 네이티브 모드: 카메라 앱 자체가 초점을 잡으므로 항상 준비 완료
+    focusReady: nativeMode ? (hasPermission === true) : focusReady,
+    isNative: nativeMode,
+    captureNativePhoto,
   };
 }

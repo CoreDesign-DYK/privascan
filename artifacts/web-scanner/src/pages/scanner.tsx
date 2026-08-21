@@ -323,7 +323,7 @@ function QualityGaugeIcon({ quality }: { quality: 'high' | 'medium' | 'low' }) {
 
 export default function ScannerScreen() {
   const [, setLocation] = useLocation();
-  const { videoRef, startCamera, stopCamera, hasPermission, isMockMode, focusReady } = useCamera();
+  const { videoRef, startCamera, stopCamera, hasPermission, isMockMode, focusReady, isNative, captureNativePhoto } = useCamera();
   const {
     mode, setMode, pages, addPage, removePage, clearPages, settings, setSettings,
     setActivePageIndex,
@@ -508,9 +508,102 @@ export default function ScannerScreen() {
 
   useEffect(() => { captureAutoRef.current = autoCaptureFrame; }, [autoCaptureFrame]);
 
+  /* ── Native capture: Android → 시스템 카메라 → 결과 처리 ───────────────── */
+  const nativeCaptureAndProcess = useCallback(async () => {
+    const dataUrl = await captureNativePhoto();
+    if (!dataUrl) return; // 사용자 취소
+
+    const img = new Image();
+    await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = dataUrl; });
+
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d')!;
+    if (settingsRef.current.colorMode === 'greyscale') ctx.filter = 'grayscale(100%)';
+    ctx.drawImage(img, 0, 0);
+    ctx.filter = 'none';
+
+    const q    = QUALITY_VALUES[settingsRef.current.imageQuality];
+    const base = pagesLenRef.current;
+    const sm   = scanModeRef.current;
+
+    triggerCaptureEffects();
+
+    /* ── Book: 책 펼침 → 좌/우 두 페이지 ──────────────────────────────── */
+    if (sm === 'book') {
+      const corners = detectCornersFromCanvas(canvas);
+      if (!corners) { toast.error('책 경계를 찾을 수 없습니다. 다시 촬영해 주세요'); return; }
+      const { w, h } = estimateOutputSize(corners);
+      const spread = warpPerspective(canvas, corners, w, h);
+      if (!hasRequiredSharpness(spread)) { toast.error('초점이 맞지 않습니다. 다시 촬영해 주세요'); return; }
+      const half = Math.floor(spread.width / 2);
+      const leftOut = document.createElement('canvas');
+      leftOut.width = half; leftOut.height = spread.height;
+      leftOut.getContext('2d')!.drawImage(spread, 0, 0, half, spread.height, 0, 0, half, spread.height);
+      const rightOut = document.createElement('canvas');
+      rightOut.width = spread.width - half; rightOut.height = spread.height;
+      rightOut.getContext('2d')!.drawImage(spread, half, 0, spread.width - half, spread.height, 0, 0, spread.width - half, spread.height);
+      addPage(leftOut.toDataURL('image/jpeg', q));
+      addPage(rightOut.toDataURL('image/jpeg', q));
+      setActivePageIndex(base + 1);
+      setCapturedLabel(base + 2); setTimeout(() => setCapturedLabel(null), 1800);
+      setLocation('/preview');
+      return;
+    }
+
+    /* ── ID Cards: 앞면 → 뒷면 → 합성 ────────────────────────────────── */
+    if (sm === 'id-cards') {
+      const corners = detectCornersFromCanvas(canvas);
+      const outW = Math.min(canvas.width, 1004);
+      const outH = Math.round(outW / 1.585);
+      const warped = corners ? warpPerspective(canvas, corners, outW, outH) : null;
+      if (!warped || !hasRequiredSharpness(warped)) {
+        toast.error('카드 경계를 찾을 수 없습니다. 다시 촬영해 주세요'); return;
+      }
+      const cardDataUrl = warped.toDataURL('image/jpeg', q);
+      if (idStage === 'front') {
+        idFrontRef.current = cardDataUrl;
+        setIdStage('back');
+        toast('앞면 촬영 완료 — 카드를 뒤집어 뒷면을 촬영하세요');
+        return;
+      }
+      const frontData = idFrontRef.current;
+      if (!frontData) { setIdStage('front'); return; }
+      const fImg = new Image(), bImg = new Image();
+      fImg.src = frontData; bImg.src = cardDataUrl;
+      await Promise.all([new Promise<void>(r => { fImg.onload = () => r(); }), new Promise<void>(r => { bImg.onload = () => r(); })]);
+      const cw = Math.max(fImg.width, bImg.width);
+      const composite = document.createElement('canvas');
+      composite.width = cw; composite.height = fImg.height + bImg.height + 20;
+      const cctx = composite.getContext('2d')!;
+      cctx.fillStyle = '#e8e8e8'; cctx.fillRect(0, 0, cw, composite.height);
+      cctx.drawImage(fImg, 0, 0); cctx.drawImage(bImg, 0, fImg.height + 20);
+      addPage(composite.toDataURL('image/jpeg', q));
+      setActivePageIndex(pagesLenRef.current);
+      toast.success('ID Card saved — 앞뒤 합성 완료');
+      idFrontRef.current = null; setIdStage('front');
+      setCapturedLabel(base + 1); setTimeout(() => setCapturedLabel(null), 1800);
+      setLocation('/preview');
+      return;
+    }
+
+    /* ── Document / Presentation / 일반 ───────────────────────────────── */
+    const corners = detectCornersFromCanvas(canvas);
+    const page = createDocumentPage(canvas, corners, q);
+    if (!page) {
+      toast.error('문서 경계를 찾을 수 없습니다. 다시 촬영해 주세요');
+      return;
+    }
+    addPage(page);
+    setActivePageIndex(base);
+    setCapturedLabel(base + 1);
+    setTimeout(() => setCapturedLabel(null), 1800);
+    setLocation('/preview');
+  }, [captureNativePhoto, addPage, setActivePageIndex, setLocation, triggerCaptureEffects, idStage]);
+
   /* ── Edge detection loop ────────────────────────────────────────────────── */
   useEffect(() => {
-    if (isMockMode) return;
+    if (isMockMode || isNative) return;
 
     const updateTrackedCorners = (
       detected: [Point, Point, Point, Point] | null,
@@ -856,13 +949,15 @@ export default function ScannerScreen() {
 
   /* ── Capture button handler ─────────────────────────────────────────────── */
   const handleCaptureButton = useCallback(() => {
+    // Android 네이티브: 모든 모드를 네이티브 카메라로 처리
+    if (isNative) { void nativeCaptureAndProcess(); return; }
     const sm = scanModeRef.current;
     if      (sm === 'book')         bookCapture();
     else if (sm === 'presentation') presentationCapture();
     else if (sm === 'id-cards')     idCardsCapture();
     else if (mode === 'auto')       autoCaptureFrame();
     else                            manualCaptureFrame();
-  }, [mode, autoCaptureFrame, manualCaptureFrame, bookCapture, presentationCapture, idCardsCapture]);
+  }, [isNative, nativeCaptureAndProcess, mode, autoCaptureFrame, manualCaptureFrame, bookCapture, presentationCapture, idCardsCapture]);
 
   /* ── Text stamp: burns typed text onto the last page ───────────────────── */
   const handleApplyText = useCallback(async () => {
@@ -918,11 +1013,16 @@ export default function ScannerScreen() {
   if (hasPermission === false) {
     return (
       <div className="min-h-screen bg-[#0d0d14] flex flex-col items-center justify-center p-6 text-center">
-        <h2 className="text-xl font-semibold mb-2 text-white">Camera Access Denied</h2>
+        <h2 className="text-xl font-semibold mb-2 text-white">카메라 접근 권한 없음</h2>
         <p className="text-white/50 mb-6 max-w-sm">
-          PrivaScan needs camera access. Please enable it in browser settings and refresh.
+          {isNative
+            ? '설정 앱 → 앱 → PrivaScan → 권한에서 카메라를 허용한 뒤 다시 시도하세요.'
+            : 'PrivaScan needs camera access. Please enable it in browser settings and refresh.'}
         </p>
-        <Button onClick={() => window.location.reload()} variant="outline">Refresh Page</Button>
+        {isNative
+          ? <Button onClick={() => { void startCamera(); }} variant="outline">다시 시도</Button>
+          : <Button onClick={() => window.location.reload()} variant="outline">Refresh Page</Button>
+        }
       </div>
     );
   }
@@ -966,10 +1066,19 @@ export default function ScannerScreen() {
         />
       )}
 
-      {/* ── Live camera ── */}
-      {!isMockMode && (
+      {/* ── Live camera (웹) ── */}
+      {!isMockMode && !isNative && (
         <video ref={videoRef} autoPlay playsInline muted
           className="absolute inset-0 w-full h-full object-cover z-0" />
+      )}
+      {/* ── Native camera placeholder (Android) ── */}
+      {isNative && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center z-0 gap-4 select-none pointer-events-none">
+          <Camera className="w-20 h-20 text-white/15" />
+          <p className="text-white/25 text-sm font-medium tracking-wide">
+            {idStage === 'back' ? '뒷면을 촬영하세요' : '아래 버튼을 눌러 촬영하세요'}
+          </p>
+        </div>
       )}
 
        {/* ── H: Top bar — logo · capture preferences · navigation ── */}
