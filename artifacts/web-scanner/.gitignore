@@ -1,0 +1,24 @@
+# 빌드 결과물
+dist/
+node_modules/
+
+# Capacitor Android 빌드 캐시 (프로젝트 구조는 포함, 빌드 결과물 제외)
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/key.properties
+
+# Capacitor iOS (나중에 사용)
+ios/App/Pods/
+ios/App/App.xcworkspace/
+
+# 환경 변수
+.env
+.env.local
+.env.*.local
+
+# 에디터
+.DS_Store
+*.swp
+*.swo

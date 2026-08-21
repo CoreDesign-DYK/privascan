@@ -1,0 +1,79 @@
+name: Android APK Build
+
+on:
+  workflow_dispatch:          # 수동 실행 버튼
+  push:
+    branches: [main]
+    paths:
+      - 'artifacts/web-scanner/**'
+      - '.github/workflows/android-build.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: artifacts/web-scanner
+
+    steps:
+      # ── 1. 코드 체크아웃 ──────────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── 2. Node.js 설정 ───────────────────────────────────────────
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # ── 3. pnpm 설정 ──────────────────────────────────────────────
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      # ── 4. Java (Android 빌드 필수) ───────────────────────────────
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # ── 5. Android SDK 설정 ───────────────────────────────────────
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # ── 6. 의존성 설치 ────────────────────────────────────────────
+      - name: Install dependencies
+        working-directory: .
+        run: pnpm install --frozen-lockfile
+
+      # ── 7. 웹앱 빌드 (Capacitor용) ────────────────────────────────
+      - name: Build web app for Android
+        run: pnpm build:android
+
+      # ── 8. Capacitor 동기화 ───────────────────────────────────────
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      # ── 9. APK 빌드 ──────────────────────────────────────────────
+      - name: Build debug APK
+        working-directory: artifacts/web-scanner/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      # ── 10. APK 업로드 (다운로드용) ───────────────────────────────
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PrivaScan-debug-${{ github.run_number }}
+          path: artifacts/web-scanner/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      # ── 11. 릴리즈 APK (서명 설정 후 활성화) ─────────────────────
+      # - name: Build release APK
+      #   working-directory: artifacts/web-scanner/android
+      #   env:
+      #     KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      #     KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      #     KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      #   run: ./gradlew assembleRelease --no-daemon

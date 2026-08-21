@@ -6,8 +6,12 @@
   "scripts": {
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
     "build": "vite build --config vite.config.ts",
+    "build:android": "vite build --config vite.capacitor.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "cap:sync": "cap sync android",
+    "cap:build": "pnpm build:android && cap sync android",
+    "cap:open": "cap open android"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -75,6 +79,12 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/camera": "^8.2.3",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/filesystem": "^8.1.3",
+    "@capacitor/share": "^8.0.1",
     "idb": "^8.0.3",
     "jspdf": "^4.2.1",
     "tesseract.js": "^7.0.0"

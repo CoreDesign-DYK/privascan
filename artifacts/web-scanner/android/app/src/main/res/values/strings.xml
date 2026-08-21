@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PrivaScan</string>
+    <string name="title_activity_main">PrivaScan</string>
+    <string name="package_name">com.privascan.app</string>
+    <string name="custom_url_scheme">com.privascan.app</string>
+</resources>
