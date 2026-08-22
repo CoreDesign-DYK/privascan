@@ -8,6 +8,10 @@ const config: CapacitorConfig = {
     androidScheme: 'https',
   },
   android: {
+    // Edge-to-edge: the WebView draws under the status bar and nav bar.
+    // Safe-area insets (env(safe-area-inset-*)) are then available in CSS
+    // so the scanner UI can pad itself appropriately.
+    edgeToEdgeEnabled: true,
     buildOptions: {
       keystorePath: undefined,
       keystorePassword: undefined,

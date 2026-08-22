@@ -1083,8 +1083,12 @@ export default function ScannerScreen() {
 
        {/* ── H: Top bar — logo · capture preferences · navigation ── */}
       <div
-        className="absolute top-0 inset-x-0 z-20 grid grid-cols-[auto_minmax(0,1fr)_auto] sm:grid-cols-[1fr_auto_1fr] items-center px-3 sm:px-4 pt-4 pb-6"
-        style={{ background: 'linear-gradient(to bottom, rgba(13,13,20,0.88) 0%, transparent 100%)' }}
+        className="absolute top-0 inset-x-0 z-20 grid grid-cols-[auto_minmax(0,1fr)_auto] sm:grid-cols-[1fr_auto_1fr] items-center px-3 sm:px-4 pb-6"
+        style={{
+          background: 'linear-gradient(to bottom, rgba(13,13,20,0.88) 0%, transparent 100%)',
+          // Safe area: push content below the status bar / notch on Android
+          paddingTop: 'calc(1rem + env(safe-area-inset-top, 0px))',
+        }}
       >
         {/* Col 1 — Left: PrivaScan brand */}
         <div className="flex items-center gap-2 shrink-0">
@@ -1625,7 +1629,10 @@ export default function ScannerScreen() {
         )}
 
         {/* Controls row */}
-        <div className="flex items-center justify-between">
+        <div
+          className="flex items-center justify-between"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        >
 
           {/* Gallery thumbnail button — iOS camera style */}
           <button

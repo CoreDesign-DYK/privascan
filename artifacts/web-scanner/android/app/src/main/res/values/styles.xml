@@ -9,10 +9,26 @@
         <item name="colorAccent">@color/colorAccent</item>
     </style>
 
+    <!--
+        Edge-to-edge theme: the WebView extends under the status bar and
+        navigation bar so the app looks truly full-screen on Android.
+        CSS env(safe-area-inset-*) variables then let the web layer pad
+        its own controls so nothing is hidden behind system bars.
+    -->
     <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+
+        <!-- Transparent system bars so the dark scanner bg shows through -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- Light icons = false → white icons on the dark scanner background -->
+        <item name="android:windowLightStatusBar">false</item>
+        <!-- Draw content behind the system bars -->
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <!-- Handle display cutouts (notch / punch-hole cameras) gracefully -->
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
 
 

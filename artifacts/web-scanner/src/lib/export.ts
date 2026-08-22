@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { type PaperSize } from '@/lib/scanner-types';
+import { isAndroid } from '@/lib/platform';
 
 export async function generatePDF(pages: string[], paperSize: PaperSize): Promise<Blob> {
   // Rough mapping of paper sizes to jsPDF format
@@ -34,17 +35,10 @@ export async function generatePDF(pages: string[], paperSize: PaperSize): Promis
   return doc.output('blob');
 }
 
-export function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
+/**
+ * Convert a Blob to a raw base64 string (without the data:…;base64, prefix).
+ * Used by Capacitor Filesystem writeFile for binary data.
+ */
 export async function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -61,11 +55,100 @@ export async function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Native helpers (Android only)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function downloadBlobNative(blob: Blob, filename: string): Promise<void> {
+  try {
+    const { Filesystem, Directory } = await import('@capacitor/filesystem');
+    const { toast } = await import('sonner');
+    const base64 = await blobToBase64(blob);
+    await Filesystem.writeFile({
+      path: filename,
+      data: base64,
+      directory: Directory.Documents,
+    });
+    toast.success(`저장 완료: ${filename}`);
+  } catch (err) {
+    const { toast } = await import('sonner');
+    console.error('Native download failed:', err);
+    toast.error('저장 실패. 다시 시도해 주세요.');
+  }
+}
+
+async function shareFileNative(blob: Blob, filename: string): Promise<void> {
+  const { Filesystem, Directory } = await import('@capacitor/filesystem');
+  const { Share } = await import('@capacitor/share');
+  const { toast } = await import('sonner');
+
+  let wrote = false;
+  try {
+    const base64 = await blobToBase64(blob);
+
+    // Write to cache so Share can access a file URI
+    const result = await Filesystem.writeFile({
+      path: filename,
+      data: base64,
+      directory: Directory.Cache,
+    });
+    wrote = true;
+
+    await Share.share({
+      title: filename,
+      url: result.uri,
+      dialogTitle: 'PrivaScan 파일 공유',
+    });
+  } catch (err) {
+    // User cancelled share — not an error worth toasting
+    if (err instanceof Error && (err.message.includes('cancel') || err.message.includes('dismissed'))) {
+      return;
+    }
+    console.error('Native share failed:', err);
+    toast.error('공유 실패. 다시 시도해 주세요.');
+  } finally {
+    // Always clean up the temporary cache file
+    if (wrote) {
+      try {
+        const { Filesystem: FS, Directory: Dir } = await import('@capacitor/filesystem');
+        await FS.deleteFile({ path: filename, directory: Dir.Cache });
+      } catch { /* cleanup errors are silently ignored */ }
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Share a file via the Web Share API (iOS Files / Android share sheet).
- * Falls back to a plain browser download when the API is unavailable.
+ * Save a file to the user's device.
+ * - Android native: Capacitor Filesystem → Documents folder → success toast.
+ * - Web: creates a temporary <a download> link.
+ */
+export function downloadBlob(blob: Blob, filename: string): void {
+  if (isAndroid()) {
+    void downloadBlobNative(blob, filename);
+    return;
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/**
+ * Share a file via the native share sheet (Android) or Web Share API.
+ * Falls back to a plain browser download when neither API is available.
  */
 export async function shareFile(blob: Blob, filename: string, mimeType: string): Promise<void> {
+  if (isAndroid()) {
+    return shareFileNative(blob, filename);
+  }
   const file = new File([blob], filename, { type: mimeType });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     await navigator.share({ files: [file], title: filename });
