@@ -22,3 +22,6 @@ ios/App/App.xcworkspace/
 .DS_Store
 *.swp
 *.swo
+
+# Release keystore (never commit)
+.keys/

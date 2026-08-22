@@ -1,133 +1,175 @@
-/**
- * privacy-policy.tsx — PrivaScan Privacy Policy
- * Dark theme, in-app page
- */
+import { ArrowLeft } from 'lucide-react';
 import { useLocation } from 'wouter';
-import { ChevronLeft } from 'lucide-react';
 
-const LAST_UPDATED = 'August 14, 2026';
-
-function H2({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-white font-semibold text-base mt-7 mb-2">{children}</h2>;
-}
-function P({ children }: { children: React.ReactNode }) {
-  return <p className="text-white/55 text-sm leading-relaxed">{children}</p>;
-}
-function Li({ children }: { children: React.ReactNode }) {
-  return (
-    <li className="text-white/55 text-sm leading-relaxed flex gap-2">
-      <span className="text-white/25 mt-0.5 shrink-0">·</span>
-      <span>{children}</span>
-    </li>
-  );
-}
-
-export default function PrivacyPolicyScreen() {
+export default function PrivacyPolicyPage() {
   const [, setLocation] = useLocation();
 
   return (
-    <div className="min-h-[100dvh] flex flex-col" style={{ background: '#0d0d14' }}>
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 pt-14 pb-4 border-b border-white/8">
+    <div
+      className="min-h-screen text-white px-5 py-8"
+      style={{
+        background: '#0d0d14',
+        paddingTop: 'calc(2rem + env(safe-area-inset-top, 0px))',
+        paddingBottom: 'calc(2rem + env(safe-area-inset-bottom, 0px))',
+      }}
+    >
+      <div className="max-w-2xl mx-auto">
+        {/* Back button */}
         <button
-          onClick={() => setLocation('/home')}
-          className="w-8 h-8 rounded-full flex items-center justify-center text-white/50 hover:bg-white/10 transition-colors"
+          onClick={() => setLocation('/')}
+          className="flex items-center gap-2 text-white/50 hover:text-white transition-colors mb-8 text-sm"
         >
-          <ChevronLeft className="w-5 h-5" />
+          <ArrowLeft className="w-4 h-4" />
+          Back
         </button>
-        <div>
-          <h1 className="text-white font-semibold text-base">Privacy Policy</h1>
-          <p className="text-white/30 text-xs">Last updated: {LAST_UPDATED}</p>
+
+        {/* Header */}
+        <div className="mb-10">
+          <div className="flex items-center gap-3 mb-3">
+            <svg className="w-8 h-8 shrink-0" viewBox="0 0 48 48" fill="none">
+              <path d="M2,12 L2,2 L12,2"    stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
+              <path d="M36,2 L46,2 L46,12"  stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
+              <path d="M2,36 L2,46 L12,46"  stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
+              <path d="M46,36 L46,46 L36,46" stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
+              <rect x="13" y="9" width="22" height="30" rx="1.5" fill="white" opacity="0.92"/>
+              <path d="M29,9 L35,15 L29,15 Z" fill="#cbd5e1"/>
+              <path d="M29,9 L35,9 L35,15 Z" fill="white" opacity="0.92"/>
+            </svg>
+            <h1 className="text-2xl font-bold tracking-tight">Privacy Policy</h1>
+          </div>
+          <p className="text-white/40 text-sm">PrivaScan · Last updated: August 2026</p>
         </div>
-      </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto px-5 pb-16">
+        <div className="space-y-8 text-[15px] leading-relaxed">
 
-        <H2>1. Overview</H2>
-        <P>
-          PrivaScan ("we", "our", "the app") is committed to protecting your privacy.
-          This policy explains what data is processed when you use PrivaScan and how it is handled.
-          PrivaScan is designed as a privacy-first application: your documents are never sent to
-          any external server.
-        </P>
+          {/* Overview */}
+          <section>
+            <h2 className="text-lg font-semibold mb-3 text-sky-400">Overview</h2>
+            <p className="text-white/70">
+              PrivaScan is a privacy-first document scanner. All scanning and processing
+              happens entirely on your device. We do not collect, transmit, or store
+              your documents, images, or personal data on any server.
+            </p>
+          </section>
 
-        <H2>2. Data We Process</H2>
-        <P>PrivaScan processes the following data exclusively on your device:</P>
-        <ul className="mt-2 space-y-1.5">
-          <Li>Camera images and video frames — used solely to capture documents</Li>
-          <Li>Scanned document images — stored in your device's local storage (IndexedDB)</Li>
-          <Li>OCR text extracted from documents — processed on-device using Tesseract.js, never transmitted</Li>
-          <Li>App settings (color mode, paper size, language) — stored locally in your browser</Li>
-        </ul>
+          {/* Data We Collect */}
+          <section>
+            <h2 className="text-lg font-semibold mb-3 text-sky-400">Information We Do NOT Collect</h2>
+            <ul className="text-white/70 space-y-2">
+              {[
+                'Document contents or scanned images',
+                'Personal identification information',
+                'Location data',
+                'Device identifiers or advertising IDs',
+                'Usage analytics or behavioral data',
+                'Contacts or calendar data',
+              ].map(item => (
+                <li key={item} className="flex items-start gap-2">
+                  <span className="text-green-400 mt-0.5">✓</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
 
-        <H2>3. Data We Do NOT Collect</H2>
-        <ul className="mt-2 space-y-1.5">
-          <Li>We do not collect, store or transmit your documents or images to any server</Li>
-          <Li>We do not use analytics SDKs or tracking pixels</Li>
-          <Li>We do not sell, share, or monetize any user data</Li>
-          <Li>We do not store any personally identifiable information (PII)</Li>
-          <Li>We do not use third-party advertising networks</Li>
-        </ul>
+          {/* Camera */}
+          <section>
+            <h2 className="text-lg font-semibold mb-3 text-sky-400">Camera Permission</h2>
+            <p className="text-white/70">
+              PrivaScan requires camera access solely to let you scan documents.
+              Images captured by the camera are processed locally on your device and
+              are never sent to any external server. You can revoke camera permission
+              at any time in your device settings.
+            </p>
+          </section>
 
-        <H2>4. Camera Permission</H2>
-        <P>
-          PrivaScan requests access to your device camera solely to capture document images.
-          Camera access is used only while you are actively using the scanner. We do not record
-          video, take background photos, or access your photo library without explicit interaction.
-        </P>
+          {/* Storage */}
+          <section>
+            <h2 className="text-lg font-semibold mb-3 text-sky-400">Storage Permission</h2>
+            <p className="text-white/70">
+              Storage access is used only to save scanned PDF files to your device
+              when you choose to save or export a scan. Files are saved directly to
+              your device and are fully under your control.
+            </p>
+          </section>
 
-        <H2>5. Local Storage</H2>
-        <P>
-          Scanned documents are saved to IndexedDB, a browser-based local database on your device.
-          This data is not synced to any cloud service unless you explicitly choose to export or
-          share a document. You can delete all stored scans at any time from the app.
-        </P>
+          {/* On-Device Processing */}
+          <section>
+            <h2 className="text-lg font-semibold mb-3 text-sky-400">On-Device Processing</h2>
+            <p className="text-white/70">
+              All document detection, edge correction, and PDF generation run
+              entirely within your device. No internet connection is required to
+              scan, edit, or export documents.
+            </p>
+          </section>
 
-        <H2>6. Cloud Backup (Optional)</H2>
-        <P>
-          PrivaScan offers an optional "Cloud Backup" feature that uses your device's file system
-          access API (or mobile share sheet) to save files to services such as Google Drive,
-          OneDrive, or Dropbox. This transfer is initiated entirely by you and is subject to the
-          privacy policies of the respective cloud service. PrivaScan does not have access to
-          your cloud storage accounts.
-        </P>
+          {/* Third-Party Services */}
+          <section>
+            <h2 className="text-lg font-semibold mb-3 text-sky-400">Third-Party Services</h2>
+            <p className="text-white/70">
+              PrivaScan does not integrate any third-party analytics, advertising,
+              or crash-reporting SDKs. The app does not contact any external servers
+              during normal operation.
+            </p>
+          </section>
 
-        <H2>7. Subscription & Payments</H2>
-        <P>
-          Subscriptions are processed through the Apple App Store or Google Play Store depending
-          on your platform. PrivaScan does not handle or store your payment information.
-          Billing is managed entirely by Apple or Google in accordance with their respective
-          privacy policies.
-        </P>
+          {/* Subscription */}
+          <section>
+            <h2 className="text-lg font-semibold mb-3 text-sky-400">Subscription &amp; Billing</h2>
+            <p className="text-white/70">
+              PrivaScan offers an optional subscription after a free trial period.
+              All subscription management and payment processing is handled by
+              Google Play. We do not store or process payment card information.
+              For details, see{' '}
+              <a
+                href="https://policies.google.com/privacy"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sky-400 underline underline-offset-2"
+              >
+                Google's Privacy Policy
+              </a>.
+            </p>
+          </section>
 
-        <H2>8. Children's Privacy</H2>
-        <P>
-          PrivaScan is not directed at children under 13 years of age. We do not knowingly
-          collect any personal information from children.
-        </P>
+          {/* Children */}
+          <section>
+            <h2 className="text-lg font-semibold mb-3 text-sky-400">Children's Privacy</h2>
+            <p className="text-white/70">
+              PrivaScan does not knowingly collect data from children under 13.
+              The app contains no features targeted at children.
+            </p>
+          </section>
 
-        <H2>9. Changes to This Policy</H2>
-        <P>
-          We may update this Privacy Policy from time to time. Changes will be reflected
-          by the "Last updated" date above. Continued use of the app after changes constitutes
-          acceptance of the updated policy.
-        </P>
+          {/* Changes */}
+          <section>
+            <h2 className="text-lg font-semibold mb-3 text-sky-400">Changes to This Policy</h2>
+            <p className="text-white/70">
+              We may update this policy to reflect changes in the app. We will
+              notify users of material changes by updating the date at the top of
+              this page.
+            </p>
+          </section>
 
-        <H2>10. Contact</H2>
-        <P>
-          If you have questions or concerns about this Privacy Policy, please contact us at:{' '}
-          <a
-            href="mailto:privacy@privascan.app"
-            className="text-sky-400 underline"
-          >
-            privacy@privascan.app
-          </a>
-        </P>
+          {/* Contact */}
+          <section>
+            <h2 className="text-lg font-semibold mb-3 text-sky-400">Contact</h2>
+            <p className="text-white/70">
+              Questions about this privacy policy?{' '}
+              <a
+                href="mailto:yessirh.kim0616@gmail.com"
+                className="text-sky-400 underline underline-offset-2"
+              >
+                yessirh.kim0616@gmail.com
+              </a>
+            </p>
+          </section>
 
-        <p className="text-white/20 text-xs mt-10 text-center pb-2">
-          © 2026 PrivaScan · All rights reserved
-        </p>
+        </div>
+
+        <div className="mt-12 pt-8 border-t border-white/10 text-center text-white/25 text-xs">
+          © 2026 PrivaScan. All rights reserved.
+        </div>
       </div>
     </div>
   );
