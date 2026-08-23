@@ -33,11 +33,11 @@ jobs:
         with:
           version: 10
 
-      - name: Setup Java 17
+      - name: Setup Java 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'   # Capacitor 8 Android plugin requires Java 21
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -93,11 +93,11 @@ jobs:
         with:
           version: 10
 
-      - name: Setup Java 17
+      - name: Setup Java 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'   # Capacitor 8 Android plugin requires Java 21
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
