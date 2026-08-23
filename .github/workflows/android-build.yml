@@ -114,7 +114,7 @@ jobs:
 
       - name: Decode keystore
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > /tmp/privascan-release.p12
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | tr -d '\n\r ' | base64 --decode > /tmp/privascan-release.p12
           echo "Keystore decoded: $(wc -c < /tmp/privascan-release.p12) bytes"
 
       - name: Build Release AAB
