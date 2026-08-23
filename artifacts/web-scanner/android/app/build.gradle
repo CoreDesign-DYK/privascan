@@ -22,6 +22,7 @@ android {
             def ksFile = System.getenv("KEYSTORE_FILE")
             if (ksFile) {
                 storeFile     file(ksFile)
+                storeType     "PKCS12"
                 storePassword System.getenv("KEYSTORE_PASSWORD") ?: ""
                 keyAlias      System.getenv("KEYSTORE_ALIAS")    ?: "privascan"
                 keyPassword   System.getenv("KEYSTORE_PASSWORD") ?: ""
