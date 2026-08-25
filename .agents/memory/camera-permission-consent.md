@@ -5,8 +5,8 @@ description: Camera access should be explicitly started by the user from the sca
 
 # Camera Permission Consent
 
-The scanner must enter with camera access deactivated and request camera permission only after the user chooses to turn it on.
+The scanner should start the camera automatically when the scanner screen opens, without requiring a separate activation button for each scan.
 
-**Why:** PrivaScan is privacy-focused, so opening the scanner should not immediately activate hardware or request a camera permission.
+**Why:** Requiring the user to dismiss a camera-off message and press an activation button before every scan makes the scanner cumbersome to use.
 
-**How to apply:** Keep the initial state off, show a clear activation control, and preserve a separate deactivation path that stops the active stream before leaving or resetting the scanner.
+**How to apply:** Start the camera in the scanner screen lifecycle, keep the existing permission-error recovery, and stop the stream when leaving the screen.

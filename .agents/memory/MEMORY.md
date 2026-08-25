@@ -1,5 +1,5 @@
 - [Android build pipeline](android-build-pipeline.md) — Capacitor 8 needs Node 22 + Java 21 + PKCS12 storeType; keystore must be base64 -w0 encoded.
-- [Camera permission consent](camera-permission-consent.md) — Scanner entry must keep camera access off until the user explicitly turns it on.
+- [Camera startup behavior](camera-permission-consent.md) — Start the camera when entering the scanner; do not require a separate activation tap for each scan.
 - [Active scan recovery](active-scan-recovery.md) — Keep unfinished scans recoverable on-device without mixing drafts into the saved-document gallery.
 - [Capture quality safeguards](capture-quality-safeguards.md) — Never turn an uncertain or soft camera frame into a completed document scan.
 - [Preview control layout](preview-control-layout.md) — Keep save actions visible in one viewport; let secondary edit tools scroll horizontally on small screens.
