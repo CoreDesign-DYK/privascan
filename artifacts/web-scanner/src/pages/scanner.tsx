@@ -11,7 +11,7 @@
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocation } from 'wouter';
-import { Zap, ZapOff, ChevronRight, Smartphone, Edit2, ScanLine, House, Camera, Crop, RotateCw, Type, Trash2, Check, X as XIcon } from 'lucide-react';
+import { Zap, ZapOff, ChevronRight, Smartphone, Edit2, ScanLine, House, Camera, CameraOff, Crop, RotateCw, Type, Trash2, Check, X as XIcon } from 'lucide-react';
 import { useCamera } from '@/hooks/use-camera';
 import { useScannerContext } from '@/contexts/scanner-context';
 import { SettingsSheet } from '@/components/settings-sheet';
@@ -331,6 +331,7 @@ export default function ScannerScreen() {
 
   const canvasRef            = useRef<HTMLCanvasElement>(null);
   const [isCapturing,    setIsCapturing]    = useState(false);
+  const [isCameraActive, setIsCameraActive] = useState(false);
   const [showScanLine,   setShowScanLine]   = useState(false);   // B
   const [edgeCorners,    setEdgeCorners]    = useState<[Point, Point, Point, Point] | null>(null);
   const [edgeIsLive,     setEdgeIsLive]     = useState(false);
@@ -438,12 +439,39 @@ export default function ScannerScreen() {
 
   /* ── Camera lifecycle ───────────────────────────────────────────────────── */
   useEffect(() => {
-    startCamera();
     return () => {
       stopCamera();
       if (edgeTimerRef.current) clearInterval(edgeTimerRef.current);
     };
-  }, [startCamera, stopCamera]);
+  }, [stopCamera]);
+
+  const activateCamera = useCallback(async () => {
+    if (isCameraActive) return;
+    if (isMockMode) {
+      setIsCameraActive(true);
+      return;
+    }
+    try {
+      await startCamera();
+      setIsCameraActive(true);
+    } catch {
+      setIsCameraActive(false);
+    }
+  }, [isCameraActive, isMockMode, startCamera]);
+
+  const deactivateCamera = useCallback(() => {
+    stopCamera();
+    setIsCameraActive(false);
+    setEdgeCorners(null);
+    setEdgeIsLive(false);
+    setStableProgress(0);
+    stableFrames.current = 0;
+    trackedCornersRef.current = null;
+    pendingCornersRef.current = null;
+    pendingCornerFrames.current = 0;
+    missedEdgeFrames.current = 0;
+    trackConfirmFrames.current = 0;
+  }, [stopCamera]);
 
   /* ── Flash + scan line helper ───────────────────────────────────────────── */
   const triggerCaptureEffects = useCallback(() => {
@@ -603,7 +631,7 @@ export default function ScannerScreen() {
 
   /* ── Edge detection loop ────────────────────────────────────────────────── */
   useEffect(() => {
-    if (isMockMode || isNative) return;
+    if (!isCameraActive || isMockMode || isNative) return;
 
     const updateTrackedCorners = (
       detected: [Point, Point, Point, Point] | null,
@@ -726,7 +754,7 @@ export default function ScannerScreen() {
     }, EDGE_INTERVAL_MS);
 
     return () => { if (edgeTimerRef.current) clearInterval(edgeTimerRef.current); };
-  }, [isMockMode, videoRef, focusReady]);
+  }, [isCameraActive, isMockMode, videoRef, focusReady]);
 
   /* ── Manual capture ─────────────────────────────────────────────────────── */
   const manualCaptureFrame = useCallback(() => {
@@ -949,6 +977,10 @@ export default function ScannerScreen() {
 
   /* ── Capture button handler ─────────────────────────────────────────────── */
   const handleCaptureButton = useCallback(() => {
+    if (!isCameraActive) {
+      void activateCamera();
+      return;
+    }
     // Android 네이티브: 모든 모드를 네이티브 카메라로 처리
     if (isNative) { void nativeCaptureAndProcess(); return; }
     const sm = scanModeRef.current;
@@ -957,7 +989,7 @@ export default function ScannerScreen() {
     else if (sm === 'id-cards')     idCardsCapture();
     else if (mode === 'auto')       autoCaptureFrame();
     else                            manualCaptureFrame();
-  }, [isNative, nativeCaptureAndProcess, mode, autoCaptureFrame, manualCaptureFrame, bookCapture, presentationCapture, idCardsCapture]);
+  }, [isCameraActive, activateCamera, isNative, nativeCaptureAndProcess, mode, autoCaptureFrame, manualCaptureFrame, bookCapture, presentationCapture, idCardsCapture]);
 
   /* ── Text stamp: burns typed text onto the last page ───────────────────── */
   const handleApplyText = useCallback(async () => {
@@ -1069,15 +1101,40 @@ export default function ScannerScreen() {
       {/* ── Live camera (웹) ── */}
       {!isMockMode && !isNative && (
         <video ref={videoRef} autoPlay playsInline muted
-          className="absolute inset-0 w-full h-full object-cover z-0" />
+          className={cn(
+            'absolute inset-0 w-full h-full object-cover z-0 transition-opacity duration-200',
+            isCameraActive ? 'opacity-100' : 'opacity-0',
+          )} />
       )}
       {/* ── Native camera placeholder (Android) ── */}
       {isNative && (
         <div className="absolute inset-0 flex flex-col items-center justify-center z-0 gap-4 select-none pointer-events-none">
-          <Camera className="w-20 h-20 text-white/15" />
+          {isCameraActive
+            ? <Camera className="w-20 h-20 text-white/15" />
+            : <CameraOff className="w-20 h-20 text-white/15" />}
           <p className="text-white/25 text-sm font-medium tracking-wide">
-            {idStage === 'back' ? '뒷면을 촬영하세요' : '아래 버튼을 눌러 촬영하세요'}
+            {!isCameraActive
+              ? '카메라가 꺼져 있습니다'
+              : idStage === 'back' ? '뒷면을 촬영하세요' : '아래 버튼을 눌러 촬영하세요'}
           </p>
+        </div>
+      )}
+
+      {!isCameraActive && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-[#0d0d14]/80 px-6 text-center">
+          <CameraOff className="w-14 h-14 text-white/35" aria-hidden="true" />
+          <div>
+            <p className="text-white font-semibold">Camera deactivated</p>
+            <p className="mt-1 text-sm text-white/45">
+              Turn on the camera only when you are ready to scan.
+            </p>
+          </div>
+          <button
+            onClick={() => { void activateCamera(); }}
+            className="rounded-full bg-sky-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-sky-500/25 transition-colors hover:bg-sky-400 active:scale-95"
+          >
+            Turn on camera
+          </button>
         </div>
       )}
 
@@ -1403,7 +1460,11 @@ export default function ScannerScreen() {
         {/* Auto-mode status hint */}
         {mode === 'auto' && (
           <div className="flex justify-center min-h-[20px]">
-            {!isMockMode && !focusReady ? (
+            {!isCameraActive ? (
+              <span className="text-white/45 text-sm font-medium">
+                Camera deactivated
+              </span>
+            ) : !isMockMode && !focusReady ? (
               <span className="text-amber-300 text-sm font-semibold animate-pulse">
                 Focusing camera…
               </span>
@@ -1676,22 +1737,27 @@ export default function ScannerScreen() {
             {/* iOS shutter button */}
             <button
               onClick={handleCaptureButton}
-              disabled={!isMockMode && !focusReady}
-              aria-label={!isMockMode && !focusReady ? 'Focusing camera' : 'Capture scan'}
+              disabled={isCameraActive && !isMockMode && !focusReady}
+              aria-label={!isCameraActive ? 'Turn on camera' : !isMockMode && !focusReady ? 'Focusing camera' : 'Capture scan'}
               className={cn(
                 'absolute inset-0 rounded-full border-[3px] border-white',
                 'flex items-center justify-center',
                 'active:scale-95 transition-transform duration-100 disabled:opacity-45 disabled:cursor-wait disabled:active:scale-100',
                 isStable && mode === 'auto' && 'animate-capture-glow',
+                !isCameraActive && 'border-sky-400 bg-sky-500/10',
               )}
             >
               <div className={cn(
                 'w-[2.7rem] h-[2.7rem] rounded-full transition-all duration-300',
-                isStable && mode === 'auto'
+                !isCameraActive
+                  ? 'bg-sky-400'
+                  : isStable && mode === 'auto'
                   ? 'bg-green-400 shadow-[0_0_16px_rgba(74,222,128,0.6)]'
                   : 'bg-white',
               )}>
-                {mode === 'auto' && (
+                {!isCameraActive ? (
+                  <Camera className="w-5 h-5 text-white" />
+                ) : mode === 'auto' && (
                   <div className="w-full h-full flex items-center justify-center">
                     <Zap className={cn('w-4 h-4 fill-current transition-colors', isStable ? 'text-white' : 'text-gray-800')} />
                   </div>
