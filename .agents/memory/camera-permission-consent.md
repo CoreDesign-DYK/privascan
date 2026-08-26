@@ -5,8 +5,8 @@ description: Camera access should be explicitly started by the user from the sca
 
 # Camera Permission Consent
 
-The scanner should start the camera automatically when the scanner screen opens, without requiring a separate activation button for each scan.
+The scanner should start the camera automatically when the scanner screen opens, without requiring a separate activation button for each scan. Browser development previews intentionally keep the physical camera off; production builds keep the automatic camera flow.
 
 **Why:** Requiring the user to dismiss a camera-off message and press an activation button before every scan makes the scanner cumbersome to use.
 
-**How to apply:** Start the camera in the scanner screen lifecycle, keep the existing permission-error recovery, and stop the stream when leaving the screen.
+**How to apply:** Start the camera in the scanner screen lifecycle for production, use mock mode during Vite development, keep the existing permission-error recovery, and stop the stream when leaving the screen.

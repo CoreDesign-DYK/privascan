@@ -1,7 +1,9 @@
 import { useState, useRef, useCallback } from 'react';
 import { isAndroid } from '@/lib/platform';
 
-const IS_DEV = false;
+// Keep the physical camera off while developing in the browser. Production
+// builds (including the Android release build) retain the normal camera flow.
+const IS_DEV = import.meta.env.DEV;
 type FocusMode = 'continuous' | 'single-shot' | 'unsupported' | 'unknown';
 
 /**
