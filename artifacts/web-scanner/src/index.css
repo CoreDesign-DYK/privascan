@@ -158,28 +158,6 @@
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-/* ── Always-visible app scrollbar ── */
-.scanner-scrollbar {
-  overflow-y: scroll;
-  overflow-x: hidden;
-  scrollbar-gutter: stable;
-  scrollbar-color: rgba(148, 163, 184, 0.8) rgba(255, 255, 255, 0.08);
-}
-.scanner-scrollbar::-webkit-scrollbar {
-  width: 12px;
-}
-.scanner-scrollbar::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.08);
-}
-.scanner-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.8);
-  border: 3px solid rgba(13, 13, 20, 0.9);
-  border-radius: 999px;
-}
-.scanner-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(203, 213, 225, 0.95);
-}
-
 /* ── PIN shake animation ── */
 @keyframes pinShake {
   0%,100% { transform: translateX(0);    }
