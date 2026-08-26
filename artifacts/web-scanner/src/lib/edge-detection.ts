@@ -343,6 +343,17 @@ function hasReliableTopBoundary(
   bottomLeft: Point,
   bottomRight: Point,
 ): boolean {
+  const leftSideLength = distance(topLeft, bottomLeft);
+  const rightSideLength = distance(topRight, bottomRight);
+  // A real top corner should keep its side edge visible immediately below the
+  // corner and farther into the page. A background line can pass the short
+  // corner check when it sits close to the document, so probe both ranges.
+  const sideProbeEnd = Math.max(
+    16,
+    Math.min(48, Math.round(Math.min(leftSideLength, rightSideLength) * 0.12)),
+  );
+  const nearProbeEnd = Math.max(8, Math.round(sideProbeEnd * 0.45));
+
   const cornerIsClosed = (corner: Point, direction: -1 | 1) => {
     const horizontal = directionalEdgeSupport(
       gy,
@@ -362,11 +373,37 @@ function hasReliableTopBoundary(
       'vertical',
       1,
     );
+    const nearVertical = directionalEdgeSupport(
+      gx,
+      w,
+      h,
+      corner.x,
+      corner.y,
+      'vertical',
+      1,
+      nearProbeEnd,
+    );
+    const innerVertical = directionalEdgeSupport(
+      gx,
+      w,
+      h,
+      corner.x,
+      corner.y,
+      'vertical',
+      1,
+      sideProbeEnd,
+      nearProbeEnd + 2,
+    );
 
     // Keep this deliberately conservative. If either side of the corner is
     // missing, the detector must not extrapolate a background line into a
     // document corner and let perspective correction magnify the error.
-    return horizontal >= 0.35 && vertical >= 0.35;
+    return (
+      horizontal >= 0.35 &&
+      vertical >= 0.35 &&
+      nearVertical >= 0.25 &&
+      innerVertical >= 0.25
+    );
   };
 
   if (
@@ -395,13 +432,14 @@ function directionalEdgeSupport(
   y: number,
   axis: 'horizontal' | 'vertical',
   direction: -1 | 1,
+  alongRadius = 10,
+  startDistance = 2,
 ): number {
-  const alongRadius = 10;
   const acrossRadius = 4;
   let sum = 0;
   let samples = 0;
 
-  for (let distance = 2; distance <= alongRadius; distance += 2) {
+  for (let distance = Math.max(2, startDistance); distance <= alongRadius; distance += 2) {
     let strongest = 0;
     for (let across = -acrossRadius; across <= acrossRadius; across++) {
       const sampleX = axis === 'horizontal'
