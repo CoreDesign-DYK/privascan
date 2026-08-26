@@ -1045,7 +1045,7 @@ export default function ScannerScreen() {
 
   /* ── Render ─────────────────────────────────────────────────────────────── */
   return (
-    <div className="relative min-h-[100dvh] overflow-hidden flex flex-col" style={{ background: '#0d0d14' }}>
+    <div className="scanner-scrollbar relative min-h-[100dvh] flex flex-col" style={{ background: '#0d0d14' }}>
       <canvas ref={canvasRef} className="hidden" />
 
       {/* ── White flash on capture ── */}
