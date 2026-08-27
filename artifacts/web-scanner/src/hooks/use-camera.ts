@@ -7,9 +7,9 @@ const IS_DEV = import.meta.env.DEV;
 type FocusMode = 'continuous' | 'single-shot' | 'unsupported' | 'unknown';
 
 /**
- * 단일 훅으로 웹(getUserMedia)과 Android 네이티브(Capacitor Camera) 모두 지원.
- *  - 웹:     기존 스트림 + videoRef 방식 유지
- *  - Android: startCamera → 권한 요청, captureNativePhoto → 네이티브 촬영
+ * 단일 훅으로 라이브 웹 카메라와 Android 시스템 카메라를 지원.
+ *  - 웹/iOS Capacitor: getUserMedia 스트림으로 자동 시작·실시간 경계 감지
+ *  - Android Capacitor: 권한 요청 후 captureNativePhoto로 시스템 카메라 촬영
  */
 export function useCamera() {
   const videoRef   = useRef<HTMLVideoElement>(null);
@@ -23,7 +23,9 @@ export function useCamera() {
   const [focusMode, setFocusMode]         = useState<FocusMode>(IS_DEV ? 'continuous' : 'unknown');
   const [focusReady, setFocusReady]       = useState(IS_DEV);
 
-  const nativeMode = isAndroid(); // 컴파일 타임 상수처럼 동작 (플랫폼 변경 없음)
+  // iOS keeps the live WKWebView camera so auto-start and real-time edge
+  // detection continue to work inside the Capacitor shell.
+  const nativeMode = isAndroid();
 
   /* ── 공통: 카메라 중지 ─────────────────────────────────────────────────── */
   const stopCamera = useCallback(() => {
@@ -49,7 +51,7 @@ export function useCamera() {
     }
   }, [nativeMode]);
 
-  /* ── Android 전용: 권한 요청 ────────────────────────────────────────────── */
+  /* ── Android 네이티브: 권한 요청 ────────────────────────────────────────── */
   const startCameraNative = useCallback(async (): Promise<void> => {
     try {
       const { Camera } = await import('@capacitor/camera');
@@ -175,7 +177,7 @@ export function useCamera() {
     return nativeMode ? startCameraNative() : startCameraWeb();
   }, [nativeMode, startCameraNative, startCameraWeb]);
 
-  /* ── Android 전용: 네이티브 카메라로 한 장 촬영 → data URL 반환 ────────── */
+  /* ── Android 네이티브: 한 장 촬영 → data URL 반환 ───────────────────────── */
   const captureNativePhoto = useCallback(async (): Promise<string | null> => {
     if (!nativeMode) return null;
     try {

@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { type PaperSize } from '@/lib/scanner-types';
-import { isAndroid } from '@/lib/platform';
+import { isNative } from '@/lib/platform';
 
 export async function generatePDF(pages: string[], paperSize: PaperSize): Promise<Blob> {
   // Rough mapping of paper sizes to jsPDF format
@@ -56,7 +56,7 @@ export async function blobToBase64(blob: Blob): Promise<string> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Native helpers (Android only)
+// Native helpers (iOS + Android)
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function downloadBlobNative(blob: Blob, filename: string): Promise<void> {
@@ -123,11 +123,11 @@ async function shareFileNative(blob: Blob, filename: string): Promise<void> {
 
 /**
  * Save a file to the user's device.
- * - Android native: Capacitor Filesystem → Documents folder → success toast.
+ * - iOS/Android native: Capacitor Filesystem → Documents folder → success toast.
  * - Web: creates a temporary <a download> link.
  */
 export function downloadBlob(blob: Blob, filename: string): void {
-  if (isAndroid()) {
+  if (isNative()) {
     void downloadBlobNative(blob, filename);
     return;
   }
@@ -142,11 +142,11 @@ export function downloadBlob(blob: Blob, filename: string): void {
 }
 
 /**
- * Share a file via the native share sheet (Android) or Web Share API.
+ * Share a file via the native share sheet (iOS/Android) or Web Share API.
  * Falls back to a plain browser download when neither API is available.
  */
 export async function shareFile(blob: Blob, filename: string, mimeType: string): Promise<void> {
-  if (isAndroid()) {
+  if (isNative()) {
     return shareFileNative(blob, filename);
   }
   const file = new File([blob], filename, { type: mimeType });
