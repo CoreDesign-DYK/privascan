@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "-xIYmCY-DgmvbViRM2eEn"
+uri = "file://privascan-ios-project.zip"
+type = "unspecified"
+title = "PrivaScan iOS project"
+description = "Current PrivaScan source with the Capacitor iOS/Xcode project included. Download this ZIP to the MacBook, unzip it, then we will prepare it in Terminal before opening Xcode."
+logical_id = "fd8c93af-5477-445a-aa2f-450dd72ddf25"
+content_hash = "sha256:a01b2a998f37caef4254046e70c44eb6a92333a51bef70cf49c81ef00038410f"
+size = 15047987
+mtime_ms = 1787861006129
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:d5de93de-5701-46fb-97ee-22e0fbd8641a/fd8c93af-5477-445a-aa2f-450dd72ddf25/4fb878cf-8fe7-4588-9a51-67be15c9182a"
+storage_version_token = "1787861006918443"
+content_type = "application/octet-stream"
