@@ -3,8 +3,8 @@ name: Capacitor iOS startup
 description: Preventing a blank native window when bootstrapping the Capacitor 8 iOS app.
 ---
 
-Use the programmatic `SceneDelegate` bootstrap as the only application-content startup path. Do not add scene or main storyboard launch declarations while `SceneDelegate` creates the window and `CAPBridgeViewController`.
+Use the Capacitor 8.5 UIScene configuration exactly: the programmatic `SceneDelegate` creates the window and `CAPBridgeViewController`, while the scene manifest retains `UISceneStoryboardFile` with the value `Main`. Do not remove that scene-level entry.
 
-**Why:** Mixing storyboard-driven startup with a programmatically created Capacitor bridge can initialize competing root windows/controllers and leave the installed native app showing only a black screen.
+**Why:** Capacitor 8.5's official migration contract requires both the registered `SceneDelegate` and the named Main scene storyboard. Omitting the scene storyboard can leave the installed native app at a black window before the web bundle or camera permission starts.
 
-**How to apply:** Keep the launch screen storyboard for the splash screen, but leave application-content storyboard keys unset. After native configuration changes, perform a clean Xcode build and reinstall the app rather than relying on the previous installed bundle.
+**How to apply:** Keep `UILaunchStoryboardName`, the scene manifest's `UISceneStoryboardFile = Main`, the SceneDelegate registration, and the AppDelegate scene-configuration hook aligned. After changes, clean-build and reinstall instead of relying on the previous bundle.
