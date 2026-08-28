@@ -9,10 +9,14 @@
 
 import { type Point } from './perspective';
 
-// A modestly larger sample keeps paper boundaries accurate enough to exclude
-// narrow background strips while remaining light enough for live detection.
-const SAMPLE_W = 480;
-const SAMPLE_H = 360;
+// Live detection must leave enough main-thread time for WKWebView to deliver
+// touch events. Captured frames keep the larger sample for crop validation.
+const LIVE_SAMPLE_W = 320;
+const LIVE_SAMPLE_H = 240;
+const CAPTURE_SAMPLE_W = 480;
+const CAPTURE_SAMPLE_H = 360;
+const LIVE_PEAK_LIMIT = 8;
+const CAPTURE_PEAK_LIMIT = 12;
 
 type Bounds = { top: number; right: number; bottom: number; left: number };
 type Gradients = { gx: Float32Array; gy: Float32Array };
@@ -28,16 +32,17 @@ export function detectDocumentCorners(
   srcH: number,
 ): [Point, Point, Point, Point] | null {
   const sample = document.createElement('canvas');
-  sample.width = SAMPLE_W;
-  sample.height = SAMPLE_H;
-  sample.getContext('2d')!.drawImage(video, 0, 0, SAMPLE_W, SAMPLE_H);
+  sample.width = LIVE_SAMPLE_W;
+  sample.height = LIVE_SAMPLE_H;
+  sample.getContext('2d')!.drawImage(video, 0, 0, LIVE_SAMPLE_W, LIVE_SAMPLE_H);
 
   const corners = detectCornersFromImageData(
-    sample.getContext('2d')!.getImageData(0, 0, SAMPLE_W, SAMPLE_H),
+    sample.getContext('2d')!.getImageData(0, 0, LIVE_SAMPLE_W, LIVE_SAMPLE_H),
+    LIVE_PEAK_LIMIT,
   );
   if (!corners) return null;
 
-  return scaleCorners(corners, srcW / SAMPLE_W, srcH / SAMPLE_H);
+  return scaleCorners(corners, srcW / LIVE_SAMPLE_W, srcH / LIVE_SAMPLE_H);
 }
 
 /** Detect document corners from a captured image, used by the crop screen. */
@@ -45,20 +50,22 @@ export function detectCornersFromCanvas(
   src: HTMLCanvasElement,
 ): [Point, Point, Point, Point] | null {
   const sample = document.createElement('canvas');
-  sample.width = SAMPLE_W;
-  sample.height = SAMPLE_H;
-  sample.getContext('2d')!.drawImage(src, 0, 0, SAMPLE_W, SAMPLE_H);
+  sample.width = CAPTURE_SAMPLE_W;
+  sample.height = CAPTURE_SAMPLE_H;
+  sample.getContext('2d')!.drawImage(src, 0, 0, CAPTURE_SAMPLE_W, CAPTURE_SAMPLE_H);
 
   const corners = detectCornersFromImageData(
-    sample.getContext('2d')!.getImageData(0, 0, SAMPLE_W, SAMPLE_H),
+    sample.getContext('2d')!.getImageData(0, 0, CAPTURE_SAMPLE_W, CAPTURE_SAMPLE_H),
+    CAPTURE_PEAK_LIMIT,
   );
   if (!corners) return null;
 
-  return scaleCorners(corners, src.width / SAMPLE_W, src.height / SAMPLE_H);
+  return scaleCorners(corners, src.width / CAPTURE_SAMPLE_W, src.height / CAPTURE_SAMPLE_H);
 }
 
 function detectCornersFromImageData(
   image: ImageData,
+  peakLimit: number,
 ): [Point, Point, Point, Point] | null {
   const { width: w, height: h } = image;
   const color = toColorSignals(image);
@@ -71,7 +78,7 @@ function detectCornersFromImageData(
   const chroma = sobelComponents(boxBlur(color.chroma, w, h, 4), w, h);
   const { gx, gy } = combineGradients(luminance, chroma);
 
-  const bounds = findDocumentBounds(gx, gy, w, h);
+  const bounds = findDocumentBounds(gx, gy, w, h, peakLimit);
   if (!bounds) return null;
 
   const search = Math.max(4, Math.round(Math.min(w, h) * 0.06));
@@ -125,6 +132,7 @@ function findDocumentBounds(
   gy: Float32Array,
   w: number,
   h: number,
+  peakLimit: number,
 ): Bounds | null {
   const marginX = Math.max(8, Math.round(w * 0.04));
   const marginY = Math.max(8, Math.round(h * 0.04));
@@ -145,8 +153,20 @@ function findDocumentBounds(
 
   const rowProfile = smoothProfile(rows, Math.max(3, Math.round(h * 0.025)));
   const colProfile = smoothProfile(cols, Math.max(3, Math.round(w * 0.025)));
-  const rowPeaks = findPeaks(rowProfile, marginY, h - marginY, Math.max(8, Math.round(h * 0.06)));
-  const colPeaks = findPeaks(colProfile, marginX, w - marginX, Math.max(8, Math.round(w * 0.06)));
+  const rowPeaks = findPeaks(
+    rowProfile,
+    marginY,
+    h - marginY,
+    Math.max(8, Math.round(h * 0.06)),
+    peakLimit,
+  );
+  const colPeaks = findPeaks(
+    colProfile,
+    marginX,
+    w - marginX,
+    Math.max(8, Math.round(w * 0.06)),
+    peakLimit,
+  );
 
   if (rowPeaks.length < 2 || colPeaks.length < 2) return null;
 
@@ -234,7 +254,13 @@ function findDocumentBounds(
   return best?.bounds ?? null;
 }
 
-function findPeaks(profile: Float32Array, start: number, end: number, minDistance: number): number[] {
+function findPeaks(
+  profile: Float32Array,
+  start: number,
+  end: number,
+  minDistance: number,
+  limit: number,
+): number[] {
   const candidates: { index: number; value: number }[] = [];
   for (let i = start + 2; i < end - 2; i++) {
     const value = profile[i];
@@ -249,7 +275,7 @@ function findPeaks(profile: Float32Array, start: number, end: number, minDistanc
   for (const candidate of candidates) {
     if (selected.every(index => Math.abs(index - candidate.index) >= minDistance)) {
       selected.push(candidate.index);
-      if (selected.length === 12) break;
+      if (selected.length === limit) break;
     }
   }
   return selected;

@@ -26,7 +26,9 @@ import { estimateOutputSize, type Point, warpPerspective } from '@/lib/perspecti
 import { type ScannerSettings, QUALITY_VALUES, type ScanMode } from '@/lib/scanner-types';
 import fileBoxIcon from '@/assets/file-box-icon.png';
 
-const EDGE_INTERVAL_MS = 150;
+// Wait between completed detector passes instead of running on a fixed
+// interval. On WKWebView this leaves the main thread available for touch input.
+const EDGE_INTERVAL_MS = 250;
 const STABLE_TARGET = 10;
 const MIN_SHARPNESS_VARIANCE = 28;
 const MIN_DETAIL_COVERAGE = 0.006;
@@ -441,7 +443,7 @@ export default function ScannerScreen() {
     startCamera();
     return () => {
       stopCamera();
-      if (edgeTimerRef.current) clearInterval(edgeTimerRef.current);
+      if (edgeTimerRef.current) clearTimeout(edgeTimerRef.current);
     };
   }, [startCamera, stopCamera]);
 
@@ -668,64 +670,83 @@ export default function ScannerScreen() {
       return { corners: tracked, stable: false };
     };
 
-    edgeTimerRef.current = setInterval(() => {
-      const video = videoRef.current;
-      if (!video || video.readyState < 2) return;
+    let cancelled = false;
 
-      const corners = detectDocumentCorners(video, video.videoWidth, video.videoHeight);
-      const tracked = updateTrackedCorners(corners, video.videoWidth, video.videoHeight);
-      setEdgeCorners(tracked.corners);
-      setEdgeIsLive(Boolean(corners));
+    const scheduleNextDetection = () => {
+      if (cancelled) return;
+      edgeTimerRef.current = setTimeout(runDetection, EDGE_INTERVAL_MS);
+    };
 
-      if (modeRef.current !== 'auto' || !focusReady) return;
+    const runDetection = () => {
+      try {
+        const video = videoRef.current;
+        if (!video || video.readyState < 2) return;
 
-      // ── Waiting-clear phase: hold until document leaves frame ──────────────
-      if (waitingClear.current) {
-        if (!tracked.corners) {
-          // Document removed — ready for next scan
-          waitingClear.current = false;
-          setIsWaitingClear(false);
-          setNeedsClearerCapture(false);
-          needsClearerCaptureRef.current = false;
-          rejectedCornersRef.current = null;
-          stableFrames.current = 0;
-          setStableProgress(0);
-        } else if (
-          needsClearerCaptureRef.current &&
-          rejectedCornersRef.current &&
-          documentMoved(rejectedCornersRef.current, tracked.corners, video.videoWidth, video.videoHeight)
-        ) {
-          // A meaningful reposition gives the camera a fresh opportunity to
-          // focus without repeatedly saving the same blurry frame.
-          waitingClear.current = false;
-          rejectedCornersRef.current = null;
-          setIsWaitingClear(false);
-          setNeedsClearerCapture(false);
-          needsClearerCaptureRef.current = false;
-          stableFrames.current = 0;
-          setStableProgress(0);
+        const corners = detectDocumentCorners(video, video.videoWidth, video.videoHeight);
+        const tracked = updateTrackedCorners(corners, video.videoWidth, video.videoHeight);
+        setEdgeCorners(tracked.corners);
+        setEdgeIsLive(Boolean(corners));
+
+        if (modeRef.current !== 'auto' || !focusReady) return;
+
+        // ── Waiting-clear phase: hold until document leaves frame ────────────
+        if (waitingClear.current) {
+          if (!tracked.corners) {
+            // Document removed — ready for next scan
+            waitingClear.current = false;
+            setIsWaitingClear(false);
+            setNeedsClearerCapture(false);
+            needsClearerCaptureRef.current = false;
+            rejectedCornersRef.current = null;
+            stableFrames.current = 0;
+            setStableProgress(0);
+          } else if (
+            needsClearerCaptureRef.current &&
+            rejectedCornersRef.current &&
+            documentMoved(rejectedCornersRef.current, tracked.corners, video.videoWidth, video.videoHeight)
+          ) {
+            // A meaningful reposition gives the camera a fresh opportunity to
+            // focus without repeatedly saving the same blurry frame.
+            waitingClear.current = false;
+            rejectedCornersRef.current = null;
+            setIsWaitingClear(false);
+            setNeedsClearerCapture(false);
+            needsClearerCaptureRef.current = false;
+            stableFrames.current = 0;
+            setStableProgress(0);
+          }
+          return; // Don't accumulate stability while waiting
         }
-        return; // Don't accumulate stability while waiting
+
+        // ── Normal detection phase ───────────────────────────────────────────
+        if (corners && tracked.stable) {
+          stableFrames.current = Math.min(stableFrames.current + 1, STABLE_TARGET);
+        } else {
+          stableFrames.current = Math.max(stableFrames.current - 2, 0);
+        }
+
+        const progress = stableFrames.current / STABLE_TARGET;
+        setStableProgress(progress);
+
+        if (stableFrames.current >= STABLE_TARGET) {
+          stableFrames.current = 0;
+          setStableProgress(0);
+          captureAutoRef.current();
+        }
+      } catch (error) {
+        console.error('Live document detection failed', error);
+      } finally {
+        scheduleNextDetection();
       }
+    };
 
-      // ── Normal detection phase ─────────────────────────────────────────────
-      if (corners && tracked.stable) {
-        stableFrames.current = Math.min(stableFrames.current + 1, STABLE_TARGET);
-      } else {
-        stableFrames.current = Math.max(stableFrames.current - 2, 0);
-      }
+    scheduleNextDetection();
 
-      const progress = stableFrames.current / STABLE_TARGET;
-      setStableProgress(progress);
-
-      if (stableFrames.current >= STABLE_TARGET) {
-        stableFrames.current = 0;
-        setStableProgress(0);
-        captureAutoRef.current();
-      }
-    }, EDGE_INTERVAL_MS);
-
-    return () => { if (edgeTimerRef.current) clearInterval(edgeTimerRef.current); };
+    return () => {
+      cancelled = true;
+      if (edgeTimerRef.current) clearTimeout(edgeTimerRef.current);
+      edgeTimerRef.current = null;
+    };
   }, [isMockMode, videoRef, focusReady]);
 
   /* ── Manual capture ─────────────────────────────────────────────────────── */
