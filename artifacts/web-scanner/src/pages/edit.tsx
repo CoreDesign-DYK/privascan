@@ -18,6 +18,7 @@ import { filterCanvas, FILTER_LABELS, type FilterType } from '@/lib/filters';
 import { defaultCorners, detectCornersFromCanvas } from '@/lib/edge-detection';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { isIOS } from '@/lib/platform';
 
 const FILTERS: FilterType[] = ['original', 'auto', 'bw', 'highcontrast'];
 
@@ -169,7 +170,7 @@ export default function EditScreen() {
       const warped   = warpPerspective(srcCanvas, natCorners, outW, outH);
       const filtered = filterCanvas(warped, filter, brightness, contrast);
 
-      addPage(filtered.toDataURL('image/jpeg', 0.92));
+      addPage(filtered.toDataURL('image/jpeg', isIOS() ? 0.98 : 0.92));
       toast.success('Page added!', { id: tid });
       setPendingPage(null);
       setDetectedCorners(null);

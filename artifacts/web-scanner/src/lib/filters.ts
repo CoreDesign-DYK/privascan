@@ -83,6 +83,91 @@ export function filterCanvas(
   return dst;
 }
 
+/**
+ * Improve a document after perspective correction without converting it to
+ * monochrome. It applies a conservative luminance stretch so paper becomes
+ * cleaner and gray printed text becomes darker while colored markings remain.
+ *
+ * This deliberately runs after the real sharpness gate. It must not turn a
+ * blurry capture into one that appears to have passed validation.
+ */
+export function enhanceDocumentCanvas(src: HTMLCanvasElement): HTMLCanvasElement {
+  const dst = document.createElement('canvas');
+  dst.width = src.width;
+  dst.height = src.height;
+  const ctx = dst.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return src;
+
+  let image: ImageData;
+  try {
+    ctx.drawImage(src, 0, 0);
+    image = ctx.getImageData(0, 0, dst.width, dst.height);
+  } catch {
+    // A device may reject a large ImageData allocation under memory pressure.
+    // Keep the validated perspective-corrected page instead of failing capture.
+    return src;
+  }
+  const { data, width, height } = image;
+  const histogram = new Uint32Array(256);
+  const step = Math.max(1, Math.floor(Math.max(width, height) / 900));
+  const insetX = Math.round(width * 0.03);
+  const insetY = Math.round(height * 0.03);
+  let sampleCount = 0;
+
+  const luminanceAt = (x: number, y: number) => {
+    const i = (y * width + x) * 4;
+    return 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+  };
+
+  for (let y = insetY; y < height - insetY; y += step) {
+    for (let x = insetX; x < width - insetX; x += step) {
+      histogram[Math.max(0, Math.min(255, Math.round(luminanceAt(x, y))))] += 1;
+      sampleCount += 1;
+    }
+  }
+  if (!sampleCount) return dst;
+
+  const percentile = (fraction: number) => {
+    const target = Math.max(0, Math.floor(sampleCount * fraction));
+    let seen = 0;
+    for (let value = 0; value < histogram.length; value += 1) {
+      seen += histogram[value];
+      if (seen > target) return value;
+    }
+    return 255;
+  };
+
+  // Guardrails keep colored paper, highlights, and shadows from being crushed
+  // even when a photographed page has a narrow histogram.
+  const blackPoint = Math.min(80, percentile(0.012));
+  const whitePoint = Math.max(220, Math.min(250, percentile(0.992)));
+  const range = Math.max(32, whitePoint - blackPoint);
+  const clamp = (value: number) => Math.max(0, Math.min(255, Math.round(value)));
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const i = (y * width + x) * 4;
+      const luminance = luminanceAt(x, y);
+      const normalized = clamp(((luminance - blackPoint) * 255) / range);
+      const tone = luminance + (normalized - luminance) * 0.42;
+      const delta = tone - luminance;
+
+      // Add the same luminance delta to every channel so color markings keep
+      // their hue instead of being independently color-shifted.
+      data[i] = clamp(data[i] + delta);
+      data[i + 1] = clamp(data[i + 1] + delta);
+      data[i + 2] = clamp(data[i + 2] + delta);
+    }
+  }
+
+  try {
+    ctx.putImageData(image, 0, 0);
+  } catch {
+    return src;
+  }
+  return dst;
+}
+
 function sCurve(v: number): number {
   const n = v / 255;
   // Gentle S-curve to boost contrast

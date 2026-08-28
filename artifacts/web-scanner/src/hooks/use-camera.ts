@@ -79,14 +79,48 @@ export function useCamera() {
     const session = ++cameraSessionRef.current;
     const request = (async () => {
       try {
-        const mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: 'environment',
+        // iPhone can silently choose a low-resolution stream when a single
+        // constraint set is too ambitious. Try the largest useful document
+        // stream first, then fall back without asking for permission again.
+        const resolutionSteps: MediaTrackConstraints[] = [
+          {
+            facingMode: { ideal: 'environment' },
             aspectRatio: { ideal: 4 / 3 },
-            width:  { ideal: 2560 },
+            width: { ideal: 3840, max: 4032 },
+            height: { ideal: 2880, max: 3024 },
+          },
+          {
+            facingMode: { ideal: 'environment' },
+            aspectRatio: { ideal: 4 / 3 },
+            width: { ideal: 2560 },
             height: { ideal: 1920 },
           },
-        });
+          {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+        ];
+
+        let mediaStream: MediaStream | null = null;
+        let lastCameraError: unknown = null;
+        for (const video of resolutionSteps) {
+          try {
+            mediaStream = await navigator.mediaDevices.getUserMedia({ video });
+            break;
+          } catch (err) {
+            lastCameraError = err;
+            const errorName = err instanceof DOMException ? err.name : '';
+            if (errorName === 'NotAllowedError' || errorName === 'SecurityError') {
+              throw err;
+            }
+          }
+        }
+        if (!mediaStream) {
+          throw lastCameraError instanceof Error
+            ? lastCameraError
+            : new Error('Unable to start the camera');
+        }
 
         if (cameraSessionRef.current !== session || streamRef.current) {
           mediaStream.getTracks().forEach(track => track.stop());
@@ -102,6 +136,30 @@ export function useCamera() {
         }
 
         const track = mediaStream.getVideoTracks()[0];
+        // Apply the high-resolution preference once more after the stream is
+        // selected. WebKit may accept getUserMedia but otherwise retain a
+        // conservative preview size.
+        try {
+          await track?.applyConstraints({
+            aspectRatio: { ideal: 4 / 3 },
+            width: { ideal: 3840, max: 4032 },
+            height: { ideal: 2880, max: 3024 },
+          });
+        } catch {
+          // The stream selected above remains valid when this optional
+          // refinement is not supported by a particular iOS release.
+        }
+
+        const selectedSettings = track?.getSettings?.();
+        if (selectedSettings?.width && selectedSettings?.height) {
+          console.info('[PrivaScan] selected camera stream', {
+            width: selectedSettings.width,
+            height: selectedSettings.height,
+            frameRate: selectedSettings.frameRate,
+            aspectRatio: selectedSettings.aspectRatio,
+          });
+        }
+
         let selectedFocusMode: FocusMode = 'unsupported';
         try {
           const capabilities = track?.getCapabilities?.() as

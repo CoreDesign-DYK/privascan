@@ -30,6 +30,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { isIOS } from '@/lib/platform';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
@@ -58,6 +59,7 @@ const MAX_PREVIEW_ZOOM = 3;
 const PAGE_SWIPE_DISTANCE = 48;
 const PAGE_SWIPE_DIRECTION_RATIO = 1.2;
 const PAGE_SWIPE_ANIMATION_MS = 280;
+const editJpegQuality = () => isIOS() ? 0.98 : 0.92;
 
 function midpoint(a: Point, b: Point): Point {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
@@ -342,7 +344,7 @@ export default function PreviewScreen() {
       ctx.translate(canvas.width / 2, canvas.height / 2);
       ctx.rotate(Math.PI / 2);
       ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
-      updatePage(selectedIdx, canvas.toDataURL('image/jpeg', 0.92));
+      updatePage(selectedIdx, canvas.toDataURL('image/jpeg', editJpegQuality()));
     } finally { setApplying(false); }
   }, [pages, selectedIdx, updatePage, applying]);
 
@@ -361,7 +363,7 @@ export default function PreviewScreen() {
       src.width = img.naturalWidth; src.height = img.naturalHeight;
       src.getContext('2d')!.drawImage(img, 0, 0);
       const out = filterCanvas(src, pendingFilter, pendingBrightness, pendingContrast);
-      updatePage(selectedIdx, out.toDataURL('image/jpeg', 0.92));
+      updatePage(selectedIdx, out.toDataURL('image/jpeg', editJpegQuality()));
       setActiveTool('none');
       setPendingFilter('original'); setPendingBrightness(0); setPendingContrast(0);
     } finally { setApplying(false); }
@@ -426,7 +428,7 @@ export default function PreviewScreen() {
       const natCorners = cropCorners.map(p => ({ x: p.x * scaleX, y: p.y * scaleY })) as [Point, Point, Point, Point];
       const { w: outW, h: outH } = estimateOutputSize(natCorners);
       const warped = warpPerspective(srcCanvas, natCorners, outW, outH);
-      updatePage(selectedIdx, warped.toDataURL('image/jpeg', 0.92));
+      updatePage(selectedIdx, warped.toDataURL('image/jpeg', editJpegQuality()));
       setActiveTool('none'); setCropImgLoaded(false);
     } catch { toast.error('Crop failed'); }
     finally { setApplying(false); }
@@ -720,7 +722,13 @@ export default function PreviewScreen() {
 
       {/* ════ Crop overlay (full-screen, z-50) ════ */}
       {activeTool === 'crop' && (
-        <div className="absolute inset-0 z-50 bg-gray-950 flex flex-col">
+        <div
+          className="absolute inset-0 z-50 bg-gray-950 flex flex-col"
+          style={{
+            paddingTop: 'env(safe-area-inset-top)',
+            paddingBottom: 'env(safe-area-inset-bottom)',
+          }}
+        >
 
           {/* Crop header */}
           <div className="flex items-center justify-between px-4 h-14 shrink-0">

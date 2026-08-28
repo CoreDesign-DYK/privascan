@@ -24,6 +24,8 @@ import { toast } from 'sonner';
 import { detectDocumentCorners, detectCornersFromCanvas } from '@/lib/edge-detection';
 import { estimateOutputSize, type Point, warpPerspective } from '@/lib/perspective';
 import { type ScannerSettings, QUALITY_VALUES, type ScanMode } from '@/lib/scanner-types';
+import { enhanceDocumentCanvas } from '@/lib/filters';
+import { isIOS } from '@/lib/platform';
 import fileBoxIcon from '@/assets/file-box-icon.png';
 
 // Wait between completed detector passes instead of running on a fixed
@@ -38,6 +40,7 @@ const JUMP_CONFIRM_FRAMES = 2;
 const JUMP_BLEND = 0.78;
 const INITIAL_TRACK_CONFIRM_FRAMES = 2;
 const MAX_MISSED_EDGE_FRAMES = 6;
+const MAX_IOS_CAPTURE_PIXELS = 6_500_000;
 
 /* ─────────────────────────────────────────────────────────────────────────── */
 /*  Mock page generator                                                         */
@@ -81,15 +84,45 @@ function createDocumentPage(
   source: HTMLCanvasElement,
   corners: [Point, Point, Point, Point] | null,
   quality: number,
+  enhanceForIOS = false,
 ): string | null {
   // Never silently save the complete camera frame as a document. A false
   // positive is preferable to a result that visibly contains the desk.
   if (!corners) return null;
 
   const { w, h } = estimateOutputSize(corners);
-  const warped = warpPerspective(source, corners, w, h);
+  const outputScale = enhanceForIOS
+    ? Math.min(1, Math.sqrt(MAX_IOS_CAPTURE_PIXELS / Math.max(1, w * h)))
+    : 1;
+  const warped = warpPerspective(
+    source,
+    corners,
+    Math.max(1, Math.round(w * outputScale)),
+    Math.max(1, Math.round(h * outputScale)),
+  );
   if (!hasRequiredSharpness(warped)) return null;
-  return warped.toDataURL('image/jpeg', Math.max(quality, 0.96));
+  const output = enhanceForIOS ? enhanceDocumentCanvas(warped) : warped;
+  return output.toDataURL(
+    'image/jpeg',
+    enhanceForIOS ? Math.max(quality, 0.98) : Math.max(quality, 0.96),
+  );
+}
+
+function captureVideoFrame(
+  video: HTMLVideoElement,
+  greyscale: boolean,
+  maxPixels = Number.POSITIVE_INFINITY,
+): HTMLCanvasElement {
+  const sourcePixels = video.videoWidth * video.videoHeight;
+  const scale = sourcePixels > maxPixels ? Math.sqrt(maxPixels / sourcePixels) : 1;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+  canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+  const ctx = canvas.getContext('2d')!;
+  if (greyscale) ctx.filter = 'grayscale(100%)';
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  ctx.filter = 'none';
+  return canvas;
 }
 
 function hasRequiredSharpness(canvas: HTMLCanvasElement): boolean {
@@ -467,15 +500,21 @@ export default function ScannerScreen() {
       captured = true;
     } else {
       const video = videoRef.current;
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-      const ctx1 = canvas.getContext('2d')!;
-      if (settingsRef.current.colorMode === 'greyscale') ctx1.filter = 'grayscale(100%)';
-      ctx1.drawImage(video, 0, 0);
+      const useIOSQualityPipeline = isIOS();
+      const canvas = captureVideoFrame(
+        video,
+        settingsRef.current.colorMode === 'greyscale',
+        useIOSQualityPipeline ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
+      );
       // Re-check the exact high-resolution frame being saved. Live detection
       // can be one or more frames old after the phone has moved.
       const corners = detectCornersFromCanvas(canvas);
-      const page = createDocumentPage(canvas, corners, QUALITY_VALUES[settingsRef.current.imageQuality]);
+      const page = createDocumentPage(
+        canvas,
+        corners,
+        QUALITY_VALUES[settingsRef.current.imageQuality],
+        useIOSQualityPipeline,
+      );
       if (page) {
         addPage(page);
         captured = true;
@@ -763,14 +802,20 @@ export default function ScannerScreen() {
       addPage(generateMockPage(pageNum, settingsRef.current));
     } else {
       const video  = videoRef.current;
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-      const ctx2 = canvas.getContext('2d')!;
-      if (settingsRef.current.colorMode === 'greyscale') ctx2.filter = 'grayscale(100%)';
-      ctx2.drawImage(video, 0, 0);
+      const useIOSQualityPipeline = isIOS();
+      const canvas = captureVideoFrame(
+        video,
+        settingsRef.current.colorMode === 'greyscale',
+        useIOSQualityPipeline ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
+      );
       // Prefer the capture-frame result over a potentially stale live overlay.
       const corners = detectCornersFromCanvas(canvas);
-      const page = createDocumentPage(canvas, corners, QUALITY_VALUES[settingsRef.current.imageQuality]);
+      const page = createDocumentPage(
+        canvas,
+        corners,
+        QUALITY_VALUES[settingsRef.current.imageQuality],
+        useIOSQualityPipeline,
+      );
       if (!page) {
         toast.error('문서 경계 또는 초점을 확인한 뒤 다시 촬영하세요');
         return;
@@ -800,15 +845,14 @@ export default function ScannerScreen() {
       addPage(generateMockBookHalf('right', base + 2, settingsRef.current));
     } else {
       const video = videoRef.current;
-
       // Capture and validate the exact frame before splitting the corrected
-      // book spread. Book mode must not turn an arbitrary camera frame into
-      // two saved pages.
-      const full = document.createElement('canvas');
-      full.width = video.videoWidth; full.height = video.videoHeight;
-      const fctx = full.getContext('2d')!;
-      if (grey) fctx.filter = 'grayscale(100%)';
-      fctx.drawImage(video, 0, 0);
+      // book spread. Keep iOS processing within the same memory ceiling used
+      // by standard document capture.
+      const full = captureVideoFrame(
+        video,
+        grey,
+        isIOS() ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
+      );
 
       const corners = detectCornersFromCanvas(full);
       if (!corners) {
@@ -816,7 +860,16 @@ export default function ScannerScreen() {
         return;
       }
       const { w, h } = estimateOutputSize(corners);
-      const spread = warpPerspective(full, corners, w, h);
+      const useIOSQualityPipeline = isIOS();
+      const outputScale = useIOSQualityPipeline
+        ? Math.min(1, Math.sqrt(MAX_IOS_CAPTURE_PIXELS / Math.max(1, w * h)))
+        : 1;
+      const spread = warpPerspective(
+        full,
+        corners,
+        Math.max(1, Math.round(w * outputScale)),
+        Math.max(1, Math.round(h * outputScale)),
+      );
       if (!hasRequiredSharpness(spread)) {
         toast.error('문서 경계 또는 초점을 확인한 뒤 다시 촬영하세요');
         return;
@@ -837,8 +890,9 @@ export default function ScannerScreen() {
         0, 0, spread.width - halfWidth, spread.height,
       );
 
-      addPage(leftOut.toDataURL('image/jpeg', q));
-      addPage(rightOut.toDataURL('image/jpeg', q));
+       const outputQuality = useIOSQualityPipeline ? Math.max(q, 0.98) : q;
+       addPage(leftOut.toDataURL('image/jpeg', outputQuality));
+       addPage(rightOut.toDataURL('image/jpeg', outputQuality));
     }
 
     setCapturedLabel(base + 2);
@@ -862,12 +916,12 @@ export default function ScannerScreen() {
       addPage(generateMockPresentation(pageNum, settingsRef.current));
     } else {
       const video = videoRef.current;
-      const vw = video.videoWidth, vh = video.videoHeight;
-      const src = document.createElement('canvas');
-      src.width = vw; src.height = vh;
-      const sctx = src.getContext('2d')!;
-      if (grey) sctx.filter = 'grayscale(100%)';
-      sctx.drawImage(video, 0, 0);
+      const src = captureVideoFrame(
+        video,
+        grey,
+        isIOS() ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
+      );
+      const vw = src.width, vh = src.height;
        // Re-detect the exact frame. Never promote an unverified camera frame
        // to a saved presentation image.
        const corners = detectCornersFromCanvas(src);
@@ -882,7 +936,7 @@ export default function ScannerScreen() {
          toast.error('초점이 맞지 않았습니다. 잠시 기다린 뒤 다시 촬영하세요');
          return;
        }
-       addPage(warped.toDataURL('image/jpeg', q));
+        addPage(warped.toDataURL('image/jpeg', isIOS() ? Math.max(q, 0.98) : q));
     }
 
     setCapturedLabel(pageNum);
@@ -904,18 +958,20 @@ export default function ScannerScreen() {
      const captureCardDataUrl = (): string | null => {
       if (isMockMode || !videoRef.current) return 'mock';
       const video = videoRef.current;
-      const vw = video.videoWidth, vh = video.videoHeight;
-      const src = document.createElement('canvas');
-      src.width = vw; src.height = vh;
-      const sctx = src.getContext('2d')!;
-      if (grey) sctx.filter = 'grayscale(100%)';
-      sctx.drawImage(video, 0, 0);
+      const src = captureVideoFrame(
+        video,
+        grey,
+        isIOS() ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
+      );
+      const vw = src.width;
        const corners = detectCornersFromCanvas(src);
        if (!corners) return null;
        const outW = Math.min(vw, 1004);
        const outH = Math.round(outW / 1.585); // ID card aspect ratio
        const warped = warpPerspective(src, corners, outW, outH);
-       return hasRequiredSharpness(warped) ? warped.toDataURL('image/jpeg', q) : null;
+        return hasRequiredSharpness(warped)
+          ? warped.toDataURL('image/jpeg', isIOS() ? Math.max(q, 0.98) : q)
+          : null;
     };
 
     if (idStage === 'front') {
