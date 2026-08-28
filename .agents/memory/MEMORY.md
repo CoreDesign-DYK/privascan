@@ -6,3 +6,4 @@
 - [Camera focus fallback](camera-focus-fallback.md) — Request continuous focus when exposed, but preserve safe capture timing when mobile browsers hide focus controls.
 - [iOS camera architecture](ios-camera-architecture.md) — Keep iOS on the live WKWebView camera path; native file/share remains enabled.
 - [Cross-platform pnpm binaries](cross-platform-pnpm-binaries.md) — Keep Darwin native packages installable because downloaded iOS projects build on Mac.
+- [Apple Developer enrollment status](apple-developer-enrollment.md) — Apple Store order confirmation followed by App Store Connect confirmation indicates access is provisioned.
