@@ -5,6 +5,26 @@
  */
 
 export interface Point { x: number; y: number }
+export interface WarpPerspectiveOptions {
+  maxCpuPixels?: number;
+}
+
+export function fitWarpSizeToPixelLimit(
+  width: number,
+  height: number,
+  maxPixels: number,
+): { width: number; height: number } {
+  const safeWidth = Math.max(1, width);
+  const safeHeight = Math.max(1, height);
+  const safeMaxPixels = Number.isFinite(maxPixels)
+    ? Math.max(1, maxPixels)
+    : safeWidth * safeHeight;
+  const scale = Math.min(1, Math.sqrt(safeMaxPixels / (safeWidth * safeHeight)));
+  return {
+    width: Math.max(1, Math.round(safeWidth * scale)),
+    height: Math.max(1, Math.round(safeHeight * scale)),
+  };
+}
 
 /** corners = [TL, TR, BR, BL] in source image coordinates */
 export function warpPerspective(
@@ -12,11 +32,18 @@ export function warpPerspective(
   corners: [Point, Point, Point, Point],
   outW: number,
   outH: number,
+  options: WarpPerspectiveOptions = {},
 ): HTMLCanvasElement {
   const gpuResult = warpPerspectiveWebGL(src, corners, outW, outH);
   if (gpuResult) return gpuResult;
 
-  const cpuResult = warpPerspectiveCPU(src, corners, outW, outH);
+  const cpuResult = warpPerspectiveCPU(
+    src,
+    corners,
+    outW,
+    outH,
+    options.maxCpuPixels,
+  );
   if (cpuResult) return cpuResult;
 
   // This legacy fallback is used only if image pixels cannot be read for the
@@ -67,18 +94,18 @@ function warpPerspectiveCPU(
   corners: [Point, Point, Point, Point],
   outW: number,
   outH: number,
+  requestedMaxPixels = 2_400_000,
 ): HTMLCanvasElement | null {
   const sourceW = src instanceof HTMLImageElement ? src.naturalWidth : src.width;
   const sourceH = src instanceof HTMLImageElement ? src.naturalHeight : src.height;
   if (!sourceW || !sourceH) return null;
 
-  // A non-WebGL browser should still produce a crisp page, but processing an
-  // unbounded multi-megapixel frame synchronously can lock a phone UI. Keep a
-  // high-resolution 2.4 MP ceiling for this rare fallback path.
-  const maxPixels = 2_400_000;
-  const scale = Math.min(1, Math.sqrt(maxPixels / (outW * outH)));
-  const targetW = Math.max(1, Math.round(outW * scale));
-  const targetH = Math.max(1, Math.round(outH * scale));
+  // Keep the conservative 2.4 MP default for non-iOS callers. iOS callers can
+  // explicitly opt into the same post-correction ceiling used by their normal
+  // WebGL path, so a GPU fallback does not silently reduce the chosen DPI.
+  const target = fitWarpSizeToPixelLimit(outW, outH, requestedMaxPixels);
+  const targetW = target.width;
+  const targetH = target.height;
 
   const homography = solveHomography(
     [[0, 0], [targetW, 0], [targetW, targetH], [0, targetH]],

@@ -23,7 +23,19 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { detectDocumentCorners, detectCornersFromCanvas } from '@/lib/edge-detection';
 import { estimateOutputSize, type Point, warpPerspective } from '@/lib/perspective';
-import { type ScannerSettings, QUALITY_VALUES, type ScanMode } from '@/lib/scanner-types';
+import {
+  type ScannerSettings,
+  type ScanMode,
+  DPI_PRESETS,
+  MIN_SCAN_DPI,
+  MAX_SCAN_DPI,
+  SCAN_JPEG_QUALITY,
+  IOS_SCAN_JPEG_QUALITY,
+  clampScanDpi,
+  estimateEffectiveDpi,
+  fitSourceWithinOutput,
+  getPaperPixelSize,
+} from '@/lib/scanner-types';
 import { enhanceDocumentCanvas } from '@/lib/filters';
 import { isIOS } from '@/lib/platform';
 import fileBoxIcon from '@/assets/file-box-icon.png';
@@ -41,6 +53,50 @@ const JUMP_BLEND = 0.78;
 const INITIAL_TRACK_CONFIRM_FRAMES = 2;
 const MAX_MISSED_EDGE_FRAMES = 6;
 const MAX_IOS_CAPTURE_PIXELS = 6_500_000;
+const ID_CARD_WIDTH_MM = 85.6;
+const ID_CARD_HEIGHT_MM = 54;
+
+function outputJpegQuality(enhanceForIOS: boolean): number {
+  return enhanceForIOS ? IOS_SCAN_JPEG_QUALITY : SCAN_JPEG_QUALITY;
+}
+
+function documentOutputSize(
+  sourceWidth: number,
+  sourceHeight: number,
+  settings: ScannerSettings,
+  maxPixels = Number.POSITIVE_INFINITY,
+): { width: number; height: number } {
+  const target = getPaperPixelSize(
+    settings.paperSize,
+    settings.targetDpi,
+    sourceWidth > sourceHeight ? 'landscape' : 'portrait',
+  );
+  return fitSourceWithinOutput(
+    sourceWidth,
+    sourceHeight,
+    target.width,
+    target.height,
+    maxPixels,
+  );
+}
+
+function idCardOutputSize(
+  sourceWidth: number,
+  sourceHeight: number,
+  dpi: number,
+  maxPixels = Number.POSITIVE_INFINITY,
+): { width: number; height: number } {
+  const requestedDpi = clampScanDpi(dpi);
+  const targetWidth = Math.round(ID_CARD_WIDTH_MM / 25.4 * requestedDpi);
+  const targetHeight = Math.round(ID_CARD_HEIGHT_MM / 25.4 * requestedDpi);
+  return fitSourceWithinOutput(
+    sourceWidth,
+    sourceHeight,
+    targetWidth,
+    targetHeight,
+    maxPixels,
+  );
+}
 
 /* ─────────────────────────────────────────────────────────────────────────── */
 /*  Mock page generator                                                         */
@@ -77,13 +133,13 @@ function generateMockPage(pageNum: number, settings: ScannerSettings): string {
     'dolor in reprehenderit in voluptate velit esse.',
   ].forEach((line, i) => ctx.fillText(line, 80, 240 + i * 46));
 
-  return canvas.toDataURL('image/jpeg', QUALITY_VALUES[settings.imageQuality]);
+  return canvas.toDataURL('image/jpeg', SCAN_JPEG_QUALITY);
 }
 
 function createDocumentPage(
   source: HTMLCanvasElement,
   corners: [Point, Point, Point, Point] | null,
-  quality: number,
+  settings: ScannerSettings,
   enhanceForIOS = false,
 ): string | null {
   // Never silently save the complete camera frame as a document. A false
@@ -91,21 +147,29 @@ function createDocumentPage(
   if (!corners) return null;
 
   const { w, h } = estimateOutputSize(corners);
-  const outputScale = enhanceForIOS
-    ? Math.min(1, Math.sqrt(MAX_IOS_CAPTURE_PIXELS / Math.max(1, w * h)))
-    : 1;
+  const outputSize = documentOutputSize(
+    w,
+    h,
+    settings,
+    enhanceForIOS ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
+  );
   const warped = warpPerspective(
     source,
     corners,
-    Math.max(1, Math.round(w * outputScale)),
-    Math.max(1, Math.round(h * outputScale)),
+    outputSize.width,
+    outputSize.height,
+    enhanceForIOS ? { maxCpuPixels: MAX_IOS_CAPTURE_PIXELS } : undefined,
   );
   if (!hasRequiredSharpness(warped)) return null;
   const output = enhanceForIOS ? enhanceDocumentCanvas(warped) : warped;
-  return output.toDataURL(
-    'image/jpeg',
-    enhanceForIOS ? Math.max(quality, 0.98) : Math.max(quality, 0.96),
-  );
+  console.info('[PrivaScan] document output', {
+    source: `${source.width}x${source.height}`,
+    crop: `${w}x${h}`,
+    output: `${output.width}x${output.height}`,
+    requestedDpi: settings.targetDpi,
+    effectiveDpi: estimateEffectiveDpi(output.width, output.height, settings.paperSize),
+  });
+  return output.toDataURL('image/jpeg', outputJpegQuality(enhanceForIOS));
 }
 
 function captureVideoFrame(
@@ -215,7 +279,7 @@ function generateMockBookHalf(side: 'left' | 'right', pageNum: number, settings:
     ctx.fillStyle = 'rgba(0,0,0,0.15)';
     ctx.fillRect(60, 220 + i * 64, (canvas.width - 120) * (0.55 + (i % 3) * 0.15), 18);
   }
-  return canvas.toDataURL('image/jpeg', QUALITY_VALUES[settings.imageQuality]);
+  return canvas.toDataURL('image/jpeg', SCAN_JPEG_QUALITY);
 }
 
 function generateMockPresentation(pageNum: number, settings: ScannerSettings): string {
@@ -230,7 +294,7 @@ function generateMockPresentation(pageNum: number, settings: ScannerSettings): s
   ctx.font = '42px sans-serif'; ctx.globalAlpha = 0.55;
   ctx.fillText('Presentation · Perspective Corrected', canvas.width / 2, canvas.height / 2 + 60);
   ctx.globalAlpha = 1;
-  return canvas.toDataURL('image/jpeg', QUALITY_VALUES[settings.imageQuality]);
+  return canvas.toDataURL('image/jpeg', SCAN_JPEG_QUALITY);
 }
 
 function generateMockIdComposite(settings: ScannerSettings): string {
@@ -248,7 +312,7 @@ function generateMockIdComposite(settings: ScannerSettings): string {
     ctx.fillStyle = '#fff'; ctx.font = 'bold 64px sans-serif'; ctx.textAlign = 'center';
     ctx.fillText(i === 0 ? 'FRONT' : 'BACK', cw / 2, i * (ch + 24) + ch / 2 + 22);
   });
-  return canvas.toDataURL('image/jpeg', QUALITY_VALUES[settings.imageQuality]);
+  return canvas.toDataURL('image/jpeg', SCAN_JPEG_QUALITY);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
@@ -300,7 +364,7 @@ function CornerBrackets({ color }: { color: string }) {
 /*  Quality gauge SVG icon                                                       */
 /* ─────────────────────────────────────────────────────────────────────────── */
 
-function QualityGaugeIcon({ quality }: { quality: 'high' | 'medium' | 'low' }) {
+function QualityGaugeIcon({ dpi }: { dpi: number }) {
   const cx = 20, cy = 21, rO = 17, rI = 10;
   const toRad = (d: number) => (d * Math.PI) / 180;
   const pt = (deg: number, r: number) => ({
@@ -329,8 +393,9 @@ function QualityGaugeIcon({ quality }: { quality: 'high' | 'medium' | 'low' }) {
     { a1: 37,  a2: 11,  fill: '#0369a1' },
   ];
 
-  const activeCount = quality === 'high' ? 6 : quality === 'medium' ? 3 : 1;
-  const needleAngle = quality === 'high' ? 24 : quality === 'medium' ? 94 : 164;
+  const normalizedDpi = (clampScanDpi(dpi) - MIN_SCAN_DPI) / (MAX_SCAN_DPI - MIN_SCAN_DPI);
+  const activeCount = Math.max(1, Math.min(6, Math.round(normalizedDpi * 5) + 1));
+  const needleAngle = 164 - normalizedDpi * 140;
   const tip = pt(needleAngle, rO - 2);
 
   return (
@@ -377,6 +442,7 @@ export default function ScannerScreen() {
   const [flashMode,   setFlashMode]   = useState<FlashMode>('auto');
   const [flashOpen,   setFlashOpen]   = useState(false);
   const [qualityOpen, setQualityOpen] = useState(false);
+  const [dpiInput,    setDpiInput]    = useState(String(settings.targetDpi));
 
   const [scanMode,    setScanMode]    = useState<ScanMode>('document');
   const [galleryOpen, setGalleryOpen] = useState(false);
@@ -416,8 +482,20 @@ export default function ScannerScreen() {
   useEffect(() => { pagesLenRef.current  = pages.length; }, [pages.length]);
   useEffect(() => { settingsRef.current  = settings; }, [settings]);
   useEffect(() => { scanModeRef.current  = scanMode; }, [scanMode]);
+  useEffect(() => { setDpiInput(String(settings.targetDpi)); }, [settings.targetDpi]);
   // Reset ID card stage when switching scan modes
   useEffect(() => { setIdStage('front'); idFrontRef.current = null; }, [scanMode]);
+
+  const applyTargetDpi = useCallback((value: number) => {
+    const dpi = clampScanDpi(value);
+    setSettings({ targetDpi: dpi });
+    setDpiInput(String(dpi));
+  }, [setSettings]);
+
+  const commitDpiInput = useCallback(() => {
+    const parsed = Number(dpiInput);
+    applyTargetDpi(Number.isFinite(parsed) ? parsed : settings.targetDpi);
+  }, [applyTargetDpi, dpiInput, settings.targetDpi]);
 
   // Apply torch / flash to camera track when flashMode changes
   useEffect(() => {
@@ -504,7 +582,6 @@ export default function ScannerScreen() {
       const canvas = captureVideoFrame(
         video,
         settingsRef.current.colorMode === 'greyscale',
-        useIOSQualityPipeline ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
       );
       // Re-check the exact high-resolution frame being saved. Live detection
       // can be one or more frames old after the phone has moved.
@@ -512,7 +589,7 @@ export default function ScannerScreen() {
       const page = createDocumentPage(
         canvas,
         corners,
-        QUALITY_VALUES[settingsRef.current.imageQuality],
+        settingsRef.current,
         useIOSQualityPipeline,
       );
       if (page) {
@@ -564,7 +641,7 @@ export default function ScannerScreen() {
     ctx.drawImage(img, 0, 0);
     ctx.filter = 'none';
 
-    const q    = QUALITY_VALUES[settingsRef.current.imageQuality];
+    const q    = SCAN_JPEG_QUALITY;
     const base = pagesLenRef.current;
     const sm   = scanModeRef.current;
 
@@ -575,7 +652,18 @@ export default function ScannerScreen() {
       const corners = detectCornersFromCanvas(canvas);
       if (!corners) { toast.error('책 경계를 찾을 수 없습니다. 다시 촬영해 주세요'); return; }
       const { w, h } = estimateOutputSize(corners);
-      const spread = warpPerspective(canvas, corners, w, h);
+      const targetPage = getPaperPixelSize(
+        settingsRef.current.paperSize,
+        settingsRef.current.targetDpi,
+        'portrait',
+      );
+      const outputSize = fitSourceWithinOutput(
+        w,
+        h,
+        targetPage.width * 2,
+        targetPage.height,
+      );
+      const spread = warpPerspective(canvas, corners, outputSize.width, outputSize.height);
       if (!hasRequiredSharpness(spread)) { toast.error('초점이 맞지 않습니다. 다시 촬영해 주세요'); return; }
       const half = Math.floor(spread.width / 2);
       const leftOut = document.createElement('canvas');
@@ -595,9 +683,13 @@ export default function ScannerScreen() {
     /* ── ID Cards: 앞면 → 뒷면 → 합성 ────────────────────────────────── */
     if (sm === 'id-cards') {
       const corners = detectCornersFromCanvas(canvas);
-      const outW = Math.min(canvas.width, 1004);
-      const outH = Math.round(outW / 1.585);
-      const warped = corners ? warpPerspective(canvas, corners, outW, outH) : null;
+      const measured = corners ? estimateOutputSize(corners) : null;
+      const outputSize = measured
+        ? idCardOutputSize(measured.w, measured.h, settingsRef.current.targetDpi)
+        : null;
+      const warped = corners && outputSize
+        ? warpPerspective(canvas, corners, outputSize.width, outputSize.height)
+        : null;
       if (!warped || !hasRequiredSharpness(warped)) {
         toast.error('카드 경계를 찾을 수 없습니다. 다시 촬영해 주세요'); return;
       }
@@ -630,7 +722,7 @@ export default function ScannerScreen() {
 
     /* ── Document / Presentation / 일반 ───────────────────────────────── */
     const corners = detectCornersFromCanvas(canvas);
-    const page = createDocumentPage(canvas, corners, q);
+    const page = createDocumentPage(canvas, corners, settingsRef.current);
     if (!page) {
       toast.error('문서 경계를 찾을 수 없습니다. 다시 촬영해 주세요');
       return;
@@ -806,14 +898,13 @@ export default function ScannerScreen() {
       const canvas = captureVideoFrame(
         video,
         settingsRef.current.colorMode === 'greyscale',
-        useIOSQualityPipeline ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
       );
       // Prefer the capture-frame result over a potentially stale live overlay.
       const corners = detectCornersFromCanvas(canvas);
       const page = createDocumentPage(
         canvas,
         corners,
-        QUALITY_VALUES[settingsRef.current.imageQuality],
+        settingsRef.current,
         useIOSQualityPipeline,
       );
       if (!page) {
@@ -836,7 +927,6 @@ export default function ScannerScreen() {
       return;
     }
     triggerCaptureEffects();
-    const q    = QUALITY_VALUES[settingsRef.current.imageQuality];
     const grey = settingsRef.current.colorMode === 'greyscale';
     const base = pagesLenRef.current;
 
@@ -851,7 +941,6 @@ export default function ScannerScreen() {
       const full = captureVideoFrame(
         video,
         grey,
-        isIOS() ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
       );
 
       const corners = detectCornersFromCanvas(full);
@@ -861,14 +950,24 @@ export default function ScannerScreen() {
       }
       const { w, h } = estimateOutputSize(corners);
       const useIOSQualityPipeline = isIOS();
-      const outputScale = useIOSQualityPipeline
-        ? Math.min(1, Math.sqrt(MAX_IOS_CAPTURE_PIXELS / Math.max(1, w * h)))
-        : 1;
+      const targetPage = getPaperPixelSize(
+        settingsRef.current.paperSize,
+        settingsRef.current.targetDpi,
+        'portrait',
+      );
+      const outputSize = fitSourceWithinOutput(
+        w,
+        h,
+        targetPage.width * 2,
+        targetPage.height,
+        useIOSQualityPipeline ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
+      );
       const spread = warpPerspective(
         full,
         corners,
-        Math.max(1, Math.round(w * outputScale)),
-        Math.max(1, Math.round(h * outputScale)),
+        outputSize.width,
+        outputSize.height,
+        useIOSQualityPipeline ? { maxCpuPixels: MAX_IOS_CAPTURE_PIXELS } : undefined,
       );
       if (!hasRequiredSharpness(spread)) {
         toast.error('문서 경계 또는 초점을 확인한 뒤 다시 촬영하세요');
@@ -890,7 +989,7 @@ export default function ScannerScreen() {
         0, 0, spread.width - halfWidth, spread.height,
       );
 
-       const outputQuality = useIOSQualityPipeline ? Math.max(q, 0.98) : q;
+       const outputQuality = outputJpegQuality(useIOSQualityPipeline);
        addPage(leftOut.toDataURL('image/jpeg', outputQuality));
        addPage(rightOut.toDataURL('image/jpeg', outputQuality));
     }
@@ -908,7 +1007,6 @@ export default function ScannerScreen() {
       return;
     }
     triggerCaptureEffects();
-    const q    = QUALITY_VALUES[settingsRef.current.imageQuality];
     const grey = settingsRef.current.colorMode === 'greyscale';
     const pageNum = pagesLenRef.current + 1;
 
@@ -919,9 +1017,7 @@ export default function ScannerScreen() {
       const src = captureVideoFrame(
         video,
         grey,
-        isIOS() ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
       );
-      const vw = src.width, vh = src.height;
        // Re-detect the exact frame. Never promote an unverified camera frame
        // to a saved presentation image.
        const corners = detectCornersFromCanvas(src);
@@ -929,14 +1025,31 @@ export default function ScannerScreen() {
          toast.error('문서 경계 또는 초점을 확인한 뒤 다시 촬영하세요');
          return;
        }
-       const outW = Math.max(vw, 1280);
-       const outH = Math.round(outW * 9 / 16);
-       const warped = warpPerspective(src, corners, outW, outH);
+       const { w, h } = estimateOutputSize(corners);
+       const target = getPaperPixelSize(
+         settingsRef.current.paperSize,
+         settingsRef.current.targetDpi,
+         'landscape',
+       );
+       const outputSize = fitSourceWithinOutput(
+         w,
+         h,
+         target.width,
+         target.height,
+         isIOS() ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
+       );
+       const warped = warpPerspective(
+         src,
+         corners,
+         outputSize.width,
+         outputSize.height,
+         isIOS() ? { maxCpuPixels: MAX_IOS_CAPTURE_PIXELS } : undefined,
+       );
        if (!hasRequiredSharpness(warped)) {
          toast.error('초점이 맞지 않았습니다. 잠시 기다린 뒤 다시 촬영하세요');
          return;
        }
-        addPage(warped.toDataURL('image/jpeg', isIOS() ? Math.max(q, 0.98) : q));
+        addPage(warped.toDataURL('image/jpeg', outputJpegQuality(isIOS())));
     }
 
     setCapturedLabel(pageNum);
@@ -952,7 +1065,6 @@ export default function ScannerScreen() {
       return;
     }
     triggerCaptureEffects();
-    const q    = QUALITY_VALUES[settingsRef.current.imageQuality];
     const grey = settingsRef.current.colorMode === 'greyscale';
 
      const captureCardDataUrl = (): string | null => {
@@ -961,16 +1073,25 @@ export default function ScannerScreen() {
       const src = captureVideoFrame(
         video,
         grey,
-        isIOS() ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
       );
-      const vw = src.width;
        const corners = detectCornersFromCanvas(src);
        if (!corners) return null;
-       const outW = Math.min(vw, 1004);
-       const outH = Math.round(outW / 1.585); // ID card aspect ratio
-       const warped = warpPerspective(src, corners, outW, outH);
+       const { w, h } = estimateOutputSize(corners);
+       const outputSize = idCardOutputSize(
+         w,
+         h,
+         settingsRef.current.targetDpi,
+         isIOS() ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
+       );
+       const warped = warpPerspective(
+         src,
+         corners,
+         outputSize.width,
+         outputSize.height,
+         isIOS() ? { maxCpuPixels: MAX_IOS_CAPTURE_PIXELS } : undefined,
+       );
         return hasRequiredSharpness(warped)
-          ? warped.toDataURL('image/jpeg', isIOS() ? Math.max(q, 0.98) : q)
+          ? warped.toDataURL('image/jpeg', outputJpegQuality(isIOS()))
           : null;
     };
 
@@ -1010,7 +1131,7 @@ export default function ScannerScreen() {
           cctx.fillStyle = '#e8e8e8'; cctx.fillRect(0, 0, cw, composite.height);
           cctx.drawImage(fImg, 0, 0);
           cctx.drawImage(bImg, 0, fImg.height + 20);
-          addPage(composite.toDataURL('image/jpeg', q));
+          addPage(composite.toDataURL('image/jpeg', outputJpegQuality(isIOS())));
           setActivePageIndex(pagesLenRef.current);
           toast.success('ID Card saved — front & back combined');
           setLocation('/preview');
@@ -1242,52 +1363,90 @@ export default function ScannerScreen() {
                 'w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-full transition-all shrink-0',
                 qualityOpen ? 'bg-white/20' : 'hover:bg-white/10',
               )}
-              aria-label="Scan quality"
+              aria-label={`Output resolution: ${settings.targetDpi} DPI`}
             >
-              <QualityGaugeIcon quality={settings.imageQuality} />
+              <QualityGaugeIcon dpi={settings.targetDpi} />
             </button>
 
             {qualityOpen && (
               <>
                 <div className="fixed inset-0 z-30" onClick={() => setQualityOpen(false)} />
                 <div
-                  className="absolute top-[52px] z-40 px-3 pt-3 pb-2 rounded-2xl min-w-[260px]"
+                  className="absolute left-1/2 -translate-x-1/2 top-[52px] z-40 px-3 pt-3 pb-3 rounded-2xl min-w-[280px]"
                   style={{ background: 'rgba(28,28,32,0.96)', backdropFilter: 'blur(12px)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }}
                 >
                   <p className="text-[10px] font-bold tracking-widest text-white/40 uppercase mb-2 px-1">
-                    Scan Quality
+                    Output Resolution
                   </p>
                   <div className="flex gap-2">
-                    {([
-                      { key: 'high',   label: 'High',   q: '0.95' },
-                      { key: 'medium', label: 'Medium', q: '0.80' },
-                      { key: 'low',    label: 'Low',    q: '0.60' },
-                    ] as const).map(({ key, label, q }) => (
+                    {DPI_PRESETS.map(dpi => (
                       <button
-                        key={key}
+                        key={dpi}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSettings({ imageQuality: key });
+                          applyTargetDpi(dpi);
                           setQualityOpen(false);
                         }}
                         className={cn(
-                          'flex-1 flex flex-row items-center justify-center gap-1.5 py-1 rounded border transition-all select-none',
-                          settings.imageQuality === key
+                          'flex-1 flex items-center justify-center py-2 rounded-lg border transition-all select-none',
+                          settings.targetDpi === dpi
                             ? 'border-sky-400 bg-sky-400/10'
                             : 'border-white/10 bg-white/5 hover:bg-white/10',
                         )}
                       >
                         <span className={cn(
                           'text-[10px] font-semibold',
-                          settings.imageQuality === key ? 'text-sky-400' : 'text-white/80',
+                          settings.targetDpi === dpi ? 'text-sky-400' : 'text-white/80',
                         )}>
-                          {label}
-                        </span>
-                        <span className="text-[10px] text-white/35 font-mono">
-                          {q}
+                          {dpi} DPI
                         </span>
                       </button>
                     ))}
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-white/10">
+                    <label
+                      htmlFor="custom-scan-dpi"
+                      className="block text-[10px] font-semibold text-white/55 mb-1.5 px-0.5"
+                    >
+                      Custom ({MIN_SCAN_DPI}–{MAX_SCAN_DPI} DPI)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          id="custom-scan-dpi"
+                          type="number"
+                          inputMode="numeric"
+                          min={MIN_SCAN_DPI}
+                          max={MAX_SCAN_DPI}
+                          step={10}
+                          value={dpiInput}
+                          onChange={(event) => setDpiInput(event.target.value)}
+                          onBlur={commitDpiInput}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              commitDpiInput();
+                              setQualityOpen(false);
+                            }
+                          }}
+                          className="w-full h-9 rounded-lg border border-white/15 bg-white/5 px-3 pr-10 text-sm font-semibold text-white outline-none focus:border-sky-400"
+                          aria-label="Custom output DPI"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-white/35 pointer-events-none">
+                          DPI
+                        </span>
+                      </div>
+                      <button
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          commitDpiInput();
+                          setQualityOpen(false);
+                        }}
+                        className="h-9 px-3 rounded-lg bg-sky-400 text-slate-950 text-[10px] font-bold hover:bg-sky-300 transition-colors"
+                      >
+                        Apply
+                      </button>
+                    </div>
                   </div>
                 </div>
               </>

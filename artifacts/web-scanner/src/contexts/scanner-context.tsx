@@ -3,15 +3,15 @@ import {
 } from 'react';
 import { type Point } from '@/lib/perspective';
 import {
-  type ScanType, type ColorMode, type PaperSize, type ImageQuality, type ScannerSettings,
-  PAPER_SIZES,
+  type ScanType, type ColorMode, type PaperSize, type ScannerSettings,
+  DEFAULT_SCAN_DPI, normalizeScannerSettings,
 } from '@/lib/scanner-types';
 import {
   clearActiveDraft, getActiveDraft, saveActiveDraft,
 } from '@/lib/local-db';
 
 // Type-only re-exports are erased at runtime — Fast Refresh compatible
-export type { ScanType, ColorMode, PaperSize, ImageQuality, ScannerSettings };
+export type { ScanType, ColorMode, PaperSize, ScannerSettings };
 
 interface ScannerContextType {
   settings: ScannerSettings;
@@ -41,7 +41,7 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
     scanType:     'document',
     colorMode:    'color',
     paperSize:    'A4',
-    imageQuality: 'high',
+    targetDpi:    DEFAULT_SCAN_DPI,
   });
   const [pages, setPages]                     = useState<string[]>([]);
   const [activePageIndex, setActivePageIndex] = useState(0);
@@ -59,7 +59,7 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
     getActiveDraft()
       .then(draft => {
         if (cancelled || !draft) return;
-        setFullSettings(draft.settings);
+        setFullSettings(normalizeScannerSettings(draft.settings));
         setPages(draft.pages);
         setPendingPage(draft.pendingPage);
       })
@@ -97,7 +97,7 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
   }, [draftHydrated, settings, pages, pendingPage]);
 
   const setSettings = (s: Partial<ScannerSettings>) =>
-    setFullSettings(prev => ({ ...prev, ...s }));
+    setFullSettings(prev => normalizeScannerSettings({ ...prev, ...s }));
 
   const addPage     = useCallback((url: string)  => setPages(p => [...p, url]),           []);
   const removePage  = useCallback((i: number)    => {

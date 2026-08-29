@@ -9,6 +9,12 @@ Document-mode capture must use a confident boundary from the exact frame being s
 
 **How to apply:** Prefer fresh full-resolution detection over an older live overlay for cropping. Use a continuous projective transform with a seam-free fallback, preserve available camera resolution, and hold auto mode after a rejected frame until the page leaves or is meaningfully repositioned.
 
+Treat DPI as an output-size target, not a JPEG compression setting. Preserve the source pixels when the crop is smaller than the target, never enlarge beyond the captured detail, and apply mobile memory ceilings only after the document crop is known.
+
+**Why:** Enlarging a low-resolution crop does not restore detail, while shrinking the full camera frame before cropping permanently discards useful document pixels.
+
+**How to apply:** Keep JPEG quality internal and high. Derive per-paper pixel bounds from the requested DPI, preserve aspect ratio, and ensure GPU and CPU perspective paths share the same platform-specific post-correction ceiling.
+
 When an edge fit is weak or incoherent, reject it rather than forcing its corners into an axis-aligned rectangle.
 
 **Why:** Axis snapping can turn a legitimate small camera roll into an inaccurate crop, while a rejected frame cannot silently create a bad scan.

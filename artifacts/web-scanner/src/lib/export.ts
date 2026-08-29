@@ -2,6 +2,35 @@ import { jsPDF } from 'jspdf';
 import { type PaperSize } from '@/lib/scanner-types';
 import { isNative } from '@/lib/platform';
 
+function loadImageDimensions(dataUrl: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve({
+      width: image.naturalWidth || image.width,
+      height: image.naturalHeight || image.height,
+    });
+    image.onerror = () => reject(new Error('Could not read a scanned page image.'));
+    image.src = dataUrl;
+  });
+}
+
+function containImage(
+  pageWidth: number,
+  pageHeight: number,
+  imageWidth: number,
+  imageHeight: number,
+): { x: number; y: number; width: number; height: number } {
+  const scale = Math.min(pageWidth / imageWidth, pageHeight / imageHeight);
+  const width = imageWidth * scale;
+  const height = imageHeight * scale;
+  return {
+    x: (pageWidth - width) / 2,
+    y: (pageHeight - height) / 2,
+    width,
+    height,
+  };
+}
+
 export async function generatePDF(pages: string[], paperSize: PaperSize): Promise<Blob> {
   // Rough mapping of paper sizes to jsPDF format
   // jsPDF supports: a3, a4, a5, letter, legal
@@ -20,16 +49,20 @@ export async function generatePDF(pages: string[], paperSize: PaperSize): Promis
       doc.addPage();
     }
 
-    const imgData = pages[i];
-    
-    // We need to calculate dimensions to fit the page while maintaining aspect ratio
-    // Default A4 size is 210x297mm
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    
-    // Actually, to get true aspect ratio, we'd need to load the image.
-    // For simplicity, we'll try to fit it into the page.
-    doc.addImage(imgData, 'JPEG', 0, 0, pageWidth, pageHeight, undefined, 'FAST');
+    const image = await loadImageDimensions(pages[i]);
+    const placement = containImage(pageWidth, pageHeight, image.width, image.height);
+    doc.addImage(
+      pages[i],
+      'JPEG',
+      placement.x,
+      placement.y,
+      placement.width,
+      placement.height,
+      undefined,
+      'NONE',
+    );
   }
 
   return doc.output('blob');
@@ -174,12 +207,25 @@ export async function mergeToPDF(
   let first = true;
 
   for (const group of scanGroups) {
+    const size = group.paperSize.toLowerCase();
+    const groupFormat = size.includes('letter') ? 'letter' : size.includes('a5') ? 'a5' : 'a4';
     for (const page of group.pages) {
-      if (!first) doc.addPage();
+      if (!first) doc.addPage(groupFormat, 'portrait');
       first = false;
       const w = doc.internal.pageSize.getWidth();
       const h = doc.internal.pageSize.getHeight();
-      doc.addImage(page, 'JPEG', 0, 0, w, h, undefined, 'FAST');
+      const image = await loadImageDimensions(page);
+      const placement = containImage(w, h, image.width, image.height);
+      doc.addImage(
+        page,
+        'JPEG',
+        placement.x,
+        placement.y,
+        placement.width,
+        placement.height,
+        undefined,
+        'NONE',
+      );
     }
   }
 
