@@ -1,11 +1,12 @@
 from pathlib import Path
 import json
+import sys
 import fitz
 
 
 JPG = Path("attached_assets/IMG_4126_1787989611392.JPG")
-PDF = Path("attached_assets/Scan_2026-08-29_1787989790250.pdf")
-OUT = Path(".agents/outputs/scan_pdf_analysis")
+PDF = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("attached_assets/Scan_2026-08-29_1787989790250.pdf")
+OUT = Path(".agents/outputs") / f"{PDF.stem}-analysis"
 OUT.mkdir(parents=True, exist_ok=True)
 
 
