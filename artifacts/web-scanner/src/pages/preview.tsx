@@ -725,16 +725,19 @@ export default function PreviewScreen() {
         <div
           className="absolute inset-0 z-50 bg-gray-950 flex flex-col"
           style={{
-            paddingTop: 'env(safe-area-inset-top)',
-            paddingBottom: 'env(safe-area-inset-bottom)',
+            // Some iOS WKWebView configurations report a zero safe-area
+            // inset even though the status bar still overlays the viewport.
+            // Keep a reliable minimum clearance for the system chrome.
+            paddingTop: 'max(3.25rem, env(safe-area-inset-top, 0px))',
+            paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px))',
           }}
         >
 
           {/* Crop header */}
-          <div className="flex items-center justify-between px-4 h-14 shrink-0">
+          <div className="relative z-[60] flex items-center justify-between px-4 h-14 shrink-0 pointer-events-auto">
             <button
               onClick={() => { setActiveTool('none'); setCropImgLoaded(false); }}
-              className="flex items-center gap-1.5 text-white/60 hover:text-white transition-colors text-sm"
+              className="relative z-10 flex min-h-10 items-center gap-1.5 px-2 text-white/60 hover:text-white transition-colors text-sm"
             >
               <X className="w-4 h-4" /> Cancel
             </button>
@@ -742,7 +745,7 @@ export default function PreviewScreen() {
             <button
               onClick={handleApplyCrop}
               disabled={applying || !cropImgLoaded}
-              className="flex items-center gap-1.5 text-blue-400 font-semibold disabled:opacity-40 hover:text-blue-300 transition-colors text-sm"
+              className="relative z-10 flex min-h-10 min-w-[76px] items-center justify-center gap-1.5 px-2 text-blue-400 font-semibold disabled:opacity-40 hover:text-blue-300 transition-colors text-sm"
             >
               {applying
                 ? <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
@@ -835,15 +838,15 @@ export default function PreviewScreen() {
           </div>
 
           {/* Reset corners */}
-          <div className="flex justify-center py-4 shrink-0">
+          <div className="flex justify-center py-3 shrink-0">
             <button
               onClick={() => {
                 if (cropDisplayW && cropDisplayH)
                   setCropCorners(defaultCorners(cropDisplayW, cropDisplayH, 0));
               }}
-              className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors"
+              className="flex min-h-10 items-center gap-2 px-3 text-sm text-white/55 hover:text-white/85 transition-colors"
             >
-              <RotateCw className="w-3 h-3" /> Reset corners
+              <RotateCw className="w-4 h-4" /> Reset corners
             </button>
           </div>
         </div>
