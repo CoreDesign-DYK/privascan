@@ -1454,13 +1454,13 @@ export default function ScannerScreen() {
           </div>
 
           {/* ── Auto / Manual toggle ── */}
-          <div className="relative flex items-center h-9 bg-white/10 border border-white/15 rounded-full px-[3px] ml-0 sm:ml-[5px] shrink-0">
+          <div className="relative flex items-center h-8 bg-white/10 border border-white/15 rounded-full px-[2px] ml-0 sm:ml-[5px] shrink-0">
               {/* Sliding pill */}
               <div
-                className="absolute top-[3px] bottom-[3px] rounded-full bg-white shadow-sm transition-all duration-300 ease-out"
+                className="absolute top-[2px] bottom-[2px] rounded-full bg-white shadow-sm transition-all duration-300 ease-out"
                 style={{
-                  width: 'calc(50% - 3px)',
-                  left: mode === 'auto' ? '3px' : 'calc(50%)',
+                  width: 'calc(50% - 2px)',
+                  left: mode === 'auto' ? '2px' : 'calc(50%)',
                 }}
               />
               {(['auto', 'manual'] as const).map(m => (
@@ -1468,7 +1468,7 @@ export default function ScannerScreen() {
                   key={m}
                   onClick={() => setMode(m)}
                   className={cn(
-                    'relative z-10 h-full px-2 sm:px-3 rounded-full text-[10px] font-semibold transition-colors duration-200 capitalize select-none',
+                    'relative z-10 h-full px-1.5 sm:px-2 rounded-full text-[9px] font-semibold transition-colors duration-200 capitalize select-none',
                     mode === m ? 'text-gray-900' : 'text-white/60 hover:text-white/90',
                   )}
                 >
@@ -1521,7 +1521,7 @@ export default function ScannerScreen() {
         {/* Document: A4 portrait — hide when edge detected on real camera */}
         {scanMode === 'document' && (!edgeCorners || isMockMode) && (
           <div className="absolute pointer-events-none"
-            style={{ top:'12%', bottom:'32%', left:'50%', transform:'translateX(-50%)', aspectRatio:'0.707/1', maxHeight:'100%' }}>
+            style={{ top:'12%', bottom:'32%', left:'50%', transform:'translate(-50%, 48px)', aspectRatio:'0.707/1', maxHeight:'100%' }}>
             <div className="absolute top-0 left-0 w-8 h-8 border-t-[3px] border-l-[3px] border-white/55" />
             <div className="absolute top-0 right-0 w-8 h-8 border-t-[3px] border-r-[3px] border-white/55" />
             <div className="absolute bottom-0 left-0 w-8 h-8 border-b-[3px] border-l-[3px] border-white/55" />
@@ -1532,7 +1532,7 @@ export default function ScannerScreen() {
         {/* Book: two portrait frames side by side — width:height = 0.707:1 each */}
         {scanMode === 'book' && (
           <div className="absolute inset-0 pointer-events-none flex flex-row items-center justify-center"
-            style={{ top:'12%', bottom:'32%', gap:'12px' }}>
+            style={{ top:'12%', bottom:'32%', gap:'12px', transform:'translateY(48px)' }}>
             {(['Left','Right'] as const).map(side => (
               <div key={side} className="relative flex-shrink-0"
                 style={{ width:'46vw', maxWidth:'220px', aspectRatio:'0.707/1' }}>
@@ -1549,7 +1549,7 @@ export default function ScannerScreen() {
         {/* Presentation: wide 16:9 */}
         {scanMode === 'presentation' && (
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center"
-            style={{ top:'12%', bottom:'32%' }}>
+            style={{ top:'12%', bottom:'32%', transform:'translateY(48px)' }}>
             <div className="relative flex-shrink-0" style={{ width:'88vw', maxWidth:'420px', aspectRatio:'16/9' }}>
               <div className="absolute top-0 left-0 w-8 h-8 border-t-[3px] border-l-[3px] border-white/55" />
               <div className="absolute top-0 right-0 w-8 h-8 border-t-[3px] border-r-[3px] border-white/55" />
@@ -1563,7 +1563,7 @@ export default function ScannerScreen() {
         {/* ID Cards: two stacked landscape frames (1.585:1 = standard card ratio) */}
         {scanMode === 'id-cards' && (
           <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center"
-            style={{ top:'12%', bottom:'32%', gap:'14px' }}>
+            style={{ top:'12%', bottom:'32%', gap:'14px', transform:'translateY(48px)' }}>
             {(['front','back'] as const).map((side, idx) => (
               <div key={side} className="relative flex-shrink-0"
                 style={{ width:'75vw', maxWidth:'320px', aspectRatio:'1.585/1', opacity: idStage === side ? 1 : 0.35 }}>
