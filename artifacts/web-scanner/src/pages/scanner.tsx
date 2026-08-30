@@ -45,6 +45,12 @@ import {
 import { enhanceDocumentCanvas } from '@/lib/filters';
 import { isIOS } from '@/lib/platform';
 import { hasRequiredSharpness } from '@/lib/scan-quality';
+import {
+  detectIdCardFromCanvas,
+  isLikelyIdCardQuad,
+  refineIdCardCornersFromCanvas,
+  type IdCardDetection,
+} from '@/lib/id-card-detection';
 import fileBoxIcon from '@/assets/file-box-icon.png';
 
 // Wait between completed detector passes instead of running on a fixed
@@ -105,6 +111,56 @@ function idCardOutputSize(
     targetHeight,
     maxPixels,
   );
+}
+
+function scaleQuad(
+  corners: [Point, Point, Point, Point],
+  scaleX: number,
+  scaleY: number,
+): [Point, Point, Point, Point] {
+  return corners.map(point => ({
+    x: point.x * scaleX,
+    y: point.y * scaleY,
+  })) as [Point, Point, Point, Point];
+}
+
+function guideQuadForCanvas(
+  root: HTMLDivElement | null,
+  guide: HTMLDivElement | null,
+  sourceWidth: number,
+  sourceHeight: number,
+): [Point, Point, Point, Point] | null {
+  if (!root || !guide || !sourceWidth || !sourceHeight) return null;
+  const rootRect = root.getBoundingClientRect();
+  const guideRect = guide.getBoundingClientRect();
+  if (!rootRect.width || !rootRect.height) return null;
+
+  const scale = Math.max(rootRect.width / sourceWidth, rootRect.height / sourceHeight);
+  const renderedWidth = sourceWidth * scale;
+  const renderedHeight = sourceHeight * scale;
+  const cropX = (renderedWidth - rootRect.width) / 2;
+  const cropY = (renderedHeight - rootRect.height) / 2;
+  const toSource = (x: number, y: number): Point => ({
+    x: Math.max(0, Math.min(sourceWidth, (x - rootRect.left + cropX) / scale)),
+    y: Math.max(0, Math.min(sourceHeight, (y - rootRect.top + cropY) / scale)),
+  });
+
+  return [
+    toSource(guideRect.left, guideRect.top),
+    toSource(guideRect.right, guideRect.top),
+    toSource(guideRect.right, guideRect.bottom),
+    toSource(guideRect.left, guideRect.bottom),
+  ];
+}
+
+function detectIdCardForCapture(
+  source: HTMLCanvasElement,
+  guide: [Point, Point, Point, Point],
+): IdCardDetection | null {
+  const candidate = detectIdCardFromCanvas(source, guide);
+  if (!candidate || candidate.confidence < 0.58) return null;
+  const refined = refineIdCardCornersFromCanvas(source, candidate);
+  return refined && refined.confidence >= 0.58 ? refined : null;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
@@ -211,6 +267,72 @@ function createPresentationPage(
     aspectRatio: Number((output.width / output.height).toFixed(3)),
   });
   return output.toDataURL('image/jpeg', outputJpegQuality(enhanceForIOS));
+}
+
+function createIdCardPage(
+  source: HTMLCanvasElement,
+  corners: [Point, Point, Point, Point],
+  settings: ScannerSettings,
+  enhanceForIOS = false,
+  maxPixels = enhanceForIOS ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
+): string | null {
+  if (!isLikelyIdCardQuad(corners)) return null;
+  const measured = estimateOutputSize(corners);
+  const outputSize = idCardOutputSize(
+    measured.w,
+    measured.h,
+    settings.targetDpi,
+    maxPixels,
+  );
+  const warped = warpPerspective(
+    source,
+    corners,
+    outputSize.width,
+    outputSize.height,
+    {
+      maxCpuPixels: Number.isFinite(maxPixels)
+        ? maxPixels
+        : outputSize.width * outputSize.height,
+    },
+  );
+  if (!hasRequiredSharpness(warped)) return null;
+  const output = enhanceForIOS ? enhanceDocumentCanvas(warped) : warped;
+  return output.toDataURL('image/jpeg', outputJpegQuality(enhanceForIOS));
+}
+
+async function combineIdCardPages(
+  frontDataUrl: string,
+  backDataUrl: string,
+  jpegQuality: number,
+): Promise<string> {
+  const load = (dataUrl: string) => new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = dataUrl;
+  });
+  const [front, back] = await Promise.all([load(frontDataUrl), load(backDataUrl)]);
+  const cardWidth = Math.max(front.naturalWidth, back.naturalWidth);
+  const cardHeight = Math.max(front.naturalHeight, back.naturalHeight);
+  const margin = Math.max(24, Math.round(cardWidth * 0.09));
+  const gap = Math.max(20, Math.round(cardHeight * 0.12));
+  const composite = document.createElement('canvas');
+  composite.width = cardWidth + margin * 2;
+  composite.height = cardHeight * 2 + gap + margin * 2;
+  const context = composite.getContext('2d')!;
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, composite.width, composite.height);
+  context.drawImage(
+    front,
+    margin + (cardWidth - front.naturalWidth) / 2,
+    margin,
+  );
+  context.drawImage(
+    back,
+    margin + (cardWidth - back.naturalWidth) / 2,
+    margin + cardHeight + gap,
+  );
+  return composite.toDataURL('image/jpeg', jpegQuality);
 }
 
 function captureVideoFrame(
@@ -596,6 +718,8 @@ export default function ScannerScreen() {
   const [edgeCorners,    setEdgeCorners]    = useState<[Point, Point, Point, Point] | null>(null);
   const [edgeIsLive,     setEdgeIsLive]     = useState(false);
   const [bookDetection,  setBookDetection]  = useState<BookDetection | null>(null);
+  const [idCardDetection, setIdCardDetection] = useState<IdCardDetection | null>(null);
+  const [idCardReady, setIdCardReady] = useState(false);
   const [stableProgress, setStableProgress] = useState(0);
   const [capturedLabel,  setCapturedLabel]  = useState<number | null>(null);
   const [selectedThumb,  setSelectedThumb]  = useState(-1);
@@ -620,6 +744,8 @@ export default function ScannerScreen() {
   const { data: localScans = [] } = useLocalScans();
   const [idStage,  setIdStage]  = useState<'front' | 'back'>('front');
   const idFrontRef = useRef<string | null>(null);
+  const idGuideRef = useRef<HTMLDivElement>(null);
+  const scannerRootRef = useRef<HTMLDivElement>(null);
 
   const lastThumbRef     = useRef<HTMLButtonElement>(null);
   const modeRef          = useRef(mode);
@@ -643,6 +769,7 @@ export default function ScannerScreen() {
   const captureAutoRef   = useRef<() => void>(() => {});
   const captureBookAutoRef = useRef<() => void>(() => {});
   const capturePresentationAutoRef = useRef<() => void>(() => {});
+  const captureIdAutoRef = useRef<() => void>(() => {});
   const scanModeRef      = useRef<ScanMode>('document');
 
   useEffect(() => { modeRef.current      = mode;     }, [mode]);
@@ -697,6 +824,8 @@ export default function ScannerScreen() {
     setEdgeCorners(null);
     setEdgeIsLive(false);
     setBookDetection(null);
+    setIdCardDetection(null);
+    setIdCardReady(false);
     trackedCornersRef.current = null;
     pendingCornersRef.current = null;
     pendingCornerFrames.current = 0;
@@ -721,6 +850,8 @@ export default function ScannerScreen() {
     setEdgeCorners(null);
     setEdgeIsLive(false);
     setBookDetection(null);
+    setIdCardDetection(null);
+    setIdCardReady(false);
   }, [focusReady]);
 
   /* ── Camera lifecycle ───────────────────────────────────────────────────── */
@@ -749,6 +880,10 @@ export default function ScannerScreen() {
     }
     if (scanModeRef.current === 'presentation') {
       capturePresentationAutoRef.current();
+      return;
+    }
+    if (scanModeRef.current === 'id-cards') {
+      captureIdAutoRef.current();
       return;
     }
     const pageNum = pagesLenRef.current + 1;
@@ -856,18 +991,31 @@ export default function ScannerScreen() {
 
     /* ── ID Cards: 앞면 → 뒷면 → 합성 ────────────────────────────────── */
     if (sm === 'id-cards') {
-      const corners = detectCornersFromCanvas(canvas);
+      const preliminaryCorners = detectCornersFromCanvas(canvas);
+      const idDetection = preliminaryCorners
+        ? detectIdCardForCapture(canvas, preliminaryCorners)
+        : null;
+      const corners = idDetection?.corners ?? null;
+      if (!corners || !isLikelyIdCardQuad(corners)) {
+        toast.error('카드 네 변을 확인할 수 없습니다. 카드가 화면 중앙에 보이도록 다시 촬영해 주세요');
+        return;
+      }
       const measured = corners ? estimateOutputSize(corners) : null;
       const outputSize = measured
         ? idCardOutputSize(measured.w, measured.h, settingsRef.current.targetDpi)
         : null;
-      const warped = corners && outputSize
-        ? warpPerspective(canvas, corners, outputSize.width, outputSize.height)
+      const cardDataUrl = corners && outputSize
+        ? createIdCardPage(
+            canvas,
+            corners,
+            settingsRef.current,
+            false,
+            MAX_IOS_CAPTURE_PIXELS,
+          )
         : null;
-      if (!warped || !hasRequiredSharpness(warped)) {
+      if (!cardDataUrl) {
         toast.error('카드 경계를 찾을 수 없습니다. 다시 촬영해 주세요'); return;
       }
-      const cardDataUrl = warped.toDataURL('image/jpeg', q);
       if (idStage === 'front') {
         idFrontRef.current = cardDataUrl;
         setIdStage('back');
@@ -876,16 +1024,7 @@ export default function ScannerScreen() {
       }
       const frontData = idFrontRef.current;
       if (!frontData) { setIdStage('front'); return; }
-      const fImg = new Image(), bImg = new Image();
-      fImg.src = frontData; bImg.src = cardDataUrl;
-      await Promise.all([new Promise<void>(r => { fImg.onload = () => r(); }), new Promise<void>(r => { bImg.onload = () => r(); })]);
-      const cw = Math.max(fImg.width, bImg.width);
-      const composite = document.createElement('canvas');
-      composite.width = cw; composite.height = fImg.height + bImg.height + 20;
-      const cctx = composite.getContext('2d')!;
-      cctx.fillStyle = '#e8e8e8'; cctx.fillRect(0, 0, cw, composite.height);
-      cctx.drawImage(fImg, 0, 0); cctx.drawImage(bImg, 0, fImg.height + 20);
-      addPage(composite.toDataURL('image/jpeg', q));
+      addPage(await combineIdCardPages(frontData, cardDataUrl, q));
       setActivePageIndex(pagesLenRef.current);
       toast.success('ID Card saved — 앞뒤 합성 완료');
       idFrontRef.current = null; setIdStage('front');
@@ -1022,6 +1161,7 @@ export default function ScannerScreen() {
         if (!video || video.readyState < 2) return;
 
         let detectedBook: BookDetection | null = null;
+        let detectedIdCard: IdCardDetection | null = null;
         let bookFoldStable = scanModeRef.current !== 'book';
         let corners: [Point, Point, Point, Point] | null;
         if (scanModeRef.current === 'book') {
@@ -1064,6 +1204,38 @@ export default function ScannerScreen() {
           )?.corners ?? null;
           previousBookDetectionRef.current = null;
           stableBookFoldFrames.current = 0;
+        } else if (scanModeRef.current === 'id-cards') {
+          const liveFrame = captureVideoFrame(video, false, 480 * 360);
+          const fullGuide = guideQuadForCanvas(
+            scannerRootRef.current,
+            idGuideRef.current,
+            video.videoWidth,
+            video.videoHeight,
+          );
+          const sampledGuide = fullGuide
+            ? scaleQuad(
+                fullGuide,
+                liveFrame.width / video.videoWidth,
+                liveFrame.height / video.videoHeight,
+              )
+            : null;
+          const liveDetection = sampledGuide
+            ? detectIdCardFromCanvas(liveFrame, sampledGuide)
+            : null;
+          detectedIdCard = liveDetection
+            ? {
+                ...liveDetection,
+                corners: scaleQuad(
+                  liveDetection.corners,
+                  video.videoWidth / liveFrame.width,
+                  video.videoHeight / liveFrame.height,
+                ),
+              }
+            : null;
+          corners = detectedIdCard?.corners ?? null;
+          if (!detectedIdCard || detectedIdCard.confidence < 0.58) corners = null;
+          previousBookDetectionRef.current = null;
+          stableBookFoldFrames.current = 0;
         } else {
           corners = detectDocumentCorners(video, video.videoWidth, video.videoHeight);
           previousBookDetectionRef.current = null;
@@ -1073,6 +1245,11 @@ export default function ScannerScreen() {
         setEdgeCorners(tracked.corners);
         setEdgeIsLive(Boolean(corners));
         setBookDetection(detectedBook);
+        setIdCardDetection(detectedIdCard);
+        setIdCardReady(
+          scanModeRef.current === 'id-cards' &&
+          Boolean(corners && tracked.stable && detectedIdCard && detectedIdCard.confidence >= 0.58),
+        );
 
         if (modeRef.current !== 'auto' || !focusReady) return;
 
@@ -1319,51 +1496,68 @@ export default function ScannerScreen() {
   }, [presentationCapture]);
 
   /* ── ID Cards capture (2-stage) ─────────────────────────────────────────── */
-  const idCardsCapture = useCallback(() => {
+  const idCardsCapture = useCallback(async () => {
     if (!isMockMode && !focusReady) {
       toast.info('카메라 초점을 맞추는 중입니다. 잠시 기다려 주세요');
       return;
     }
-    triggerCaptureEffects();
     const grey = settingsRef.current.colorMode === 'greyscale';
 
-     const captureCardDataUrl = (): string | null => {
+    const rejectCapture = (message: string) => {
+      if (modeRef.current === 'auto') {
+        waitingClear.current = true;
+        setIsWaitingClear(true);
+        setNeedsClearerCapture(true);
+        needsClearerCaptureRef.current = true;
+        rejectedCornersRef.current = edgeCorners;
+      }
+      setIdCardReady(false);
+      toast.error(message);
+    };
+
+    const captureCardDataUrl = (): string | null => {
       if (isMockMode || !videoRef.current) return 'mock';
       const video = videoRef.current;
       const src = captureVideoFrame(
         video,
         grey,
       );
-       const corners = detectCornersFromCanvas(src);
-       if (!corners) return null;
-       const { w, h } = estimateOutputSize(corners);
-       const outputSize = idCardOutputSize(
-         w,
-         h,
-         settingsRef.current.targetDpi,
-         isIOS() ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
+      const guide = guideQuadForCanvas(
+        scannerRootRef.current,
+        idGuideRef.current,
+        src.width,
+        src.height,
        );
-       const warped = warpPerspective(
+      const detection = guide ? detectIdCardForCapture(src, guide) : null;
+      if (!detection) return null;
+      return createIdCardPage(
          src,
-         corners,
-         outputSize.width,
-         outputSize.height,
-         isIOS() ? { maxCpuPixels: MAX_IOS_CAPTURE_PIXELS } : undefined,
-       );
-        return hasRequiredSharpness(warped)
-          ? warped.toDataURL('image/jpeg', outputJpegQuality(isIOS()))
-          : null;
+        detection.corners,
+        settingsRef.current,
+        isIOS(),
+      );
     };
 
     if (idStage === 'front') {
-       const frontData = captureCardDataUrl();
-       if (!frontData) {
-         toast.error('문서 경계 또는 초점을 확인한 뒤 다시 촬영하세요');
-         return;
-       }
-       idFrontRef.current = frontData;
+      const frontData = captureCardDataUrl();
+      if (!frontData) {
+        rejectCapture('카드 네 변 또는 초점을 확인한 뒤 다시 맞춰 주세요');
+        return;
+      }
+      idFrontRef.current = frontData;
+      triggerCaptureEffects();
       setIdStage('back');
-      toast('Front captured — flip the card and shoot the back');
+      setIdCardDetection(null);
+      setIdCardReady(false);
+      setEdgeCorners(null);
+      trackedCornersRef.current = null;
+      stableFrames.current = 0;
+      setStableProgress(0);
+      if (modeRef.current === 'auto') {
+        waitingClear.current = true;
+        setIsWaitingClear(true);
+      }
+      toast.success('앞면 촬영 완료 — 카드를 뒤집어 뒷면을 촬영하세요');
     } else {
       const frontData = idFrontRef.current;
       if (!frontData) { setIdStage('front'); return; }
@@ -1373,37 +1567,40 @@ export default function ScannerScreen() {
         setActivePageIndex(pagesLenRef.current);
         setLocation('/preview');
       } else {
-         const backData = captureCardDataUrl();
-         if (!backData) {
-           toast.error('문서 경계 또는 초점을 확인한 뒤 다시 촬영하세요');
-           return;
-         }
-        const fImg = new Image(), bImg = new Image();
-        fImg.src = frontData; bImg.src = backData;
-        Promise.all([
-          new Promise<void>(r => { fImg.onload = () => r(); }),
-          new Promise<void>(r => { bImg.onload = () => r(); }),
-        ]).then(() => {
-          const cw = Math.max(fImg.width, bImg.width);
-          const composite = document.createElement('canvas');
-          composite.width = cw; composite.height = fImg.height + bImg.height + 20;
-          const cctx = composite.getContext('2d')!;
-          cctx.fillStyle = '#e8e8e8'; cctx.fillRect(0, 0, cw, composite.height);
-          cctx.drawImage(fImg, 0, 0);
-          cctx.drawImage(bImg, 0, fImg.height + 20);
-          addPage(composite.toDataURL('image/jpeg', outputJpegQuality(isIOS())));
-          setActivePageIndex(pagesLenRef.current);
-          toast.success('ID Card saved — front & back combined');
-          setLocation('/preview');
-        });
+        const backData = captureCardDataUrl();
+        if (!backData) {
+          rejectCapture('카드 뒷면의 네 변 또는 초점을 확인한 뒤 다시 맞춰 주세요');
+          return;
+        }
+        const composite = await combineIdCardPages(
+          frontData,
+          backData,
+          outputJpegQuality(isIOS()),
+        );
+        addPage(composite);
+        setActivePageIndex(pagesLenRef.current);
+        toast.success('ID Card 저장 완료 — 앞면과 뒷면을 한 페이지로 만들었습니다');
+        setLocation('/preview');
       }
 
+      triggerCaptureEffects();
       idFrontRef.current = null;
       setIdStage('front');
+      setIdCardDetection(null);
+      setIdCardReady(false);
       setCapturedLabel(pagesLenRef.current + 1);
       setTimeout(() => setCapturedLabel(null), 1800);
     }
-  }, [isMockMode, focusReady, videoRef, addPage, edgeCorners, idStage, setActivePageIndex, setLocation, triggerCaptureEffects]);
+  }, [
+    isMockMode, focusReady, videoRef, addPage, edgeCorners, idStage,
+    setActivePageIndex, setLocation, triggerCaptureEffects,
+  ]);
+
+  useEffect(() => {
+    captureIdAutoRef.current = () => {
+      void idCardsCapture();
+    };
+  }, [idCardsCapture]);
 
   /* ── Capture button handler ─────────────────────────────────────────────── */
   const handleCaptureButton = useCallback(() => {
@@ -1412,7 +1609,7 @@ export default function ScannerScreen() {
     const sm = scanModeRef.current;
     if      (sm === 'book')         bookCapture();
     else if (sm === 'presentation') presentationCapture();
-    else if (sm === 'id-cards')     idCardsCapture();
+    else if (sm === 'id-cards')     void idCardsCapture();
     else if (mode === 'auto')       autoCaptureFrame();
     else                            manualCaptureFrame();
   }, [isNative, nativeCaptureAndProcess, mode, autoCaptureFrame, manualCaptureFrame, bookCapture, presentationCapture, idCardsCapture]);
@@ -1487,7 +1684,7 @@ export default function ScannerScreen() {
 
   /* ── Derived colours ────────────────────────────────────────────────────── */
   const isStable   = stableProgress > 0.85;
-  const edgeStroke = '#4ade80';
+  const edgeStroke = scanMode === 'id-cards' && !idCardReady ? '#38bdf8' : '#4ade80';
   const edgeFill   = isStable
     ? 'rgba(74,222,128,0.12)'
     : edgeIsLive
@@ -1503,7 +1700,11 @@ export default function ScannerScreen() {
 
   /* ── Render ─────────────────────────────────────────────────────────────── */
   return (
-    <div className="relative min-h-[100dvh] overflow-hidden flex flex-col" style={{ background: '#0d0d14' }}>
+    <div
+      ref={scannerRootRef}
+      className="relative min-h-[100dvh] overflow-hidden flex flex-col"
+      style={{ background: '#0d0d14' }}
+    >
       <canvas ref={canvasRef} className="hidden" />
 
       {/* ── White flash on capture ── */}
@@ -1896,15 +2097,42 @@ export default function ScannerScreen() {
           <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center"
             style={{ top:'12%', bottom:'32%', gap:'14px', transform:'translateY(48px)' }}>
             {(['front','back'] as const).map((side, idx) => (
-              <div key={side} className="relative flex-shrink-0"
-                style={{ width:'75vw', maxWidth:'320px', aspectRatio:'1.585/1', opacity: idStage === side ? 1 : 0.35 }}>
-                <div className={cn('absolute top-0 left-0 w-7 h-7 border-t-[3px] border-l-[3px]', idStage===side ? 'border-sky-400' : 'border-white/40')} />
-                <div className={cn('absolute top-0 right-0 w-7 h-7 border-t-[3px] border-r-[3px]', idStage===side ? 'border-sky-400' : 'border-white/40')} />
-                <div className={cn('absolute bottom-0 left-0 w-7 h-7 border-b-[3px] border-l-[3px]', idStage===side ? 'border-sky-400' : 'border-white/40')} />
-                <div className={cn('absolute bottom-0 right-0 w-7 h-7 border-b-[3px] border-r-[3px]', idStage===side ? 'border-sky-400' : 'border-white/40')} />
-                <span className={cn('absolute top-2 left-3 text-[9px] font-bold uppercase tracking-widest select-none', idStage===side ? 'text-sky-400' : 'text-white/35')}>
+              <div
+                key={side}
+                ref={idStage === side ? idGuideRef : undefined}
+                data-id-card-guide={side}
+                className="relative flex-shrink-0 rounded-lg border transition-all duration-200"
+                style={{
+                  width:'75vw',
+                  maxWidth:'320px',
+                  aspectRatio:'1.585/1',
+                  opacity: idStage === side ? 1 : 0.3,
+                  borderColor: idStage === side
+                    ? (idCardReady ? 'rgba(74,222,128,0.65)' : 'rgba(56,189,248,0.28)')
+                    : 'rgba(255,255,255,0.16)',
+                  background: idStage === side && idCardReady
+                    ? 'rgba(74,222,128,0.06)'
+                    : 'rgba(255,255,255,0.015)',
+                  boxShadow: idStage === side && idCardReady
+                    ? '0 0 24px rgba(74,222,128,0.2)'
+                    : 'none',
+                }}
+              >
+                <div className={cn('absolute top-0 left-0 w-7 h-7 border-t-[3px] border-l-[3px]', idStage===side ? (idCardReady ? 'border-green-400' : 'border-sky-400') : 'border-white/40')} />
+                <div className={cn('absolute top-0 right-0 w-7 h-7 border-t-[3px] border-r-[3px]', idStage===side ? (idCardReady ? 'border-green-400' : 'border-sky-400') : 'border-white/40')} />
+                <div className={cn('absolute bottom-0 left-0 w-7 h-7 border-b-[3px] border-l-[3px]', idStage===side ? (idCardReady ? 'border-green-400' : 'border-sky-400') : 'border-white/40')} />
+                <div className={cn('absolute bottom-0 right-0 w-7 h-7 border-b-[3px] border-r-[3px]', idStage===side ? (idCardReady ? 'border-green-400' : 'border-sky-400') : 'border-white/40')} />
+                <span className={cn('absolute top-2 left-3 text-[9px] font-bold uppercase tracking-widest select-none', idStage===side ? (idCardReady ? 'text-green-400' : 'text-sky-400') : 'text-white/35')}>
                   {idx + 1}. {side === 'front' ? 'Front' : 'Back'}
                 </span>
+                {idStage === side && idCardDetection && (
+                  <span className={cn(
+                    'absolute bottom-2 right-3 text-[9px] font-bold uppercase tracking-wide',
+                    idCardReady ? 'text-green-400' : 'text-sky-300',
+                  )}>
+                    {idCardReady ? 'Hold steady' : 'Align all edges'}
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -1952,9 +2180,13 @@ export default function ScannerScreen() {
               </span>
             ) : isWaitingClear ? (
               <span className="text-amber-400 text-sm font-semibold animate-in fade-in flex items-center gap-1.5">
-                <span>↑</span> {needsClearerCapture
-                  ? 'Image was unclear — move document and try again'
-                  : 'Remove document to scan next'}
+                <span>↑</span> {scanMode === 'id-cards'
+                  ? (needsClearerCapture
+                      ? '카드를 다시 맞춘 뒤 잠시 프레임 밖으로 이동해 주세요'
+                      : '카드를 뒤집어 Back 프레임에 맞춰 주세요')
+                  : needsClearerCapture
+                    ? 'Image was unclear — move document and try again'
+                    : 'Remove document to scan next'}
               </span>
             ) : capturedLabel !== null ? (
               <span className="text-green-400 text-sm font-semibold animate-in fade-in">
@@ -1969,14 +2201,24 @@ export default function ScannerScreen() {
                 'text-sm font-medium transition-colors',
                 isStable || edgeIsLive ? 'text-green-400' : 'text-white/65',
               )}>
-                {isStable
-                  ? 'Frame locked — capturing…'
-                  : edgeIsLive
-                    ? 'Document detected — tracking edges'
-                    : 'Keeping frame — reacquiring edges…'}
+                {scanMode === 'id-cards'
+                  ? (isStable
+                      ? `${idStage === 'front' ? 'Front' : 'Back'} 고정됨 — 자동 촬영 중…`
+                      : edgeIsLive
+                        ? '카드 네 변 감지됨 — 그대로 유지해 주세요'
+                        : '카드 엣지를 다시 찾는 중…')
+                  : isStable
+                    ? 'Frame locked — capturing…'
+                    : edgeIsLive
+                      ? 'Document detected — tracking edges'
+                      : 'Keeping frame — reacquiring edges…'}
               </span>
             ) : (
-              <span className="text-white/35 text-sm">Point camera at a document</span>
+              <span className="text-white/35 text-sm">
+                {scanMode === 'id-cards'
+                  ? `${idStage === 'front' ? 'Front' : 'Back'} 카드를 활성 프레임에 맞춰 주세요`
+                  : 'Point camera at a document'}
+              </span>
             )}
           </div>
         )}
@@ -2165,8 +2407,12 @@ export default function ScannerScreen() {
           <div className="flex justify-center -mt-2">
             <span className="text-[10px] font-semibold text-sky-400">
               {idStage === 'front'
-                ? '① Shoot front — tap capture'
-                : '② Flip card · Shoot back — tap capture'}
+                ? (mode === 'auto'
+                    ? '① Front를 위 프레임에 맞추면 자동 촬영됩니다'
+                    : '① Front를 위 프레임에 맞춘 뒤 촬영하세요')
+                : (mode === 'auto'
+                    ? '② 카드를 뒤집어 Back을 아래 프레임에 맞춰 주세요'
+                    : '② Back을 아래 프레임에 맞춘 뒤 촬영하세요')}
             </span>
           </div>
         )}

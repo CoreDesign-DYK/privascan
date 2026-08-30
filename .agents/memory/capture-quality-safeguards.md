@@ -44,3 +44,9 @@ When a strong internal divider might be mistaken for the document bottom, requir
 **Why:** Covers with photos, barcodes, or footer rules can contain a stronger horizontal transition than the physical lower edge; warping an otherwise valid quad still cuts content when its bottom corners are wrong.
 
 **How to apply:** Apply the continuation check while scoring coarse candidates and again after line refinement. Require sustained support on both sides, skip the check when there is too little exterior frame to judge, and reject uncertainty instead of using a stale or interior crop.
+
+Calibrate detector sharpness thresholds on the same downscaled frame the live detector actually evaluates, then keep a separate post-warp quality gate on the full capture result.
+
+**Why:** A threshold that looks reasonable on native-size synthetic pixels can reject a sharp high-resolution card after detector downscaling, while a live-only check is not enough to prevent a soft saved crop.
+
+**How to apply:** Measure representative sharp and blurred fixtures after the detector's real resize step. Use the live threshold for readiness, and independently reject the perspective-corrected output before saving.
