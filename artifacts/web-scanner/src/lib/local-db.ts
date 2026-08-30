@@ -4,7 +4,7 @@
  * Zero server costs — iOS Documents / Android Downloads accessible via Web Share API.
  */
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { ScannerSettings } from '@/lib/scanner-types';
+import type { PendingEditMode, ScannerSettings } from '@/lib/scanner-types';
 
 export interface LocalScan {
   id: string;
@@ -27,6 +27,8 @@ export interface ActiveScanDraft {
   pages: string[];
   /** A captured image that is still waiting for crop/filter confirmation. */
   pendingPage: string | null;
+  /** Processing rules to use when the pending image is confirmed. */
+  pendingEditMode?: PendingEditMode | null;
 }
 
 interface DocScanDB extends DBSchema {

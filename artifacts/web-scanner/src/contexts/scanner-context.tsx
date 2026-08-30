@@ -4,14 +4,14 @@ import {
 import { type Point } from '@/lib/perspective';
 import {
   type ScanType, type ColorMode, type PaperSize, type ScannerSettings,
-  DEFAULT_SCAN_DPI, normalizeScannerSettings,
+  type PendingEditMode, DEFAULT_SCAN_DPI, normalizeScannerSettings,
 } from '@/lib/scanner-types';
 import {
   clearActiveDraft, getActiveDraft, saveActiveDraft,
 } from '@/lib/local-db';
 
 // Type-only re-exports are erased at runtime — Fast Refresh compatible
-export type { ScanType, ColorMode, PaperSize, ScannerSettings };
+export type { ScanType, ColorMode, PaperSize, ScannerSettings, PendingEditMode };
 
 interface ScannerContextType {
   settings: ScannerSettings;
@@ -29,6 +29,8 @@ interface ScannerContextType {
   /** Raw captured image waiting to be edited */
   pendingPage: string | null;
   setPendingPage: (url: string | null) => void;
+  pendingEditMode: PendingEditMode | null;
+  setPendingEditMode: (mode: PendingEditMode | null) => void;
   /** Document corners detected by the camera (or null if none found) */
   detectedCorners: [Point, Point, Point, Point] | null;
   setDetectedCorners: (c: [Point, Point, Point, Point] | null) => void;
@@ -47,6 +49,7 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [mode, setMode]                       = useState<'auto' | 'manual'>('manual');
   const [pendingPage, setPendingPage]         = useState<string | null>(null);
+  const [pendingEditMode, setPendingEditMode] = useState<PendingEditMode | null>(null);
   const [detectedCorners, setDetectedCorners] = useState<[Point, Point, Point, Point] | null>(null);
   const [draftHydrated, setDraftHydrated]     = useState(false);
   const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -62,6 +65,7 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
         setFullSettings(normalizeScannerSettings(draft.settings));
         setPages(draft.pages);
         setPendingPage(draft.pendingPage);
+        setPendingEditMode(draft.pendingEditMode ?? null);
       })
       .catch(() => {
         // IndexedDB can be unavailable in private browsing; scanning still works
@@ -86,7 +90,7 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
     draftSaveTimer.current = setTimeout(() => {
       const hasWork = pages.length > 0 || !!pendingPage;
       const action = hasWork
-        ? saveActiveDraft({ settings, pages, pendingPage })
+        ? saveActiveDraft({ settings, pages, pendingPage, pendingEditMode })
         : clearActiveDraft();
       action.catch(() => {});
     }, 250);
@@ -94,7 +98,7 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
     return () => {
       if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current);
     };
-  }, [draftHydrated, settings, pages, pendingPage]);
+  }, [draftHydrated, settings, pages, pendingPage, pendingEditMode]);
 
   const setSettings = (s: Partial<ScannerSettings>) =>
     setFullSettings(prev => normalizeScannerSettings({ ...prev, ...s }));
@@ -109,6 +113,7 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
     setPages([]);
     setActivePageIndex(0);
     setPendingPage(null);
+    setPendingEditMode(null);
     setDetectedCorners(null);
     void clearActiveDraft().catch(() => {});
   }, []);
@@ -121,6 +126,7 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
       draftHydrated,
       mode, setMode,
       pendingPage, setPendingPage,
+      pendingEditMode, setPendingEditMode,
       detectedCorners, setDetectedCorners,
     }}>
       {children}

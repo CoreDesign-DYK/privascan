@@ -4,6 +4,7 @@
 export type ScanType     = 'document' | 'photo';
 export type ScanMode     = 'document' | 'book' | 'presentation' | 'id-cards';
 export type ColorMode    = 'color' | 'greyscale';
+export type PendingEditMode = 'document' | 'presentation';
 
 export const PAPER_SIZES = ['A4', 'A5', 'Letter'] as const;
 export type PaperSize = typeof PAPER_SIZES[number];

@@ -16,6 +16,7 @@ import { ScannerProvider } from '@/contexts/scanner-context';
 import { LanguageProvider } from '@/contexts/language-context';
 import { TopBar } from '@/components/top-bar';
 import ScannerScreen from '@/pages/scanner';
+import EditScreen from '@/pages/edit';
 import PreviewScreen from '@/pages/preview';
 import GalleryScreen from '@/pages/gallery';
 import MarkupScreen from '@/pages/markup';
@@ -32,13 +33,14 @@ const queryClient = new QueryClient();
 
 function Router() {
   const [location] = useLocation();
-  const hideTopBar = ['/', '/markup', '/preview', '/home', '/privacy-policy', '/terms-of-service', '/login'].includes(location);
+  const hideTopBar = ['/', '/edit', '/markup', '/preview', '/home', '/privacy-policy', '/terms-of-service', '/login'].includes(location);
 
   return (
     <RoutedErrorBoundary>
       <ScannerProvider>
         <Switch>
           <Route path="/" component={ScannerScreen} />
+          <Route path="/edit" component={EditScreen} />
           <Route path="/preview" component={PreviewScreen} />
           <Route path="/gallery" component={GalleryScreen} />
           <Route path="/markup" component={MarkupScreen} />

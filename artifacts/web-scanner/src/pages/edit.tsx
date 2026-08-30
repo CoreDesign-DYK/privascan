@@ -16,9 +16,18 @@ import { useScannerContext } from '@/contexts/scanner-context';
 import { warpPerspective, estimateOutputSize, type Point } from '@/lib/perspective';
 import { filterCanvas, FILTER_LABELS, type FilterType } from '@/lib/filters';
 import { defaultCorners, detectCornersFromCanvas } from '@/lib/edge-detection';
+import {
+  detectPresentationFromCanvas,
+  isValidPresentationQuad,
+  presentationDefaultCorners,
+  presentationOutputSize,
+} from '@/lib/presentation-detection';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { isIOS } from '@/lib/platform';
+import { enhanceDocumentCanvas } from '@/lib/filters';
+import { hasRequiredSharpness } from '@/lib/scan-quality';
+import { getPaperPixelSize } from '@/lib/scanner-types';
 
 const FILTERS: FilterType[] = ['original', 'auto', 'bw', 'highcontrast'];
 
@@ -36,8 +45,9 @@ export default function EditScreen() {
   const [, setLocation] = useLocation();
   const {
     pendingPage, setPendingPage,
+    pendingEditMode, setPendingEditMode,
     detectedCorners, setDetectedCorners,
-    addPage,
+    addPage, settings,
   } = useScannerContext();
 
   /* ── image loading ────────────────────────────────────────────────────────── */
@@ -88,17 +98,27 @@ export default function EditScreen() {
         const offscreen = document.createElement('canvas');
         offscreen.width = nw; offscreen.height = nh;
         offscreen.getContext('2d')!.drawImage(img, 0, 0);
-        const detected = detectCornersFromCanvas(offscreen);
+        const detected = pendingEditMode === 'presentation'
+          ? detectPresentationFromCanvas(offscreen)?.corners ?? null
+          : detectCornersFromCanvas(offscreen);
         if (detected) {
           setCorners(detected.map(p => ({ x: p.x * scale, y: p.y * scale })) as [Point, Point, Point, Point]);
         } else {
-          setCorners(defaultCorners(dw, dh));
+          setCorners(
+            pendingEditMode === 'presentation'
+              ? presentationDefaultCorners(dw, dh)
+              : defaultCorners(dw, dh),
+          );
         }
       } catch {
-        setCorners(defaultCorners(dw, dh));
+        setCorners(
+          pendingEditMode === 'presentation'
+            ? presentationDefaultCorners(dw, dh)
+            : defaultCorners(dw, dh),
+        );
       }
     }
-  }, [detectedCorners]);
+  }, [detectedCorners, pendingEditMode]);
 
   /* ── Pointer events ──────────────────────────────────────────────────────── */
   const startDrag = (e: React.PointerEvent, target: DragTarget) => {
@@ -147,12 +167,24 @@ export default function EditScreen() {
   const onPointerUp = () => { dragging.current = null; };
 
   const resetCorners = () => {
-    if (displayW && displayH) setCorners(defaultCorners(displayW, displayH));
+    if (!displayW || !displayH) return;
+    setCorners(
+      pendingEditMode === 'presentation'
+        ? presentationDefaultCorners(displayW, displayH)
+        : defaultCorners(displayW, displayH),
+    );
   };
 
   /* ── Apply: warp + filter → addPage ─────────────────────────────────────── */
   const handleApply = async () => {
     if (!pendingPage || !corners) return;
+    if (
+      pendingEditMode === 'presentation' &&
+      !isValidPresentationQuad(corners, displayW, displayH)
+    ) {
+      toast.error('네 모서리가 교차하지 않도록 화면 가장자리에 맞춰 주세요');
+      return;
+    }
     setApplying(true);
     const tid = toast.loading('Processing…');
     try {
@@ -166,15 +198,43 @@ export default function EditScreen() {
       const scaleX = natW / displayW, scaleY = natH / displayH;
       const natCorners = corners.map(p => ({ x: p.x * scaleX, y: p.y * scaleY })) as [Point, Point, Point, Point];
 
-      const { w: outW, h: outH } = estimateOutputSize(natCorners);
-      const warped   = warpPerspective(srcCanvas, natCorners, outW, outH);
-      const filtered = filterCanvas(warped, filter, brightness, contrast);
+      const useIOSQualityPipeline = isIOS();
+      const outputSize = pendingEditMode === 'presentation'
+        ? presentationOutputSize(
+            natCorners,
+            getPaperPixelSize(settings.paperSize, settings.targetDpi, 'landscape').width,
+            useIOSQualityPipeline ? 6_500_000 : Number.POSITIVE_INFINITY,
+          )
+        : (() => {
+            const { w, h } = estimateOutputSize(natCorners);
+            return { width: w, height: h };
+          })();
+      const warped = warpPerspective(
+        srcCanvas,
+        natCorners,
+        outputSize.width,
+        outputSize.height,
+        {
+          maxCpuPixels: useIOSQualityPipeline
+            ? 6_500_000
+            : outputSize.width * outputSize.height,
+        },
+      );
+      if (!hasRequiredSharpness(warped)) {
+        toast.error('초점이 흐립니다. 다시 촬영해 주세요', { id: tid });
+        return;
+      }
+      const enhanced = pendingEditMode === 'presentation' && useIOSQualityPipeline
+        ? enhanceDocumentCanvas(warped)
+        : warped;
+      const filtered = filterCanvas(enhanced, filter, brightness, contrast);
 
       addPage(filtered.toDataURL('image/jpeg', isIOS() ? 0.98 : 0.92));
       toast.success('Page added!', { id: tid });
       setPendingPage(null);
+      setPendingEditMode(null);
       setDetectedCorners(null);
-      setLocation('/');
+      setLocation(pendingEditMode === 'presentation' ? '/preview' : '/');
     } catch (err) {
       console.error(err);
       toast.error('Processing failed', { id: tid });
@@ -190,6 +250,8 @@ export default function EditScreen() {
     bottom: midpoint(corners[2], corners[3]),
     left:   midpoint(corners[0], corners[3]),
   } : null;
+  const cornersValid = !corners || pendingEditMode !== 'presentation' ||
+    isValidPresentationQuad(corners, displayW, displayH);
 
   /* ── Render ──────────────────────────────────────────────────────────────── */
   return (
@@ -200,16 +262,23 @@ export default function EditScreen() {
         <Button
           variant="ghost" size="icon"
           className="text-white/70 hover:text-white hover:bg-white/10"
-          onClick={() => { setPendingPage(null); setDetectedCorners(null); setLocation('/'); }}
+          onClick={() => {
+            setPendingPage(null);
+            setPendingEditMode(null);
+            setDetectedCorners(null);
+            setLocation('/');
+          }}
         >
           <ChevronLeft className="w-6 h-6" />
         </Button>
 
-        <span className="text-white font-semibold text-sm">Crop &amp; Filter</span>
+        <span className="text-white font-semibold text-sm">
+          {pendingEditMode === 'presentation' ? 'Adjust screen corners' : 'Crop & Filter'}
+        </span>
 
         <Button
           size="sm"
-          disabled={applying || !corners}
+          disabled={applying || !corners || !cornersValid}
           className="rounded-full bg-blue-500 hover:bg-blue-600 text-white font-semibold px-5"
           onClick={handleApply}
         >
@@ -259,7 +328,7 @@ export default function EditScreen() {
                 <polygon
                   points={corners.map(p => `${p.x},${p.y}`).join(' ')}
                   fill="none"
-                  stroke="#3b82f6"
+                  stroke={cornersValid ? '#3b82f6' : '#ef4444'}
                   strokeWidth="2"
                 />
 
@@ -360,6 +429,16 @@ export default function EditScreen() {
 
       {/* Controls panel */}
       <div className="shrink-0 bg-gray-900 rounded-t-2xl px-4 pt-4 pb-6 space-y-4">
+        {pendingEditMode === 'presentation' && (
+          <p className={cn(
+            'text-xs text-center',
+            cornersValid ? 'text-white/60' : 'text-red-400',
+          )}>
+            {cornersValid
+              ? '네 점을 실제 화면의 모서리에 맞추면 정면 16:9 화면으로 보정됩니다.'
+              : '모서리가 교차했거나 선택 영역이 너무 작습니다.'}
+          </p>
+        )}
 
         <div className="flex justify-end">
           <button

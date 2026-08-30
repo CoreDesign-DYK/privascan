@@ -406,16 +406,29 @@ function warpPerspectiveCPU(
   const target = fitWarpSizeToPixelLimit(outW, outH, requestedMaxPixels);
   const targetW = target.width;
   const targetH = target.height;
+  const minX = Math.max(0, Math.floor(Math.min(...corners.map(point => point.x))) - 2);
+  const minY = Math.max(0, Math.floor(Math.min(...corners.map(point => point.y))) - 2);
+  const maxX = Math.min(sourceW, Math.ceil(Math.max(...corners.map(point => point.x))) + 2);
+  const maxY = Math.min(sourceH, Math.ceil(Math.max(...corners.map(point => point.y))) + 2);
+  const cropWidth = Math.max(1, maxX - minX);
+  const cropHeight = Math.max(1, maxY - minY);
+  const sourceTarget = fitWarpSizeToPixelLimit(cropWidth, cropHeight, requestedMaxPixels);
+  const sourceScaleX = sourceTarget.width / cropWidth;
+  const sourceScaleY = sourceTarget.height / cropHeight;
+  const scaledCorners = corners.map(point => ({
+    x: (point.x - minX) * sourceScaleX,
+    y: (point.y - minY) * sourceScaleY,
+  })) as [Point, Point, Point, Point];
 
   const homography = solveHomography(
     [[0, 0], [targetW, 0], [targetW, targetH], [0, targetH]],
-    corners.map(p => [p.x, p.y]) as [number, number][],
+    scaledCorners.map(p => [p.x, p.y]) as [number, number][],
   );
   if (!homography) return null;
 
   const sourceCanvas = document.createElement('canvas');
-  sourceCanvas.width = sourceW;
-  sourceCanvas.height = sourceH;
+  sourceCanvas.width = sourceTarget.width;
+  sourceCanvas.height = sourceTarget.height;
   const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true });
   const output = document.createElement('canvas');
   output.width = targetW;
@@ -424,8 +437,18 @@ function warpPerspectiveCPU(
   if (!sourceCtx || !outputCtx) return null;
 
   try {
-    sourceCtx.drawImage(src, 0, 0, sourceW, sourceH);
-    const input = sourceCtx.getImageData(0, 0, sourceW, sourceH);
+    sourceCtx.drawImage(
+      src,
+      minX,
+      minY,
+      cropWidth,
+      cropHeight,
+      0,
+      0,
+      sourceTarget.width,
+      sourceTarget.height,
+    );
+    const input = sourceCtx.getImageData(0, 0, sourceTarget.width, sourceTarget.height);
     const result = outputCtx.createImageData(targetW, targetH);
     const sourceData = input.data;
     const resultData = result.data;
@@ -436,7 +459,12 @@ function warpPerspectiveCPU(
         if (Math.abs(q) < 1e-8) continue;
         const sourceX = (homography[0] * x + homography[1] * y + homography[2]) / q;
         const sourceY = (homography[3] * x + homography[4] * y + homography[5]) / q;
-        if (sourceX < 0 || sourceY < 0 || sourceX >= sourceW - 1 || sourceY >= sourceH - 1) continue;
+        if (
+          sourceX < 0 ||
+          sourceY < 0 ||
+          sourceX >= sourceTarget.width - 1 ||
+          sourceY >= sourceTarget.height - 1
+        ) continue;
 
         const left = Math.floor(sourceX);
         const top = Math.floor(sourceY);
@@ -445,9 +473,9 @@ function warpPerspectiveCPU(
         const fx = sourceX - left;
         const fy = sourceY - top;
         const outputIndex = (y * targetW + x) * 4;
-        const topLeft = (top * sourceW + left) * 4;
+        const topLeft = (top * sourceTarget.width + left) * 4;
         const topRight = topLeft + 4;
-        const bottomLeft = ((bottom * sourceW + left) * 4);
+        const bottomLeft = ((bottom * sourceTarget.width + left) * 4);
         const bottomRight = bottomLeft + 4;
         for (let channel = 0; channel < 4; channel++) {
           const topValue = sourceData[topLeft + channel] * (1 - fx) + sourceData[topRight + channel] * fx;

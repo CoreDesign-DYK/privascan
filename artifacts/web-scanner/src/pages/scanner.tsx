@@ -23,6 +23,11 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { detectDocumentCorners, detectCornersFromCanvas } from '@/lib/edge-detection';
 import { detectBookFromCanvas, type BookDetection } from '@/lib/book-detection';
+import {
+  detectPresentationCorners,
+  detectPresentationFromCanvas,
+  presentationOutputSize,
+} from '@/lib/presentation-detection';
 import { estimateOutputSize, type Point, warpBookPage, warpPerspective } from '@/lib/perspective';
 import {
   type ScannerSettings,
@@ -39,14 +44,13 @@ import {
 } from '@/lib/scanner-types';
 import { enhanceDocumentCanvas } from '@/lib/filters';
 import { isIOS } from '@/lib/platform';
+import { hasRequiredSharpness } from '@/lib/scan-quality';
 import fileBoxIcon from '@/assets/file-box-icon.png';
 
 // Wait between completed detector passes instead of running on a fixed
 // interval. On WKWebView this leaves the main thread available for touch input.
 const EDGE_INTERVAL_MS = 250;
 const STABLE_TARGET = 10;
-const MIN_SHARPNESS_VARIANCE = 28;
-const MIN_DETAIL_COVERAGE = 0.006;
 const TRACK_BLEND = 0.58;
 const MAX_TRACK_JUMP = 0.08;
 const JUMP_CONFIRM_FRAMES = 2;
@@ -55,6 +59,7 @@ const INITIAL_TRACK_CONFIRM_FRAMES = 2;
 const MAX_MISSED_EDGE_FRAMES = 6;
 const MAX_IOS_CAPTURE_PIXELS = 6_500_000;
 const MAX_NATIVE_BOOK_PIXELS = 6_500_000;
+const MAX_NATIVE_PRESENTATION_PIXELS = 6_500_000;
 const BOOK_FOLD_STABLE_DISTANCE = 0.025;
 const BOOK_FOLD_CONFIRM_FRAMES = 3;
 const ID_CARD_WIDTH_MM = 85.6;
@@ -176,6 +181,38 @@ function createDocumentPage(
   return output.toDataURL('image/jpeg', outputJpegQuality(enhanceForIOS));
 }
 
+function createPresentationPage(
+  source: HTMLCanvasElement,
+  corners: [Point, Point, Point, Point] | null,
+  settings: ScannerSettings,
+  enhanceForIOS = false,
+  maxPixels = enhanceForIOS ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
+): string | null {
+  if (!corners) return null;
+  const target = getPaperPixelSize(settings.paperSize, settings.targetDpi, 'landscape');
+  const outputSize = presentationOutputSize(corners, target.width, maxPixels);
+  const warped = warpPerspective(
+    source,
+    corners,
+    outputSize.width,
+    outputSize.height,
+    {
+      maxCpuPixels: Number.isFinite(maxPixels)
+        ? maxPixels
+        : outputSize.width * outputSize.height,
+    },
+  );
+  if (!hasRequiredSharpness(warped)) return null;
+  const output = enhanceForIOS ? enhanceDocumentCanvas(warped) : warped;
+  console.info('[PrivaScan] presentation output', {
+    source: `${source.width}x${source.height}`,
+    output: `${output.width}x${output.height}`,
+    requestedDpi: settings.targetDpi,
+    aspectRatio: Number((output.width / output.height).toFixed(3)),
+  });
+  return output.toDataURL('image/jpeg', outputJpegQuality(enhanceForIOS));
+}
+
 function captureVideoFrame(
   video: HTMLVideoElement,
   greyscale: boolean,
@@ -191,42 +228,6 @@ function captureVideoFrame(
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
   ctx.filter = 'none';
   return canvas;
-}
-
-function hasRequiredSharpness(canvas: HTMLCanvasElement): boolean {
-  const { variance, detailCoverage } = measureSharpness(canvas);
-  return variance >= MIN_SHARPNESS_VARIANCE && detailCoverage >= MIN_DETAIL_COVERAGE;
-}
-
-function measureSharpness(canvas: HTMLCanvasElement): { variance: number; detailCoverage: number } {
-  const sample = document.createElement('canvas');
-  const width = 180;
-  const height = Math.max(120, Math.round(width * canvas.height / canvas.width));
-  sample.width = width;
-  sample.height = height;
-  const ctx = sample.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return { variance: 0, detailCoverage: 0 };
-  ctx.drawImage(canvas, 0, 0, width, height);
-  const { data } = ctx.getImageData(0, 0, width, height);
-  const laplacian: number[] = [];
-  const inset = Math.max(4, Math.round(Math.min(width, height) * 0.07));
-  let detailPixels = 0;
-  const gray = (x: number, y: number) => {
-    const i = (y * width + x) * 4;
-    return 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-  };
-  for (let y = inset; y < height - inset; y++) {
-    for (let x = inset; x < width - inset; x++) {
-      const value = 4 * gray(x, y) - gray(x - 1, y) - gray(x + 1, y) -
-        gray(x, y - 1) - gray(x, y + 1);
-      laplacian.push(value);
-      if (Math.abs(value) >= 10) detailPixels += 1;
-    }
-  }
-  if (!laplacian.length) return { variance: 0, detailCoverage: 0 };
-  const mean = laplacian.reduce((sum, value) => sum + value, 0) / laplacian.length;
-  const variance = laplacian.reduce((sum, value) => sum + (value - mean) ** 2, 0) / laplacian.length;
-  return { variance, detailCoverage: detailPixels / laplacian.length };
 }
 
 function createBookPageDataUrls(
@@ -586,7 +587,7 @@ export default function ScannerScreen() {
   const { videoRef, startCamera, stopCamera, hasPermission, isMockMode, focusReady, isNative, captureNativePhoto } = useCamera();
   const {
     mode, setMode, pages, addPage, removePage, clearPages, settings, setSettings,
-    setActivePageIndex,
+    setActivePageIndex, setPendingPage, setPendingEditMode, setDetectedCorners,
   } = useScannerContext();
 
   const canvasRef            = useRef<HTMLCanvasElement>(null);
@@ -641,6 +642,7 @@ export default function ScannerScreen() {
   const [needsClearerCapture, setNeedsClearerCapture] = useState(false);
   const captureAutoRef   = useRef<() => void>(() => {});
   const captureBookAutoRef = useRef<() => void>(() => {});
+  const capturePresentationAutoRef = useRef<() => void>(() => {});
   const scanModeRef      = useRef<ScanMode>('document');
 
   useEffect(() => { modeRef.current      = mode;     }, [mode]);
@@ -702,7 +704,7 @@ export default function ScannerScreen() {
     trackConfirmFrames.current = 0;
     previousBookDetectionRef.current = null;
     stableBookFoldFrames.current = 0;
-  }, [mode]);
+  }, [mode, scanMode]);
 
   // A newly focused stream can resolve edge details differently. Start its
   // hold-steady count fresh instead of inheriting an earlier camera frame.
@@ -743,6 +745,10 @@ export default function ScannerScreen() {
     if (!isMockMode && !focusReady) return;
     if (scanModeRef.current === 'book') {
       captureBookAutoRef.current();
+      return;
+    }
+    if (scanModeRef.current === 'presentation') {
+      capturePresentationAutoRef.current();
       return;
     }
     const pageNum = pagesLenRef.current + 1;
@@ -888,7 +894,37 @@ export default function ScannerScreen() {
       return;
     }
 
-    /* ── Document / Presentation / 일반 ───────────────────────────────── */
+    /* ── Presentation: wide screen → 16:9 front-facing result ──────────── */
+    if (sm === 'presentation') {
+      const detection = detectPresentationFromCanvas(canvas);
+      if (!detection) {
+        setPendingPage(canvas.toDataURL('image/jpeg', q));
+        setPendingEditMode('presentation');
+        setDetectedCorners(null);
+        toast.info('화면 모서리를 자동으로 찾지 못했습니다. 네 모서리를 직접 맞춰 주세요');
+        setLocation('/edit');
+        return;
+      }
+      const page = createPresentationPage(
+        canvas,
+        detection.corners,
+        settingsRef.current,
+        false,
+        MAX_NATIVE_PRESENTATION_PIXELS,
+      );
+      if (!page) {
+        toast.error('화면의 초점이 흐립니다. 카메라를 고정한 뒤 다시 촬영해 주세요');
+        return;
+      }
+      addPage(page);
+      setActivePageIndex(base);
+      setCapturedLabel(base + 1);
+      setTimeout(() => setCapturedLabel(null), 1800);
+      setLocation('/preview');
+      return;
+    }
+
+    /* ── Document / 일반 ──────────────────────────────────────────────── */
     const corners = detectCornersFromCanvas(canvas);
     const page = createDocumentPage(canvas, corners, settingsRef.current);
     if (!page) {
@@ -900,7 +936,11 @@ export default function ScannerScreen() {
     setCapturedLabel(base + 1);
     setTimeout(() => setCapturedLabel(null), 1800);
     setLocation('/preview');
-  }, [captureNativePhoto, addPage, setActivePageIndex, setLocation, triggerCaptureEffects, idStage]);
+  }, [
+    captureNativePhoto, addPage, setActivePageIndex, setLocation,
+    setPendingPage, setPendingEditMode, setDetectedCorners,
+    triggerCaptureEffects, idStage,
+  ]);
 
   /* ── Edge detection loop ────────────────────────────────────────────────── */
   useEffect(() => {
@@ -1016,6 +1056,14 @@ export default function ScannerScreen() {
           }
           previousBookDetectionRef.current = detectedBook;
           bookFoldStable = stableBookFoldFrames.current >= BOOK_FOLD_CONFIRM_FRAMES;
+        } else if (scanModeRef.current === 'presentation') {
+          corners = detectPresentationCorners(
+            video,
+            video.videoWidth,
+            video.videoHeight,
+          )?.corners ?? null;
+          previousBookDetectionRef.current = null;
+          stableBookFoldFrames.current = 0;
         } else {
           corners = detectDocumentCorners(video, video.videoWidth, video.videoHeight);
           previousBookDetectionRef.current = null;
@@ -1232,45 +1280,43 @@ export default function ScannerScreen() {
         video,
         grey,
       );
-       // Re-detect the exact frame. Never promote an unverified camera frame
-       // to a saved presentation image.
-       const corners = detectCornersFromCanvas(src);
-       if (!corners) {
-         toast.error('문서 경계 또는 초점을 확인한 뒤 다시 촬영하세요');
-         return;
-       }
-       const { w, h } = estimateOutputSize(corners);
-       const target = getPaperPixelSize(
-         settingsRef.current.paperSize,
-         settingsRef.current.targetDpi,
-         'landscape',
-       );
-       const outputSize = fitSourceWithinOutput(
-         w,
-         h,
-         target.width,
-         target.height,
-         isIOS() ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
-       );
-       const warped = warpPerspective(
-         src,
-         corners,
-         outputSize.width,
-         outputSize.height,
-         isIOS() ? { maxCpuPixels: MAX_IOS_CAPTURE_PIXELS } : undefined,
-       );
-       if (!hasRequiredSharpness(warped)) {
-         toast.error('초점이 맞지 않았습니다. 잠시 기다린 뒤 다시 촬영하세요');
-         return;
-       }
-        addPage(warped.toDataURL('image/jpeg', outputJpegQuality(isIOS())));
+      // Re-detect the exact high-resolution frame. The live outline guides the
+      // user, but only capture-frame geometry is trusted for rectification.
+      const detection = detectPresentationFromCanvas(src);
+      if (!detection) {
+        setPendingPage(src.toDataURL('image/jpeg', outputJpegQuality(isIOS())));
+        setPendingEditMode('presentation');
+        setDetectedCorners(edgeCorners);
+        toast.info('화면 모서리를 자동으로 찾지 못했습니다. 네 모서리를 직접 맞춰 주세요');
+        setLocation('/edit');
+        return;
+      }
+      const page = createPresentationPage(
+        src,
+        detection.corners,
+        settingsRef.current,
+        isIOS(),
+      );
+      if (!page) {
+        toast.error('초점이 맞지 않았습니다. 잠시 기다린 뒤 다시 촬영하세요');
+        return;
+      }
+      addPage(page);
     }
 
     setCapturedLabel(pageNum);
     setTimeout(() => setCapturedLabel(null), 1800);
     setActivePageIndex(pageNum - 1);
     setLocation('/preview');
-   }, [isMockMode, focusReady, videoRef, addPage, setActivePageIndex, setLocation, triggerCaptureEffects]);
+   }, [
+     isMockMode, focusReady, videoRef, edgeCorners, addPage,
+     setPendingPage, setPendingEditMode, setDetectedCorners,
+     setActivePageIndex, setLocation, triggerCaptureEffects,
+   ]);
+
+  useEffect(() => {
+    capturePresentationAutoRef.current = presentationCapture;
+  }, [presentationCapture]);
 
   /* ── ID Cards capture (2-stage) ─────────────────────────────────────────── */
   const idCardsCapture = useCallback(() => {
@@ -1482,6 +1528,59 @@ export default function ScannerScreen() {
       {!isMockMode && !isNative && (
         <video ref={videoRef} autoPlay playsInline muted
           className="absolute inset-0 w-full h-full object-cover z-0" />
+      )}
+      {/* Source-coordinate overlays share the live video's full-root viewport
+          and the same object-cover transform, so detected corners stay aligned. */}
+      {!isMockMode && scanMode !== 'book' && edgeCorners && (
+        <svg
+          className="absolute inset-0 w-full h-full z-10 pointer-events-none"
+          viewBox={`0 0 ${viewW} ${viewH}`}
+          preserveAspectRatio="xMidYMid slice"
+        >
+          <polygon
+            points={edgeCorners.map(point => `${point.x},${point.y}`).join(' ')}
+            fill={edgeFill}
+            stroke={edgeStroke}
+            strokeWidth="10"
+            strokeLinejoin="round"
+            style={{
+              opacity: edgeIsLive ? 1 : 0.62,
+              transition: 'opacity 0.18s ease, fill 0.3s, stroke 0.3s ease',
+            }}
+          />
+        </svg>
+      )}
+      {!isMockMode && scanMode === 'book' && bookDetection && (
+        <svg
+          className="absolute inset-0 w-full h-full z-10 pointer-events-none"
+          viewBox={`0 0 ${viewW} ${viewH}`}
+          preserveAspectRatio="xMidYMid slice"
+        >
+          <polygon
+            points={bookDetection.left.map(point => `${point.x},${point.y}`).join(' ')}
+            fill={edgeFill}
+            stroke={edgeStroke}
+            strokeWidth="8"
+            strokeLinejoin="round"
+          />
+          <polygon
+            points={bookDetection.right.map(point => `${point.x},${point.y}`).join(' ')}
+            fill={edgeFill}
+            stroke={edgeStroke}
+            strokeWidth="8"
+            strokeLinejoin="round"
+          />
+          <polyline
+            points={bookDetection.foldCurve.map(point => `${point.x},${point.y}`).join(' ')}
+            fill="none"
+            stroke="#f8fafc"
+            strokeWidth="7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray="22 18"
+            opacity="0.92"
+          />
+        </svg>
       )}
       {/* ── Native camera placeholder (Android) ── */}
       {isNative && (
@@ -1774,7 +1873,15 @@ export default function ScannerScreen() {
         {scanMode === 'presentation' && (
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center"
             style={{ top:'12%', bottom:'32%', transform:'translateY(48px)' }}>
-            <div className="relative flex-shrink-0" style={{ width:'88vw', maxWidth:'420px', aspectRatio:'16/9' }}>
+            <div
+              className="relative flex-shrink-0 transition-opacity duration-200"
+              style={{
+                width:'88vw',
+                maxWidth:'420px',
+                aspectRatio:'16/9',
+                opacity: edgeCorners && !isMockMode ? 0.2 : 1,
+              }}
+            >
               <div className="absolute top-0 left-0 w-8 h-8 border-t-[3px] border-l-[3px] border-white/55" />
               <div className="absolute top-0 right-0 w-8 h-8 border-t-[3px] border-r-[3px] border-white/55" />
               <div className="absolute bottom-0 left-0 w-8 h-8 border-b-[3px] border-l-[3px] border-white/55" />
@@ -1801,65 +1908,6 @@ export default function ScannerScreen() {
               </div>
             ))}
           </div>
-        )}
-
-        {/* ── B: Dynamic SVG overlay — only for detected document (Method B) ── */}
-        {!isMockMode && scanMode !== 'book' && edgeCorners && (
-          <svg
-            className="absolute inset-0 w-full h-full z-10 pointer-events-none"
-            viewBox={`0 0 ${viewW} ${viewH}`}
-            preserveAspectRatio="xMidYMid slice"
-          >
-             {/* Single connected document outline + subtle interior tint.
-                 Do not draw a second L-bracket layer here: it can diverge
-                 from the fitted quad and appear doubled at an angle. */}
-            <polygon
-              points={edgeCorners.map(p => `${p.x},${p.y}`).join(' ')}
-              fill={edgeFill}
-              stroke={edgeStroke}
-                strokeWidth="10"
-              strokeLinejoin="round"
-              style={{
-                opacity: edgeIsLive ? 1 : 0.62,
-                transition: 'opacity 0.18s ease, fill 0.3s, stroke 0.3s ease',
-              }}
-            />
-          </svg>
-        )}
-
-        {/* Book detection: each page is outlined independently and the measured
-            binding curve is shown as a dashed guide. */}
-        {!isMockMode && scanMode === 'book' && bookDetection && (
-          <svg
-            className="absolute inset-0 w-full h-full z-10 pointer-events-none"
-            viewBox={`0 0 ${viewW} ${viewH}`}
-            preserveAspectRatio="xMidYMid slice"
-          >
-            <polygon
-              points={bookDetection.left.map(point => `${point.x},${point.y}`).join(' ')}
-              fill={edgeFill}
-              stroke={edgeStroke}
-              strokeWidth="8"
-              strokeLinejoin="round"
-            />
-            <polygon
-              points={bookDetection.right.map(point => `${point.x},${point.y}`).join(' ')}
-              fill={edgeFill}
-              stroke={edgeStroke}
-              strokeWidth="8"
-              strokeLinejoin="round"
-            />
-            <polyline
-              points={bookDetection.foldCurve.map(point => `${point.x},${point.y}`).join(' ')}
-              fill="none"
-              stroke="#f8fafc"
-              strokeWidth="7"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeDasharray="22 18"
-              opacity="0.92"
-            />
-          </svg>
         )}
 
         {/* "Hold still…" / "Capturing…" label */}
