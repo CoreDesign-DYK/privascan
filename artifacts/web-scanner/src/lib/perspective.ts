@@ -9,6 +9,12 @@ export interface WarpPerspectiveOptions {
   maxCpuPixels?: number;
 }
 
+export interface CurvedPageWarp {
+  corners: [Point, Point, Point, Point];
+  foldCurve: Point[];
+  side: 'left' | 'right';
+}
+
 export function fitWarpSizeToPixelLimit(
   width: number,
   height: number,
@@ -82,6 +88,300 @@ export function warpPerspective(
   }
 
   return dst;
+}
+
+/**
+ * Warp one book page while keeping the binding edge curved.
+ *
+ * A homography can flatten a planar page, but it cannot flatten the small
+ * cylinder made by a bound book. This mesh maps each horizontal output row
+ * between the outside edge and the measured binding curve. WebGL handles the
+ * normal path; the pixel sampler below keeps the same geometry available when
+ * WebGL is disabled.
+ */
+export function warpBookPage(
+  src: HTMLCanvasElement | HTMLImageElement,
+  page: CurvedPageWarp,
+  outW: number,
+  outH: number,
+  options: WarpPerspectiveOptions = {},
+): HTMLCanvasElement {
+  const gpuResult = warpBookPageWebGL(src, page, outW, outH);
+  if (gpuResult) return gpuResult;
+
+  // Preserve the requested output dimensions when the caller did not set a
+  // platform ceiling. WebGL availability must not silently change effective
+  // DPI. Source reads are bounded independently inside the CPU implementation.
+  const target = Number.isFinite(options.maxCpuPixels)
+    ? fitWarpSizeToPixelLimit(outW, outH, options.maxCpuPixels!)
+    : { width: outW, height: outH };
+  const sourceReadLimit = Number.isFinite(options.maxCpuPixels)
+    ? options.maxCpuPixels!
+    : Math.max(2_400_000, target.width * target.height);
+  const cpuResult = warpBookPageCPU(
+    src,
+    page,
+    target.width,
+    target.height,
+    sourceReadLimit,
+  );
+  if (cpuResult) return cpuResult;
+
+  // This last-resort path is intentionally simple and keeps the same
+  // conservative page geometry if a browser refuses pixel reads.
+  return warpPerspective(src, page.corners, target.width, target.height, options);
+}
+
+function curvedPageSourcePoint(
+  page: CurvedPageWarp,
+  u: number,
+  v: number,
+): Point {
+  const [TL, TR, BR, BL] = page.corners;
+  const outside = page.side === 'left'
+    ? lerp2(TL, BL, v)
+    : lerp2(TR, BR, v);
+  const fold = sampleCurve(page.foldCurve, v);
+  return page.side === 'left'
+    ? lerp2(outside, fold, u)
+    : lerp2(fold, outside, u);
+}
+
+function sampleCurve(curve: Point[], t: number): Point {
+  if (!curve.length) return { x: 0, y: 0 };
+  if (curve.length === 1) return curve[0];
+  const position = Math.max(0, Math.min(1, t)) * (curve.length - 1);
+  const index = Math.min(curve.length - 2, Math.floor(position));
+  return lerp2(curve[index], curve[index + 1], position - index);
+}
+
+function warpBookPageWebGL(
+  src: HTMLCanvasElement | HTMLImageElement,
+  page: CurvedPageWarp,
+  outW: number,
+  outH: number,
+): HTMLCanvasElement | null {
+  const sourceW = src instanceof HTMLImageElement ? src.naturalWidth : src.width;
+  const sourceH = src instanceof HTMLImageElement ? src.naturalHeight : src.height;
+  if (!sourceW || !sourceH || !outW || !outH) return null;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = outW;
+  canvas.height = outH;
+  const gl = canvas.getContext('webgl', {
+    alpha: false,
+    antialias: true,
+    premultipliedAlpha: false,
+  });
+  if (!gl) return null;
+
+  const maxTexture = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
+  const maxRenderbuffer = gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) as number;
+  const maxViewport = gl.getParameter(gl.MAX_VIEWPORT_DIMS) as Int32Array;
+  if (
+    sourceW > maxTexture || sourceH > maxTexture ||
+    outW > maxRenderbuffer || outH > maxRenderbuffer ||
+    outW > maxViewport[0] || outH > maxViewport[1]
+  ) return null;
+
+  const vertexShader = compileShader(gl, gl.VERTEX_SHADER, `
+    attribute vec2 aPosition;
+    attribute vec2 aTexCoord;
+    varying vec2 vTexCoord;
+    void main() {
+      gl_Position = vec4(aPosition, 0.0, 1.0);
+      vTexCoord = aTexCoord;
+    }
+  `);
+  const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, `
+    precision highp float;
+    uniform sampler2D uTexture;
+    varying vec2 vTexCoord;
+    void main() {
+      gl_FragColor = texture2D(uTexture, vTexCoord);
+    }
+  `);
+  if (!vertexShader || !fragmentShader) return null;
+
+  const program = gl.createProgram();
+  if (!program) return null;
+  gl.attachShader(program, vertexShader);
+  gl.attachShader(program, fragmentShader);
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) return null;
+  gl.useProgram(program);
+
+  const columns = 24;
+  const rows = 32;
+  const positions: number[] = [];
+  const texCoords: number[] = [];
+  for (let row = 0; row <= rows; row++) {
+    const v = row / rows;
+    for (let col = 0; col <= columns; col++) {
+      const u = col / columns;
+      const source = curvedPageSourcePoint(page, u, v);
+      positions.push(u * 2 - 1, 1 - v * 2);
+      texCoords.push(source.x / sourceW, source.y / sourceH);
+    }
+  }
+
+  const indices: number[] = [];
+  const stride = columns + 1;
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < columns; col++) {
+      const topLeft = row * stride + col;
+      const topRight = topLeft + 1;
+      const bottomLeft = topLeft + stride;
+      const bottomRight = bottomLeft + 1;
+      indices.push(topLeft, topRight, bottomLeft, topRight, bottomRight, bottomLeft);
+    }
+  }
+
+  const positionBuffer = gl.createBuffer();
+  const texCoordBuffer = gl.createBuffer();
+  const indexBuffer = gl.createBuffer();
+  if (!positionBuffer || !texCoordBuffer || !indexBuffer) return null;
+
+  const bindAttribute = (
+    buffer: WebGLBuffer,
+    name: string,
+    values: number[],
+    size: number,
+  ) => {
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(values), gl.STATIC_DRAW);
+    const location = gl.getAttribLocation(program, name);
+    if (location < 0) return;
+    gl.enableVertexAttribArray(location);
+    gl.vertexAttribPointer(location, size, gl.FLOAT, false, 0, 0);
+  };
+
+  bindAttribute(positionBuffer, 'aPosition', positions, 2);
+  bindAttribute(texCoordBuffer, 'aTexCoord', texCoords, 2);
+
+  const texture = gl.createTexture();
+  if (!texture) return null;
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  try {
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+  } catch {
+    return null;
+  }
+  if (gl.getError() !== gl.NO_ERROR) return null;
+
+  const sampler = gl.getUniformLocation(program, 'uTexture');
+  if (sampler) gl.uniform1i(sampler, 0);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+  gl.viewport(0, 0, outW, outH);
+  gl.clearColor(1, 1, 1, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
+  if (gl.getError() !== gl.NO_ERROR) return null;
+  return canvas;
+}
+
+function warpBookPageCPU(
+  src: HTMLCanvasElement | HTMLImageElement,
+  page: CurvedPageWarp,
+  outW: number,
+  outH: number,
+  requestedMaxPixels = 2_400_000,
+): HTMLCanvasElement | null {
+  const sourceW = src instanceof HTMLImageElement ? src.naturalWidth : src.width;
+  const sourceH = src instanceof HTMLImageElement ? src.naturalHeight : src.height;
+  if (!sourceW || !sourceH) return null;
+
+  // Read only the page being processed, not the complete two-page spread.
+  // Downsampling a 12 MP spread to a 6 MP CPU budget would leave only ~3 MP
+  // of detail for one page and then upscale it to a 6 MP output. Cropping
+  // first preserves the page's real source detail within the same memory cap.
+  const pagePoints = [...page.corners, ...page.foldCurve];
+  const minX = Math.max(0, Math.floor(Math.min(...pagePoints.map(point => point.x))) - 2);
+  const minY = Math.max(0, Math.floor(Math.min(...pagePoints.map(point => point.y))) - 2);
+  const maxX = Math.min(sourceW, Math.ceil(Math.max(...pagePoints.map(point => point.x))) + 2);
+  const maxY = Math.min(sourceH, Math.ceil(Math.max(...pagePoints.map(point => point.y))) + 2);
+  const cropWidth = Math.max(1, maxX - minX);
+  const cropHeight = Math.max(1, maxY - minY);
+  const sourceTarget = fitWarpSizeToPixelLimit(cropWidth, cropHeight, requestedMaxPixels);
+  const sourceScaleX = sourceTarget.width / cropWidth;
+  const sourceScaleY = sourceTarget.height / cropHeight;
+  const scaledPage: CurvedPageWarp = {
+    side: page.side,
+    corners: page.corners.map(point => ({
+      x: (point.x - minX) * sourceScaleX,
+      y: (point.y - minY) * sourceScaleY,
+    })) as [Point, Point, Point, Point],
+    foldCurve: page.foldCurve.map(point => ({
+      x: (point.x - minX) * sourceScaleX,
+      y: (point.y - minY) * sourceScaleY,
+    })),
+  };
+  const sourceCanvas = document.createElement('canvas');
+  sourceCanvas.width = sourceTarget.width;
+  sourceCanvas.height = sourceTarget.height;
+  const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+  const output = document.createElement('canvas');
+  output.width = outW;
+  output.height = outH;
+  const outputCtx = output.getContext('2d');
+  if (!sourceCtx || !outputCtx) return null;
+
+  try {
+    sourceCtx.drawImage(
+      src,
+      minX,
+      minY,
+      cropWidth,
+      cropHeight,
+      0,
+      0,
+      sourceTarget.width,
+      sourceTarget.height,
+    );
+    const input = sourceCtx.getImageData(0, 0, sourceTarget.width, sourceTarget.height);
+    const result = outputCtx.createImageData(outW, outH);
+    const sourceData = input.data;
+    const resultData = result.data;
+
+    for (let y = 0; y < outH; y++) {
+      const v = outH === 1 ? 0 : y / (outH - 1);
+      for (let x = 0; x < outW; x++) {
+        const u = outW === 1 ? 0 : x / (outW - 1);
+        const sourcePoint = curvedPageSourcePoint(scaledPage, u, v);
+        if (
+          sourcePoint.x < 0 || sourcePoint.y < 0 ||
+          sourcePoint.x >= sourceTarget.width - 1 || sourcePoint.y >= sourceTarget.height - 1
+        ) continue;
+        const left = Math.floor(sourcePoint.x);
+        const top = Math.floor(sourcePoint.y);
+        const fx = sourcePoint.x - left;
+        const fy = sourcePoint.y - top;
+        const right = left + 1;
+        const bottom = top + 1;
+        const outputIndex = (y * outW + x) * 4;
+        const topLeft = (top * sourceTarget.width + left) * 4;
+        const topRight = topLeft + 4;
+        const bottomLeft = bottom * sourceTarget.width * 4 + left * 4;
+        const bottomRight = bottomLeft + 4;
+        for (let channel = 0; channel < 4; channel++) {
+          const topValue = sourceData[topLeft + channel] * (1 - fx) + sourceData[topRight + channel] * fx;
+          const bottomValue = sourceData[bottomLeft + channel] * (1 - fx) + sourceData[bottomRight + channel] * fx;
+          resultData[outputIndex + channel] = topValue * (1 - fy) + bottomValue * fy;
+        }
+      }
+    }
+    outputCtx.putImageData(result, 0, 0);
+    return output;
+  } catch {
+    return null;
+  }
 }
 
 /**

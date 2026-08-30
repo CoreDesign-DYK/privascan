@@ -8,3 +8,4 @@
 - [Capacitor iOS startup](capacitor-ios-startup.md) — Capacitor 8.5 UIScene startup requires SceneDelegate plus its Main scene-storyboard entry.
 - [Cross-platform pnpm binaries](cross-platform-pnpm-binaries.md) — Keep Darwin native packages installable because downloaded iOS projects build on Mac.
 - [Apple Developer enrollment status](apple-developer-enrollment.md) — Apple Store order confirmation followed by App Store Connect confirmation indicates access is provisioned.
+- [Book scan geometry](book-scan-geometry.md) — Split only on a reliably detected binding; dewarp and validate left/right pages independently.

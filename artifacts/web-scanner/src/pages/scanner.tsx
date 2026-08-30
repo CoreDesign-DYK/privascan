@@ -22,7 +22,8 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { detectDocumentCorners, detectCornersFromCanvas } from '@/lib/edge-detection';
-import { estimateOutputSize, type Point, warpPerspective } from '@/lib/perspective';
+import { detectBookFromCanvas, type BookDetection } from '@/lib/book-detection';
+import { estimateOutputSize, type Point, warpBookPage, warpPerspective } from '@/lib/perspective';
 import {
   type ScannerSettings,
   type ScanMode,
@@ -53,6 +54,9 @@ const JUMP_BLEND = 0.78;
 const INITIAL_TRACK_CONFIRM_FRAMES = 2;
 const MAX_MISSED_EDGE_FRAMES = 6;
 const MAX_IOS_CAPTURE_PIXELS = 6_500_000;
+const MAX_NATIVE_BOOK_PIXELS = 6_500_000;
+const BOOK_FOLD_STABLE_DISTANCE = 0.025;
+const BOOK_FOLD_CONFIRM_FRAMES = 3;
 const ID_CARD_WIDTH_MM = 85.6;
 const ID_CARD_HEIGHT_MM = 54;
 
@@ -223,6 +227,162 @@ function measureSharpness(canvas: HTMLCanvasElement): { variance: number; detail
   const mean = laplacian.reduce((sum, value) => sum + value, 0) / laplacian.length;
   const variance = laplacian.reduce((sum, value) => sum + (value - mean) ** 2, 0) / laplacian.length;
   return { variance, detailCoverage: detailPixels / laplacian.length };
+}
+
+function createBookPageDataUrls(
+  source: HTMLCanvasElement,
+  detection: BookDetection,
+  settings: ScannerSettings,
+  enhanceForIOS: boolean,
+  maxPixels = enhanceForIOS ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
+): [string, string] | null {
+  if (detection.foldConfidence < 0.22) return null;
+
+  const targetPage = getPaperPixelSize(
+    settings.paperSize,
+    settings.targetDpi,
+    'portrait',
+  );
+  const outputQuality = outputJpegQuality(enhanceForIOS);
+  const pageWidth = (side: 'left' | 'right') => {
+    const corners = side === 'left' ? detection.left : detection.right;
+    const top = Math.hypot(corners[1].x - corners[0].x, corners[1].y - corners[0].y);
+    const bottom = Math.hypot(corners[2].x - corners[3].x, corners[2].y - corners[3].y);
+    return (top + bottom) / 2;
+  };
+  const pages = [
+    { side: 'left' as const, corners: detection.left },
+    { side: 'right' as const, corners: detection.right },
+  ];
+  const dataUrls: string[] = [];
+
+  for (const page of pages) {
+    // Exclude only the narrow binding shadow. Keeping the inset proportional
+    // to each detected page avoids clipping text on small books.
+    const foldInset = Math.max(2, Math.min(source.width * 0.012, pageWidth(page.side) * 0.025));
+    const insetFoldCurve = offsetFoldCurveTowardPage(
+      detection.foldCurve,
+      page.corners,
+      page.side,
+      foldInset,
+    );
+    const insetCorners = page.corners.map(point => ({ ...point })) as [Point, Point, Point, Point];
+    if (page.side === 'left') {
+      insetCorners[1] = insetFoldCurve[0];
+      insetCorners[2] = insetFoldCurve[insetFoldCurve.length - 1];
+    } else {
+      insetCorners[0] = insetFoldCurve[0];
+      insetCorners[3] = insetFoldCurve[insetFoldCurve.length - 1];
+    }
+
+    const { w, h } = estimateOutputSize(insetCorners);
+    const outputSize = fitSourceWithinOutput(
+      w,
+      h,
+      targetPage.width,
+      targetPage.height,
+      maxPixels,
+    );
+    const warped = warpBookPage(
+      source,
+      {
+        corners: insetCorners,
+        foldCurve: insetFoldCurve,
+        side: page.side,
+      },
+      outputSize.width,
+      outputSize.height,
+      Number.isFinite(maxPixels) ? { maxCpuPixels: maxPixels } : undefined,
+    );
+    if (!hasRequiredSharpness(warped)) return null;
+    const output = enhanceForIOS ? enhanceDocumentCanvas(warped) : warped;
+    dataUrls.push(output.toDataURL('image/jpeg', outputQuality));
+    console.info('[PrivaScan] book page output', {
+      side: page.side,
+      source: `${source.width}x${source.height}`,
+      crop: `${w}x${h}`,
+      output: `${output.width}x${output.height}`,
+      requestedDpi: settings.targetDpi,
+      effectiveDpi: estimateEffectiveDpi(output.width, output.height, settings.paperSize),
+      foldConfidence: Number(detection.foldConfidence.toFixed(3)),
+    });
+  }
+
+  return dataUrls.length === 2 ? [dataUrls[0], dataUrls[1]] : null;
+}
+
+function offsetFoldCurveTowardPage(
+  curve: Point[],
+  corners: [Point, Point, Point, Point],
+  side: 'left' | 'right',
+  distance: number,
+): Point[] {
+  if (curve.length < 2) return curve;
+  return curve.map((point, index) => {
+    const previous = curve[Math.max(0, index - 1)];
+    const next = curve[Math.min(curve.length - 1, index + 1)];
+    const tangentX = next.x - previous.x;
+    const tangentY = next.y - previous.y;
+    const tangentLength = Math.max(1e-6, Math.hypot(tangentX, tangentY));
+    let normalX = -tangentY / tangentLength;
+    let normalY = tangentX / tangentLength;
+    const t = curve.length === 1 ? 0 : index / (curve.length - 1);
+    const outsideTop = side === 'left' ? corners[0] : corners[1];
+    const outsideBottom = side === 'left' ? corners[3] : corners[2];
+    const outside = {
+      x: outsideTop.x + (outsideBottom.x - outsideTop.x) * t,
+      y: outsideTop.y + (outsideBottom.y - outsideTop.y) * t,
+    };
+    if (normalX * (outside.x - point.x) + normalY * (outside.y - point.y) < 0) {
+      normalX *= -1;
+      normalY *= -1;
+    }
+    return {
+      x: point.x + normalX * distance,
+      y: point.y + normalY * distance,
+    };
+  });
+}
+
+function scaleBookDetection(
+  detection: BookDetection,
+  scaleX: number,
+  scaleY: number,
+): BookDetection {
+  const scalePoint = (point: Point): Point => ({
+    x: point.x * scaleX,
+    y: point.y * scaleY,
+  });
+  const scaleQuad = (
+    quad: [Point, Point, Point, Point],
+  ): [Point, Point, Point, Point] => quad.map(scalePoint) as [Point, Point, Point, Point];
+  return {
+    outer: scaleQuad(detection.outer),
+    left: scaleQuad(detection.left),
+    right: scaleQuad(detection.right),
+    foldCurve: detection.foldCurve.map(scalePoint),
+    foldConfidence: detection.foldConfidence,
+  };
+}
+
+function bookFoldDistance(
+  previous: BookDetection,
+  next: BookDetection,
+  frameWidth: number,
+  frameHeight: number,
+): number {
+  const count = Math.min(previous.foldCurve.length, next.foldCurve.length);
+  if (!count) return Number.POSITIVE_INFINITY;
+  let total = 0;
+  for (let index = 0; index < count; index++) {
+    const previousIndex = Math.round(index / Math.max(1, count - 1) * (previous.foldCurve.length - 1));
+    const nextIndex = Math.round(index / Math.max(1, count - 1) * (next.foldCurve.length - 1));
+    total += Math.hypot(
+      previous.foldCurve[previousIndex].x - next.foldCurve[nextIndex].x,
+      previous.foldCurve[previousIndex].y - next.foldCurve[nextIndex].y,
+    );
+  }
+  return total / count / Math.hypot(frameWidth, frameHeight);
 }
 
 function documentMoved(
@@ -434,6 +594,7 @@ export default function ScannerScreen() {
   const [showScanLine,   setShowScanLine]   = useState(false);   // B
   const [edgeCorners,    setEdgeCorners]    = useState<[Point, Point, Point, Point] | null>(null);
   const [edgeIsLive,     setEdgeIsLive]     = useState(false);
+  const [bookDetection,  setBookDetection]  = useState<BookDetection | null>(null);
   const [stableProgress, setStableProgress] = useState(0);
   const [capturedLabel,  setCapturedLabel]  = useState<number | null>(null);
   const [selectedThumb,  setSelectedThumb]  = useState(-1);
@@ -470,12 +631,16 @@ export default function ScannerScreen() {
   const pendingCornerFrames = useRef(0);
   const missedEdgeFrames = useRef(0);
   const trackConfirmFrames = useRef(0);
+  const previousBookDetectionRef = useRef<BookDetection | null>(null);
+  const stableBookFoldFrames = useRef(0);
   const waitingClear     = useRef(false);        // true = waiting for doc to leave frame
   const rejectedCornersRef = useRef<[Point, Point, Point, Point] | null>(null);
+  const rejectedBookDetectionRef = useRef<BookDetection | null>(null);
   const needsClearerCaptureRef = useRef(false);
   const [isWaitingClear, setIsWaitingClear] = useState(false);
   const [needsClearerCapture, setNeedsClearerCapture] = useState(false);
   const captureAutoRef   = useRef<() => void>(() => {});
+  const captureBookAutoRef = useRef<() => void>(() => {});
   const scanModeRef      = useRef<ScanMode>('document');
 
   useEffect(() => { modeRef.current      = mode;     }, [mode]);
@@ -525,14 +690,18 @@ export default function ScannerScreen() {
     setNeedsClearerCapture(false);
     needsClearerCaptureRef.current = false;
     rejectedCornersRef.current = null;
+    rejectedBookDetectionRef.current = null;
     setStableProgress(0);
     setEdgeCorners(null);
     setEdgeIsLive(false);
+    setBookDetection(null);
     trackedCornersRef.current = null;
     pendingCornersRef.current = null;
     pendingCornerFrames.current = 0;
     missedEdgeFrames.current = 0;
     trackConfirmFrames.current = 0;
+    previousBookDetectionRef.current = null;
+    stableBookFoldFrames.current = 0;
   }, [mode]);
 
   // A newly focused stream can resolve edge details differently. Start its
@@ -544,9 +713,12 @@ export default function ScannerScreen() {
     pendingCornerFrames.current = 0;
     missedEdgeFrames.current = 0;
     trackConfirmFrames.current = 0;
+    previousBookDetectionRef.current = null;
+    stableBookFoldFrames.current = 0;
     setStableProgress(0);
     setEdgeCorners(null);
     setEdgeIsLive(false);
+    setBookDetection(null);
   }, [focusReady]);
 
   /* ── Camera lifecycle ───────────────────────────────────────────────────── */
@@ -569,6 +741,10 @@ export default function ScannerScreen() {
   /* ── Auto-capture ───────────────────────────────────────────────────────── */
   const autoCaptureFrame = useCallback(() => {
     if (!isMockMode && !focusReady) return;
+    if (scanModeRef.current === 'book') {
+      captureBookAutoRef.current();
+      return;
+    }
     const pageNum = pagesLenRef.current + 1;
     let captured = false;
     let rejectedCorners: [Point, Point, Point, Point] | null = null;
@@ -614,6 +790,7 @@ export default function ScannerScreen() {
     setNeedsClearerCapture(false);
     needsClearerCaptureRef.current = false;
     rejectedCornersRef.current = null;
+    rejectedBookDetectionRef.current = null;
 
     triggerCaptureEffects();
     setCapturedLabel(pageNum);
@@ -649,31 +826,22 @@ export default function ScannerScreen() {
 
     /* ── Book: 책 펼침 → 좌/우 두 페이지 ──────────────────────────────── */
     if (sm === 'book') {
-      const corners = detectCornersFromCanvas(canvas);
-      if (!corners) { toast.error('책 경계를 찾을 수 없습니다. 다시 촬영해 주세요'); return; }
-      const { w, h } = estimateOutputSize(corners);
-      const targetPage = getPaperPixelSize(
-        settingsRef.current.paperSize,
-        settingsRef.current.targetDpi,
-        'portrait',
-      );
-      const outputSize = fitSourceWithinOutput(
-        w,
-        h,
-        targetPage.width * 2,
-        targetPage.height,
-      );
-      const spread = warpPerspective(canvas, corners, outputSize.width, outputSize.height);
-      if (!hasRequiredSharpness(spread)) { toast.error('초점이 맞지 않습니다. 다시 촬영해 주세요'); return; }
-      const half = Math.floor(spread.width / 2);
-      const leftOut = document.createElement('canvas');
-      leftOut.width = half; leftOut.height = spread.height;
-      leftOut.getContext('2d')!.drawImage(spread, 0, 0, half, spread.height, 0, 0, half, spread.height);
-      const rightOut = document.createElement('canvas');
-      rightOut.width = spread.width - half; rightOut.height = spread.height;
-      rightOut.getContext('2d')!.drawImage(spread, half, 0, spread.width - half, spread.height, 0, 0, spread.width - half, spread.height);
-      addPage(leftOut.toDataURL('image/jpeg', q));
-      addPage(rightOut.toDataURL('image/jpeg', q));
+      const detection = detectBookFromCanvas(canvas);
+      const bookPages = detection
+        ? createBookPageDataUrls(
+            canvas,
+            detection,
+            settingsRef.current,
+            false,
+            MAX_NATIVE_BOOK_PIXELS,
+          )
+        : null;
+      if (!bookPages) {
+        toast.error('책의 좌우 페이지와 중앙 접힘선을 찾을 수 없습니다. 책을 평평하게 놓고 다시 촬영해 주세요');
+        return;
+      }
+      addPage(bookPages[0]);
+      addPage(bookPages[1]);
       setActivePageIndex(base + 1);
       setCapturedLabel(base + 2); setTimeout(() => setCapturedLabel(null), 1800);
       setLocation('/preview');
@@ -813,10 +981,50 @@ export default function ScannerScreen() {
         const video = videoRef.current;
         if (!video || video.readyState < 2) return;
 
-        const corners = detectDocumentCorners(video, video.videoWidth, video.videoHeight);
+        let detectedBook: BookDetection | null = null;
+        let bookFoldStable = scanModeRef.current !== 'book';
+        let corners: [Point, Point, Point, Point] | null;
+        if (scanModeRef.current === 'book') {
+          const liveFrame = captureVideoFrame(video, false, 480 * 360);
+          const liveDetection = detectBookFromCanvas(liveFrame);
+          detectedBook = liveDetection
+            ? scaleBookDetection(
+                liveDetection,
+                video.videoWidth / liveFrame.width,
+                video.videoHeight / liveFrame.height,
+              )
+            : null;
+          corners = detectedBook?.outer ?? null;
+          const previousBook = previousBookDetectionRef.current;
+          if (
+            detectedBook &&
+            previousBook &&
+            detectedBook.foldConfidence >= 0.22 &&
+            bookFoldDistance(
+              previousBook,
+              detectedBook,
+              video.videoWidth,
+              video.videoHeight,
+            ) <= BOOK_FOLD_STABLE_DISTANCE
+          ) {
+            stableBookFoldFrames.current = Math.min(
+              BOOK_FOLD_CONFIRM_FRAMES,
+              stableBookFoldFrames.current + 1,
+            );
+          } else {
+            stableBookFoldFrames.current = 0;
+          }
+          previousBookDetectionRef.current = detectedBook;
+          bookFoldStable = stableBookFoldFrames.current >= BOOK_FOLD_CONFIRM_FRAMES;
+        } else {
+          corners = detectDocumentCorners(video, video.videoWidth, video.videoHeight);
+          previousBookDetectionRef.current = null;
+          stableBookFoldFrames.current = 0;
+        }
         const tracked = updateTrackedCorners(corners, video.videoWidth, video.videoHeight);
         setEdgeCorners(tracked.corners);
         setEdgeIsLive(Boolean(corners));
+        setBookDetection(detectedBook);
 
         if (modeRef.current !== 'auto' || !focusReady) return;
 
@@ -829,17 +1037,42 @@ export default function ScannerScreen() {
             setNeedsClearerCapture(false);
             needsClearerCaptureRef.current = false;
             rejectedCornersRef.current = null;
+            rejectedBookDetectionRef.current = null;
             stableFrames.current = 0;
             setStableProgress(0);
           } else if (
             needsClearerCaptureRef.current &&
-            rejectedCornersRef.current &&
-            documentMoved(rejectedCornersRef.current, tracked.corners, video.videoWidth, video.videoHeight)
+            (
+              (
+                rejectedCornersRef.current &&
+                documentMoved(rejectedCornersRef.current, tracked.corners, video.videoWidth, video.videoHeight)
+              ) ||
+              (
+                scanModeRef.current === 'book' &&
+                detectedBook &&
+                (
+                  (
+                    rejectedBookDetectionRef.current &&
+                    bookFoldDistance(
+                      rejectedBookDetectionRef.current,
+                      detectedBook,
+                      video.videoWidth,
+                      video.videoHeight,
+                    ) > BOOK_FOLD_STABLE_DISTANCE * 0.55
+                  ) ||
+                  (
+                    !rejectedBookDetectionRef.current &&
+                    bookFoldStable
+                  )
+                )
+              )
+            )
           ) {
             // A meaningful reposition gives the camera a fresh opportunity to
             // focus without repeatedly saving the same blurry frame.
             waitingClear.current = false;
             rejectedCornersRef.current = null;
+            rejectedBookDetectionRef.current = null;
             setIsWaitingClear(false);
             setNeedsClearerCapture(false);
             needsClearerCaptureRef.current = false;
@@ -850,7 +1083,7 @@ export default function ScannerScreen() {
         }
 
         // ── Normal detection phase ───────────────────────────────────────────
-        if (corners && tracked.stable) {
+        if (corners && tracked.stable && bookFoldStable) {
           stableFrames.current = Math.min(stableFrames.current + 1, STABLE_TARGET);
         } else {
           stableFrames.current = Math.max(stableFrames.current - 2, 0);
@@ -926,7 +1159,6 @@ export default function ScannerScreen() {
       toast.info('카메라 초점을 맞추는 중입니다. 잠시 기다려 주세요');
       return;
     }
-    triggerCaptureEffects();
     const grey = settingsRef.current.colorMode === 'greyscale';
     const base = pagesLenRef.current;
 
@@ -943,62 +1175,44 @@ export default function ScannerScreen() {
         grey,
       );
 
-      const corners = detectCornersFromCanvas(full);
-      if (!corners) {
-        toast.error('문서 경계 또는 초점을 확인한 뒤 다시 촬영하세요');
-        return;
-      }
-      const { w, h } = estimateOutputSize(corners);
       const useIOSQualityPipeline = isIOS();
-      const targetPage = getPaperPixelSize(
-        settingsRef.current.paperSize,
-        settingsRef.current.targetDpi,
-        'portrait',
-      );
-      const outputSize = fitSourceWithinOutput(
-        w,
-        h,
-        targetPage.width * 2,
-        targetPage.height,
-        useIOSQualityPipeline ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
-      );
-      const spread = warpPerspective(
-        full,
-        corners,
-        outputSize.width,
-        outputSize.height,
-        useIOSQualityPipeline ? { maxCpuPixels: MAX_IOS_CAPTURE_PIXELS } : undefined,
-      );
-      if (!hasRequiredSharpness(spread)) {
-        toast.error('문서 경계 또는 초점을 확인한 뒤 다시 촬영하세요');
+      const detection = detectBookFromCanvas(full);
+      const bookPages = detection
+        ? createBookPageDataUrls(
+            full,
+            detection,
+            settingsRef.current,
+            useIOSQualityPipeline,
+            useIOSQualityPipeline ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
+          )
+        : null;
+      if (!bookPages) {
+        if (modeRef.current === 'auto') {
+          waitingClear.current = true;
+          setIsWaitingClear(true);
+          setNeedsClearerCapture(true);
+          needsClearerCaptureRef.current = true;
+          rejectedCornersRef.current = detection?.outer ?? edgeCorners;
+          rejectedBookDetectionRef.current = detection ?? bookDetection;
+        }
+        toast.error('책의 좌우 페이지와 중앙 접힘선을 확인한 뒤 다시 촬영하세요');
         return;
       }
-
-      const halfWidth = Math.floor(spread.width / 2);
-      const leftOut = document.createElement('canvas');
-      leftOut.width = halfWidth; leftOut.height = spread.height;
-      leftOut.getContext('2d')!.drawImage(
-        spread, 0, 0, halfWidth, spread.height,
-        0, 0, halfWidth, spread.height,
-      );
-
-      const rightOut = document.createElement('canvas');
-      rightOut.width = spread.width - halfWidth; rightOut.height = spread.height;
-      rightOut.getContext('2d')!.drawImage(
-        spread, halfWidth, 0, spread.width - halfWidth, spread.height,
-        0, 0, spread.width - halfWidth, spread.height,
-      );
-
-       const outputQuality = outputJpegQuality(useIOSQualityPipeline);
-       addPage(leftOut.toDataURL('image/jpeg', outputQuality));
-       addPage(rightOut.toDataURL('image/jpeg', outputQuality));
+      addPage(bookPages[0]);
+      addPage(bookPages[1]);
     }
 
+    rejectedBookDetectionRef.current = null;
+    triggerCaptureEffects();
     setCapturedLabel(base + 2);
     setTimeout(() => setCapturedLabel(null), 1800);
     setActivePageIndex(base + 1);
     setLocation('/preview');
-  }, [isMockMode, focusReady, videoRef, addPage, setActivePageIndex, setLocation, triggerCaptureEffects]);
+  }, [isMockMode, focusReady, videoRef, edgeCorners, bookDetection, addPage, setActivePageIndex, setLocation, triggerCaptureEffects]);
+
+  useEffect(() => {
+    captureBookAutoRef.current = bookCapture;
+  }, [bookCapture]);
 
   /* ── Presentation capture ───────────────────────────────────────────────── */
   const presentationCapture = useCallback(() => {
@@ -1529,20 +1743,30 @@ export default function ScannerScreen() {
           </div>
         )}
 
-        {/* Book: two portrait frames side by side — width:height = 0.707:1 each */}
+        {/* Book: two independent page frames with a binding guide between them */}
         {scanMode === 'book' && (
-          <div className="absolute inset-0 pointer-events-none flex flex-row items-center justify-center"
-            style={{ top:'12%', bottom:'32%', gap:'12px', transform:'translateY(48px)' }}>
-            {(['Left','Right'] as const).map(side => (
-              <div key={side} className="relative flex-shrink-0"
-                style={{ width:'46vw', maxWidth:'220px', aspectRatio:'0.707/1' }}>
-                <div className="absolute top-0 left-0 w-7 h-7 border-t-[3px] border-l-[3px] border-white/55" />
-                <div className="absolute top-0 right-0 w-7 h-7 border-t-[3px] border-r-[3px] border-white/55" />
-                <div className="absolute bottom-0 left-0 w-7 h-7 border-b-[3px] border-l-[3px] border-white/55" />
-                <div className="absolute bottom-0 right-0 w-7 h-7 border-b-[3px] border-r-[3px] border-white/55" />
-                <span className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[9px] font-semibold text-white/40 uppercase tracking-widest select-none">{side}</span>
+          <div
+            className="absolute inset-0 pointer-events-none flex items-center justify-center"
+            style={{ top:'12%', bottom:'32%', transform:'translateY(48px)' }}
+          >
+            <div
+              className="relative flex items-stretch justify-center gap-5 w-[92vw] max-w-[460px] max-h-full transition-opacity duration-200"
+              style={{
+                aspectRatio: '1.48 / 1',
+                opacity: bookDetection && !isMockMode ? 0.28 : 1,
+              }}
+            >
+              <div className="relative flex-1 rounded-[10px] border-2 border-white/60 bg-white/[0.025] shadow-[0_0_0_1px_rgba(0,0,0,0.16)]">
+                <div className="absolute inset-[5px] rounded-[6px] border border-white/10" />
               </div>
-            ))}
+              <div className="relative flex-1 rounded-[10px] border-2 border-white/60 bg-white/[0.025] shadow-[0_0_0_1px_rgba(0,0,0,0.16)]">
+                <div className="absolute inset-[5px] rounded-[6px] border border-white/10" />
+              </div>
+              <div
+                className="absolute left-1/2 -translate-x-1/2 -top-2 -bottom-2 border-l-2 border-dashed border-white/75"
+                aria-hidden="true"
+              />
+            </div>
           </div>
         )}
 
@@ -1580,7 +1804,7 @@ export default function ScannerScreen() {
         )}
 
         {/* ── B: Dynamic SVG overlay — only for detected document (Method B) ── */}
-        {!isMockMode && edgeCorners && (
+        {!isMockMode && scanMode !== 'book' && edgeCorners && (
           <svg
             className="absolute inset-0 w-full h-full z-10 pointer-events-none"
             viewBox={`0 0 ${viewW} ${viewH}`}
@@ -1599,6 +1823,41 @@ export default function ScannerScreen() {
                 opacity: edgeIsLive ? 1 : 0.62,
                 transition: 'opacity 0.18s ease, fill 0.3s, stroke 0.3s ease',
               }}
+            />
+          </svg>
+        )}
+
+        {/* Book detection: each page is outlined independently and the measured
+            binding curve is shown as a dashed guide. */}
+        {!isMockMode && scanMode === 'book' && bookDetection && (
+          <svg
+            className="absolute inset-0 w-full h-full z-10 pointer-events-none"
+            viewBox={`0 0 ${viewW} ${viewH}`}
+            preserveAspectRatio="xMidYMid slice"
+          >
+            <polygon
+              points={bookDetection.left.map(point => `${point.x},${point.y}`).join(' ')}
+              fill={edgeFill}
+              stroke={edgeStroke}
+              strokeWidth="8"
+              strokeLinejoin="round"
+            />
+            <polygon
+              points={bookDetection.right.map(point => `${point.x},${point.y}`).join(' ')}
+              fill={edgeFill}
+              stroke={edgeStroke}
+              strokeWidth="8"
+              strokeLinejoin="round"
+            />
+            <polyline
+              points={bookDetection.foldCurve.map(point => `${point.x},${point.y}`).join(' ')}
+              fill="none"
+              stroke="#f8fafc"
+              strokeWidth="7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="22 18"
+              opacity="0.92"
             />
           </svg>
         )}
