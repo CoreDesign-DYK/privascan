@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback } from 'react';
-import { isAndroid } from '@/lib/platform';
 
 // Keep the physical camera off while developing in the browser. Production
 // builds (including the Android release build) retain the normal camera flow.
@@ -7,9 +6,8 @@ const IS_DEV = import.meta.env.DEV;
 type FocusMode = 'continuous' | 'single-shot' | 'unsupported' | 'unknown';
 
 /**
- * 단일 훅으로 라이브 웹 카메라와 Android 시스템 카메라를 지원.
- *  - 웹/iOS Capacitor: getUserMedia 스트림으로 자동 시작·실시간 경계 감지
- *  - Android Capacitor: 권한 요청 후 captureNativePhoto로 시스템 카메라 촬영
+ * 웹과 Capacitor 앱 모두 동일한 라이브 getUserMedia 카메라를 사용한다.
+ * Android와 iOS에서 같은 UI, 실시간 경계 감지, 자동 촬영 흐름을 유지한다.
  */
 export function useCamera() {
   const videoRef   = useRef<HTMLVideoElement>(null);
@@ -22,10 +20,6 @@ export function useCamera() {
   const [error, setError]                 = useState<Error | null>(null);
   const [focusMode, setFocusMode]         = useState<FocusMode>(IS_DEV ? 'continuous' : 'unknown');
   const [focusReady, setFocusReady]       = useState(IS_DEV);
-
-  // iOS keeps the live WKWebView camera so auto-start and real-time edge
-  // detection continue to work inside the Capacitor shell.
-  const nativeMode = isAndroid();
 
   /* ── 공통: 카메라 중지 ─────────────────────────────────────────────────── */
   const stopCamera = useCallback(() => {
@@ -45,24 +39,8 @@ export function useCamera() {
       streamRef.current = null;
     }
     if (videoRef.current) videoRef.current.srcObject = null;
-    if (!nativeMode) {
-      setFocusReady(false);
-      setFocusMode('unknown');
-    }
-  }, [nativeMode]);
-
-  /* ── Android 네이티브: 권한 요청 ────────────────────────────────────────── */
-  const startCameraNative = useCallback(async (): Promise<void> => {
-    try {
-      const { Camera } = await import('@capacitor/camera');
-      const result = await Camera.requestPermissions({ permissions: ['camera'] });
-      const granted = result.camera === 'granted' || result.camera === 'limited';
-      setHasPermission(granted);
-      if (!granted) setError(new Error('Camera permission denied'));
-    } catch (err) {
-      setHasPermission(false);
-      setError(err instanceof Error ? err : new Error('Permission request failed'));
-    }
+    setFocusReady(false);
+    setFocusMode('unknown');
   }, []);
 
   /* ── 웹 전용: getUserMedia ──────────────────────────────────────────────── */
@@ -232,38 +210,8 @@ export function useCamera() {
 
   /* ── 통합 startCamera ───────────────────────────────────────────────────── */
   const startCamera = useCallback((): Promise<void> => {
-    return nativeMode ? startCameraNative() : startCameraWeb();
-  }, [nativeMode, startCameraNative, startCameraWeb]);
-
-  /* ── Android 네이티브: 한 장 촬영 → data URL 반환 ───────────────────────── */
-  const captureNativePhoto = useCallback(async (): Promise<string | null> => {
-    if (!nativeMode) return null;
-    try {
-      const { Camera, CameraResultType, CameraSource, CameraDirection } =
-        await import('@capacitor/camera');
-      const photo = await Camera.getPhoto({
-        resultType: CameraResultType.DataUrl,
-        source: CameraSource.Camera,
-        direction: CameraDirection.Rear,
-        quality: 95,
-        allowEditing: false,
-        saveToGallery: false,
-        correctOrientation: true,
-        // 최대 해상도: 플러그인 기본값 (기기 최대)
-        width: 4096,
-      });
-      return photo.dataUrl ?? null;
-    } catch (err) {
-      // 사용자가 취소한 경우는 오류가 아님
-      if (err instanceof Error &&
-          (err.message.includes('cancelled') || err.message.includes('cancel') ||
-           err.message.includes('dismiss'))) {
-        return null;
-      }
-      setError(err instanceof Error ? err : new Error('Native capture failed'));
-      return null;
-    }
-  }, [nativeMode]);
+    return startCameraWeb();
+  }, [startCameraWeb]);
 
   return {
     videoRef,
@@ -273,9 +221,6 @@ export function useCamera() {
     error,
     isMockMode: IS_DEV,
     focusMode,
-    // 네이티브 모드: 카메라 앱 자체가 초점을 잡으므로 항상 준비 완료
-    focusReady: nativeMode ? (hasPermission === true) : focusReady,
-    isNative: nativeMode,
-    captureNativePhoto,
+    focusReady,
   };
 }

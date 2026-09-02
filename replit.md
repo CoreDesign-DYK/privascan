@@ -26,11 +26,14 @@ _Populate as you build — short repo map plus pointers to the source-of-truth f
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Android와 iOS는 동일한 PrivaScan 내부 `getUserMedia` 실시간 카메라를 사용한다. 시스템 카메라 앱으로 전환하는 촬영 경로는 사용하지 않는다.
+- 두 모바일 플랫폼은 동일한 스캐너 UI, 실시간 감지, 자동 촬영, 보정, JPEG 품질 및 모바일 메모리 한도를 사용한다.
+- Capacitor 네이티브 기능은 파일 저장과 공유에 사용하고, 문서 촬영과 경계 감지는 WebView 내부에서 처리한다.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Android와 iPhone에서 같은 화면과 사용법으로 Document, Book, Presentation, ID Card 스캔을 제공한다.
+- 촬영 전 실시간 경계 감지와 자동 촬영을 제공하고, 저장 전 정확한 고해상도 프레임을 다시 검증한다.
 
 ## Versioning
 

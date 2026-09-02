@@ -16,7 +16,7 @@ export const DEFAULT_SCAN_DPI = 250;
 
 /** JPEG compression stays independent from the requested output resolution. */
 export const SCAN_JPEG_QUALITY = 0.95;
-export const IOS_SCAN_JPEG_QUALITY = 0.98;
+export const MOBILE_SCAN_JPEG_QUALITY = 0.98;
 
 const PAPER_DIMENSIONS_MM: Record<PaperSize, { width: number; height: number }> = {
   A4: { width: 210, height: 297 },

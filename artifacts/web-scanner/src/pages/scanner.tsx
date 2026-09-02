@@ -36,14 +36,14 @@ import {
   MIN_SCAN_DPI,
   MAX_SCAN_DPI,
   SCAN_JPEG_QUALITY,
-  IOS_SCAN_JPEG_QUALITY,
+  MOBILE_SCAN_JPEG_QUALITY,
   clampScanDpi,
   estimateEffectiveDpi,
   fitSourceWithinOutput,
   getPaperPixelSize,
 } from '@/lib/scanner-types';
 import { enhanceDocumentCanvas } from '@/lib/filters';
-import { isIOS } from '@/lib/platform';
+import { isNative as isNativePlatform } from '@/lib/platform';
 import { hasRequiredSharpness } from '@/lib/scan-quality';
 import {
   detectIdCardFromCanvas,
@@ -63,16 +63,14 @@ const JUMP_CONFIRM_FRAMES = 2;
 const JUMP_BLEND = 0.78;
 const INITIAL_TRACK_CONFIRM_FRAMES = 2;
 const MAX_MISSED_EDGE_FRAMES = 6;
-const MAX_IOS_CAPTURE_PIXELS = 6_500_000;
-const MAX_NATIVE_BOOK_PIXELS = 6_500_000;
-const MAX_NATIVE_PRESENTATION_PIXELS = 6_500_000;
+const MAX_MOBILE_CAPTURE_PIXELS = 6_500_000;
 const BOOK_FOLD_STABLE_DISTANCE = 0.025;
 const BOOK_FOLD_CONFIRM_FRAMES = 3;
 const ID_CARD_WIDTH_MM = 85.6;
 const ID_CARD_HEIGHT_MM = 54;
 
-function outputJpegQuality(enhanceForIOS: boolean): number {
-  return enhanceForIOS ? IOS_SCAN_JPEG_QUALITY : SCAN_JPEG_QUALITY;
+function outputJpegQuality(enhanceForMobile: boolean): number {
+  return enhanceForMobile ? MOBILE_SCAN_JPEG_QUALITY : SCAN_JPEG_QUALITY;
 }
 
 function documentOutputSize(
@@ -205,7 +203,7 @@ function createDocumentPage(
   source: HTMLCanvasElement,
   corners: [Point, Point, Point, Point] | null,
   settings: ScannerSettings,
-  enhanceForIOS = false,
+  enhanceForMobile = false,
 ): string | null {
   // Never silently save the complete camera frame as a document. A false
   // positive is preferable to a result that visibly contains the desk.
@@ -216,17 +214,17 @@ function createDocumentPage(
     w,
     h,
     settings,
-    enhanceForIOS ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
+    enhanceForMobile ? MAX_MOBILE_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
   );
   const warped = warpPerspective(
     source,
     corners,
     outputSize.width,
     outputSize.height,
-    enhanceForIOS ? { maxCpuPixels: MAX_IOS_CAPTURE_PIXELS } : undefined,
+    enhanceForMobile ? { maxCpuPixels: MAX_MOBILE_CAPTURE_PIXELS } : undefined,
   );
   if (!hasRequiredSharpness(warped)) return null;
-  const output = enhanceForIOS ? enhanceDocumentCanvas(warped) : warped;
+  const output = enhanceForMobile ? enhanceDocumentCanvas(warped) : warped;
   console.info('[PrivaScan] document output', {
     source: `${source.width}x${source.height}`,
     crop: `${w}x${h}`,
@@ -234,15 +232,15 @@ function createDocumentPage(
     requestedDpi: settings.targetDpi,
     effectiveDpi: estimateEffectiveDpi(output.width, output.height, settings.paperSize),
   });
-  return output.toDataURL('image/jpeg', outputJpegQuality(enhanceForIOS));
+  return output.toDataURL('image/jpeg', outputJpegQuality(enhanceForMobile));
 }
 
 function createPresentationPage(
   source: HTMLCanvasElement,
   corners: [Point, Point, Point, Point] | null,
   settings: ScannerSettings,
-  enhanceForIOS = false,
-  maxPixels = enhanceForIOS ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
+  enhanceForMobile = false,
+  maxPixels = enhanceForMobile ? MAX_MOBILE_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
 ): string | null {
   if (!corners) return null;
   const target = getPaperPixelSize(settings.paperSize, settings.targetDpi, 'landscape');
@@ -259,22 +257,22 @@ function createPresentationPage(
     },
   );
   if (!hasRequiredSharpness(warped)) return null;
-  const output = enhanceForIOS ? enhanceDocumentCanvas(warped) : warped;
+  const output = enhanceForMobile ? enhanceDocumentCanvas(warped) : warped;
   console.info('[PrivaScan] presentation output', {
     source: `${source.width}x${source.height}`,
     output: `${output.width}x${output.height}`,
     requestedDpi: settings.targetDpi,
     aspectRatio: Number((output.width / output.height).toFixed(3)),
   });
-  return output.toDataURL('image/jpeg', outputJpegQuality(enhanceForIOS));
+  return output.toDataURL('image/jpeg', outputJpegQuality(enhanceForMobile));
 }
 
 function createIdCardPage(
   source: HTMLCanvasElement,
   corners: [Point, Point, Point, Point],
   settings: ScannerSettings,
-  enhanceForIOS = false,
-  maxPixels = enhanceForIOS ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
+  enhanceForMobile = false,
+  maxPixels = enhanceForMobile ? MAX_MOBILE_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
 ): string | null {
   if (!isLikelyIdCardQuad(corners)) return null;
   const measured = estimateOutputSize(corners);
@@ -296,8 +294,8 @@ function createIdCardPage(
     },
   );
   if (!hasRequiredSharpness(warped)) return null;
-  const output = enhanceForIOS ? enhanceDocumentCanvas(warped) : warped;
-  return output.toDataURL('image/jpeg', outputJpegQuality(enhanceForIOS));
+  const output = enhanceForMobile ? enhanceDocumentCanvas(warped) : warped;
+  return output.toDataURL('image/jpeg', outputJpegQuality(enhanceForMobile));
 }
 
 async function combineIdCardPages(
@@ -356,8 +354,8 @@ function createBookPageDataUrls(
   source: HTMLCanvasElement,
   detection: BookDetection,
   settings: ScannerSettings,
-  enhanceForIOS: boolean,
-  maxPixels = enhanceForIOS ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
+  enhanceForMobile: boolean,
+  maxPixels = enhanceForMobile ? MAX_MOBILE_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
 ): [string, string] | null {
   if (detection.foldConfidence < 0.22) return null;
 
@@ -366,7 +364,7 @@ function createBookPageDataUrls(
     settings.targetDpi,
     'portrait',
   );
-  const outputQuality = outputJpegQuality(enhanceForIOS);
+  const outputQuality = outputJpegQuality(enhanceForMobile);
   const pageWidth = (side: 'left' | 'right') => {
     const corners = side === 'left' ? detection.left : detection.right;
     const top = Math.hypot(corners[1].x - corners[0].x, corners[1].y - corners[0].y);
@@ -418,7 +416,7 @@ function createBookPageDataUrls(
       Number.isFinite(maxPixels) ? { maxCpuPixels: maxPixels } : undefined,
     );
     if (!hasRequiredSharpness(warped)) return null;
-    const output = enhanceForIOS ? enhanceDocumentCanvas(warped) : warped;
+    const output = enhanceForMobile ? enhanceDocumentCanvas(warped) : warped;
     dataUrls.push(output.toDataURL('image/jpeg', outputQuality));
     console.info('[PrivaScan] book page output', {
       side: page.side,
@@ -706,7 +704,7 @@ function QualityGaugeIcon({ dpi }: { dpi: number }) {
 
 export default function ScannerScreen() {
   const [, setLocation] = useLocation();
-  const { videoRef, startCamera, stopCamera, hasPermission, isMockMode, focusReady, isNative, captureNativePhoto } = useCamera();
+  const { videoRef, startCamera, stopCamera, hasPermission, isMockMode, focusReady } = useCamera();
   const {
     mode, setMode, pages, addPage, removePage, clearPages, settings, setSettings,
     setActivePageIndex, setPendingPage, setPendingEditMode, setDetectedCorners,
@@ -895,7 +893,7 @@ export default function ScannerScreen() {
       captured = true;
     } else {
       const video = videoRef.current;
-      const useIOSQualityPipeline = isIOS();
+      const useMobileQualityPipeline = isNativePlatform();
       const canvas = captureVideoFrame(
         video,
         settingsRef.current.colorMode === 'greyscale',
@@ -907,7 +905,7 @@ export default function ScannerScreen() {
         canvas,
         corners,
         settingsRef.current,
-        useIOSQualityPipeline,
+        useMobileQualityPipeline,
       );
       if (page) {
         addPage(page);
@@ -944,146 +942,9 @@ export default function ScannerScreen() {
 
   useEffect(() => { captureAutoRef.current = autoCaptureFrame; }, [autoCaptureFrame]);
 
-  /* ── Native capture: Android → 시스템 카메라 → 결과 처리 ───────────────── */
-  const nativeCaptureAndProcess = useCallback(async () => {
-    const dataUrl = await captureNativePhoto();
-    if (!dataUrl) return; // 사용자 취소
-
-    const img = new Image();
-    await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = dataUrl; });
-
-    const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
-    const ctx = canvas.getContext('2d')!;
-    if (settingsRef.current.colorMode === 'greyscale') ctx.filter = 'grayscale(100%)';
-    ctx.drawImage(img, 0, 0);
-    ctx.filter = 'none';
-
-    const q    = SCAN_JPEG_QUALITY;
-    const base = pagesLenRef.current;
-    const sm   = scanModeRef.current;
-
-    triggerCaptureEffects();
-
-    /* ── Book: 책 펼침 → 좌/우 두 페이지 ──────────────────────────────── */
-    if (sm === 'book') {
-      const detection = detectBookFromCanvas(canvas);
-      const bookPages = detection
-        ? createBookPageDataUrls(
-            canvas,
-            detection,
-            settingsRef.current,
-            false,
-            MAX_NATIVE_BOOK_PIXELS,
-          )
-        : null;
-      if (!bookPages) {
-        toast.error('책의 좌우 페이지와 중앙 접힘선을 찾을 수 없습니다. 책을 평평하게 놓고 다시 촬영해 주세요');
-        return;
-      }
-      addPage(bookPages[0]);
-      addPage(bookPages[1]);
-      setActivePageIndex(base + 1);
-      setCapturedLabel(base + 2); setTimeout(() => setCapturedLabel(null), 1800);
-      setLocation('/preview');
-      return;
-    }
-
-    /* ── ID Cards: 앞면 → 뒷면 → 합성 ────────────────────────────────── */
-    if (sm === 'id-cards') {
-      const preliminaryCorners = detectCornersFromCanvas(canvas);
-      const idDetection = preliminaryCorners
-        ? detectIdCardForCapture(canvas, preliminaryCorners)
-        : null;
-      const corners = idDetection?.corners ?? null;
-      if (!corners || !isLikelyIdCardQuad(corners)) {
-        toast.error('카드 네 변을 확인할 수 없습니다. 카드가 화면 중앙에 보이도록 다시 촬영해 주세요');
-        return;
-      }
-      const measured = corners ? estimateOutputSize(corners) : null;
-      const outputSize = measured
-        ? idCardOutputSize(measured.w, measured.h, settingsRef.current.targetDpi)
-        : null;
-      const cardDataUrl = corners && outputSize
-        ? createIdCardPage(
-            canvas,
-            corners,
-            settingsRef.current,
-            false,
-            MAX_IOS_CAPTURE_PIXELS,
-          )
-        : null;
-      if (!cardDataUrl) {
-        toast.error('카드 경계를 찾을 수 없습니다. 다시 촬영해 주세요'); return;
-      }
-      if (idStage === 'front') {
-        idFrontRef.current = cardDataUrl;
-        setIdStage('back');
-        toast('앞면 촬영 완료 — 카드를 뒤집어 뒷면을 촬영하세요');
-        return;
-      }
-      const frontData = idFrontRef.current;
-      if (!frontData) { setIdStage('front'); return; }
-      addPage(await combineIdCardPages(frontData, cardDataUrl, q));
-      setActivePageIndex(pagesLenRef.current);
-      toast.success('ID Card saved — 앞뒤 합성 완료');
-      idFrontRef.current = null; setIdStage('front');
-      setCapturedLabel(base + 1); setTimeout(() => setCapturedLabel(null), 1800);
-      setLocation('/preview');
-      return;
-    }
-
-    /* ── Presentation: wide screen → 16:9 front-facing result ──────────── */
-    if (sm === 'presentation') {
-      const detection = detectPresentationFromCanvas(canvas);
-      if (!detection) {
-        setPendingPage(canvas.toDataURL('image/jpeg', q));
-        setPendingEditMode('presentation');
-        setDetectedCorners(null);
-        toast.info('화면 모서리를 자동으로 찾지 못했습니다. 네 모서리를 직접 맞춰 주세요');
-        setLocation('/edit');
-        return;
-      }
-      const page = createPresentationPage(
-        canvas,
-        detection.corners,
-        settingsRef.current,
-        false,
-        MAX_NATIVE_PRESENTATION_PIXELS,
-      );
-      if (!page) {
-        toast.error('화면의 초점이 흐립니다. 카메라를 고정한 뒤 다시 촬영해 주세요');
-        return;
-      }
-      addPage(page);
-      setActivePageIndex(base);
-      setCapturedLabel(base + 1);
-      setTimeout(() => setCapturedLabel(null), 1800);
-      setLocation('/preview');
-      return;
-    }
-
-    /* ── Document / 일반 ──────────────────────────────────────────────── */
-    const corners = detectCornersFromCanvas(canvas);
-    const page = createDocumentPage(canvas, corners, settingsRef.current);
-    if (!page) {
-      toast.error('문서 경계를 찾을 수 없습니다. 다시 촬영해 주세요');
-      return;
-    }
-    addPage(page);
-    setActivePageIndex(base);
-    setCapturedLabel(base + 1);
-    setTimeout(() => setCapturedLabel(null), 1800);
-    setLocation('/preview');
-  }, [
-    captureNativePhoto, addPage, setActivePageIndex, setLocation,
-    setPendingPage, setPendingEditMode, setDetectedCorners,
-    triggerCaptureEffects, idStage,
-  ]);
-
   /* ── Edge detection loop ────────────────────────────────────────────────── */
   useEffect(() => {
-    if (isMockMode || isNative) return;
+    if (isMockMode) return;
 
     const updateTrackedCorners = (
       detected: [Point, Point, Point, Point] | null,
@@ -1352,7 +1213,7 @@ export default function ScannerScreen() {
       addPage(generateMockPage(pageNum, settingsRef.current));
     } else {
       const video  = videoRef.current;
-      const useIOSQualityPipeline = isIOS();
+      const useMobileQualityPipeline = isNativePlatform();
       const canvas = captureVideoFrame(
         video,
         settingsRef.current.colorMode === 'greyscale',
@@ -1363,7 +1224,7 @@ export default function ScannerScreen() {
         canvas,
         corners,
         settingsRef.current,
-        useIOSQualityPipeline,
+        useMobileQualityPipeline,
       );
       if (!page) {
         toast.error('문서 경계 또는 초점을 확인한 뒤 다시 촬영하세요');
@@ -1400,15 +1261,15 @@ export default function ScannerScreen() {
         grey,
       );
 
-      const useIOSQualityPipeline = isIOS();
+      const useMobileQualityPipeline = isNativePlatform();
       const detection = detectBookFromCanvas(full);
       const bookPages = detection
         ? createBookPageDataUrls(
             full,
             detection,
             settingsRef.current,
-            useIOSQualityPipeline,
-            useIOSQualityPipeline ? MAX_IOS_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
+            useMobileQualityPipeline,
+            useMobileQualityPipeline ? MAX_MOBILE_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
           )
         : null;
       if (!bookPages) {
@@ -1461,7 +1322,7 @@ export default function ScannerScreen() {
       // user, but only capture-frame geometry is trusted for rectification.
       const detection = detectPresentationFromCanvas(src);
       if (!detection) {
-        setPendingPage(src.toDataURL('image/jpeg', outputJpegQuality(isIOS())));
+        setPendingPage(src.toDataURL('image/jpeg', outputJpegQuality(isNativePlatform())));
         setPendingEditMode('presentation');
         setDetectedCorners(edgeCorners);
         toast.info('화면 모서리를 자동으로 찾지 못했습니다. 네 모서리를 직접 맞춰 주세요');
@@ -1472,7 +1333,7 @@ export default function ScannerScreen() {
         src,
         detection.corners,
         settingsRef.current,
-        isIOS(),
+        isNativePlatform(),
       );
       if (!page) {
         toast.error('초점이 맞지 않았습니다. 잠시 기다린 뒤 다시 촬영하세요');
@@ -1534,7 +1395,7 @@ export default function ScannerScreen() {
          src,
         detection.corners,
         settingsRef.current,
-        isIOS(),
+        isNativePlatform(),
       );
     };
 
@@ -1575,7 +1436,7 @@ export default function ScannerScreen() {
         const composite = await combineIdCardPages(
           frontData,
           backData,
-          outputJpegQuality(isIOS()),
+          outputJpegQuality(isNativePlatform()),
         );
         addPage(composite);
         setActivePageIndex(pagesLenRef.current);
@@ -1604,15 +1465,13 @@ export default function ScannerScreen() {
 
   /* ── Capture button handler ─────────────────────────────────────────────── */
   const handleCaptureButton = useCallback(() => {
-    // Android 네이티브: 모든 모드를 네이티브 카메라로 처리
-    if (isNative) { void nativeCaptureAndProcess(); return; }
     const sm = scanModeRef.current;
     if      (sm === 'book')         bookCapture();
     else if (sm === 'presentation') presentationCapture();
     else if (sm === 'id-cards')     void idCardsCapture();
     else if (mode === 'auto')       autoCaptureFrame();
     else                            manualCaptureFrame();
-  }, [isNative, nativeCaptureAndProcess, mode, autoCaptureFrame, manualCaptureFrame, bookCapture, presentationCapture, idCardsCapture]);
+  }, [mode, autoCaptureFrame, manualCaptureFrame, bookCapture, presentationCapture, idCardsCapture]);
 
   /* ── Text stamp: burns typed text onto the last page ───────────────────── */
   const handleApplyText = useCallback(async () => {
@@ -1670,14 +1529,9 @@ export default function ScannerScreen() {
       <div className="min-h-screen bg-[#0d0d14] flex flex-col items-center justify-center p-6 text-center">
         <h2 className="text-xl font-semibold mb-2 text-white">카메라 접근 권한 없음</h2>
         <p className="text-white/50 mb-6 max-w-sm">
-          {isNative
-            ? '설정 앱 → 앱 → PrivaScan → 권한에서 카메라를 허용한 뒤 다시 시도하세요.'
-            : 'PrivaScan needs camera access. Please enable it in browser settings and refresh.'}
+          설정에서 PrivaScan의 카메라 권한을 허용한 뒤 다시 시도하세요.
         </p>
-        {isNative
-          ? <Button onClick={() => { void startCamera(); }} variant="outline">다시 시도</Button>
-          : <Button onClick={() => window.location.reload()} variant="outline">Refresh Page</Button>
-        }
+        <Button onClick={() => { void startCamera(); }} variant="outline">다시 시도</Button>
       </div>
     );
   }
@@ -1725,8 +1579,8 @@ export default function ScannerScreen() {
         />
       )}
 
-      {/* ── Live camera (웹) ── */}
-      {!isMockMode && !isNative && (
+      {/* ── Live camera — Android, iOS, and web share the same scanner UI ── */}
+      {!isMockMode && (
         <video ref={videoRef} autoPlay playsInline muted
           className="absolute inset-0 w-full h-full object-cover z-0" />
       )}
@@ -1783,16 +1637,6 @@ export default function ScannerScreen() {
           />
         </svg>
       )}
-      {/* ── Native camera placeholder (Android) ── */}
-      {isNative && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center z-0 gap-4 select-none pointer-events-none">
-          <Camera className="w-20 h-20 text-white/15" />
-          <p className="text-white/25 text-sm font-medium tracking-wide">
-            {idStage === 'back' ? '뒷면을 촬영하세요' : '아래 버튼을 눌러 촬영하세요'}
-          </p>
-        </div>
-      )}
-
        {/* ── H: Top bar — logo · capture preferences · navigation ── */}
       <div
         className="absolute top-0 inset-x-0 z-20 grid grid-cols-[auto_minmax(0,1fr)_auto] sm:grid-cols-[1fr_auto_1fr] items-center px-3 sm:px-4 pb-6"

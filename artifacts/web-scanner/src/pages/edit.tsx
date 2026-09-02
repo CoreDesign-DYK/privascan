@@ -24,7 +24,7 @@ import {
 } from '@/lib/presentation-detection';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { isIOS } from '@/lib/platform';
+import { isNative } from '@/lib/platform';
 import { enhanceDocumentCanvas } from '@/lib/filters';
 import { hasRequiredSharpness } from '@/lib/scan-quality';
 import { getPaperPixelSize } from '@/lib/scanner-types';
@@ -198,12 +198,12 @@ export default function EditScreen() {
       const scaleX = natW / displayW, scaleY = natH / displayH;
       const natCorners = corners.map(p => ({ x: p.x * scaleX, y: p.y * scaleY })) as [Point, Point, Point, Point];
 
-      const useIOSQualityPipeline = isIOS();
+      const useMobileQualityPipeline = isNative();
       const outputSize = pendingEditMode === 'presentation'
         ? presentationOutputSize(
             natCorners,
             getPaperPixelSize(settings.paperSize, settings.targetDpi, 'landscape').width,
-            useIOSQualityPipeline ? 6_500_000 : Number.POSITIVE_INFINITY,
+            useMobileQualityPipeline ? 6_500_000 : Number.POSITIVE_INFINITY,
           )
         : (() => {
             const { w, h } = estimateOutputSize(natCorners);
@@ -215,7 +215,7 @@ export default function EditScreen() {
         outputSize.width,
         outputSize.height,
         {
-          maxCpuPixels: useIOSQualityPipeline
+          maxCpuPixels: useMobileQualityPipeline
             ? 6_500_000
             : outputSize.width * outputSize.height,
         },
@@ -224,12 +224,12 @@ export default function EditScreen() {
         toast.error('초점이 흐립니다. 다시 촬영해 주세요', { id: tid });
         return;
       }
-      const enhanced = pendingEditMode === 'presentation' && useIOSQualityPipeline
+      const enhanced = pendingEditMode === 'presentation' && useMobileQualityPipeline
         ? enhanceDocumentCanvas(warped)
         : warped;
       const filtered = filterCanvas(enhanced, filter, brightness, contrast);
 
-      addPage(filtered.toDataURL('image/jpeg', isIOS() ? 0.98 : 0.92));
+      addPage(filtered.toDataURL('image/jpeg', isNative() ? 0.98 : 0.92));
       toast.success('Page added!', { id: tid });
       setPendingPage(null);
       setPendingEditMode(null);
