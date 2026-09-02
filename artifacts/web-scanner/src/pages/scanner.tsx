@@ -1538,6 +1538,7 @@ export default function ScannerScreen() {
 
   /* ── Derived colours ────────────────────────────────────────────────────── */
   const isStable   = stableProgress > 0.85;
+  const isLandscapeScanMode = scanMode === 'book' || scanMode === 'presentation';
   const edgeStroke = scanMode === 'id-cards' && !idCardReady ? '#38bdf8' : '#4ade80';
   const edgeFill   = isStable
     ? 'rgba(74,222,128,0.12)'
@@ -1556,7 +1557,10 @@ export default function ScannerScreen() {
   return (
     <div
       ref={scannerRootRef}
-      className="relative min-h-[100dvh] overflow-hidden flex flex-col"
+      className={cn(
+        'relative min-h-[100dvh] overflow-hidden flex flex-col',
+        isLandscapeScanMode && 'scanner-landscape-mode',
+      )}
       style={{ background: '#0d0d14' }}
     >
       <canvas ref={canvasRef} className="hidden" />
@@ -1639,7 +1643,7 @@ export default function ScannerScreen() {
       )}
        {/* ── H: Top bar — logo · capture preferences · navigation ── */}
       <div
-        className="absolute top-0 inset-x-0 z-20 grid grid-cols-[auto_minmax(0,1fr)_auto] sm:grid-cols-[1fr_auto_1fr] items-center px-3 sm:px-4 pb-6"
+        className="scanner-topbar absolute top-0 inset-x-0 z-20 grid grid-cols-[auto_minmax(0,1fr)_auto] sm:grid-cols-[1fr_auto_1fr] items-center px-3 sm:px-4 pb-6"
         style={{
           background: 'linear-gradient(to bottom, rgba(13,13,20,0.88) 0%, transparent 100%)',
           // Safe area: push content below the status bar / notch on Android
@@ -1647,7 +1651,7 @@ export default function ScannerScreen() {
         }}
       >
         {/* Col 1 — Left: PrivaScan brand */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="scanner-brand flex items-center gap-2 shrink-0">
           <svg className="w-7 h-7 shrink-0" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M2,12 L2,2 L12,2"    stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
             <path d="M36,2 L46,2 L46,12"  stroke="#38bdf8" strokeWidth="3" fill="none" strokeLinecap="square"/>
@@ -1662,13 +1666,13 @@ export default function ScannerScreen() {
             <line x1="17" y1="32" x2="26" y2="32" stroke="#334155" strokeWidth="1.6" strokeLinecap="round"/>
             <line x1="7"  y1="24" x2="41" y2="24" stroke="#38bdf8" strokeWidth="2"  strokeLinecap="round" opacity="0.9"/>
           </svg>
-          <span className="hidden sm:inline font-bold tracking-tight" style={{ fontSize: '1.1rem', lineHeight: 1 }}>
+          <span className="scanner-brand-label hidden sm:inline font-bold tracking-tight" style={{ fontSize: '1.1rem', lineHeight: 1 }}>
             <span className="text-white">Priva</span><span style={{ color: '#38bdf8' }}>Scan</span>
           </span>
         </div>
 
         {/* Col 2 — Center: Flash + Quality + Auto/Manual */}
-        <div className="flex justify-center items-center gap-1 sm:gap-6 min-w-0">
+        <div className="scanner-capture-preferences flex justify-center items-center gap-1 sm:gap-6 min-w-0">
 
           {/* ── Flash ── */}
           <div className="relative flex items-center">
@@ -1838,7 +1842,7 @@ export default function ScannerScreen() {
         </div>
 
         {/* Col 3 — Right: Home + Settings (page count stays by the shutter) */}
-        <div className="flex items-center justify-end gap-0 sm:gap-1 shrink-0">
+        <div className="scanner-topbar-actions flex items-center justify-end gap-0 sm:gap-1 shrink-0">
           <button
             onClick={() => setHomeOpen(true)}
             className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 transition-all shrink-0"
@@ -1887,42 +1891,41 @@ export default function ScannerScreen() {
           </div>
         )}
 
-        {/* Book: two independent page frames with a binding guide between them */}
+        {/* Book: one wide landscape frame with a binding guide between pages */}
         {scanMode === 'book' && (
           <div
-            className="absolute inset-0 pointer-events-none flex items-center justify-center"
+            className="scanner-wide-guide-region absolute inset-0 pointer-events-none flex items-center justify-center"
             style={{ top:'12%', bottom:'32%', transform:'translateY(48px)' }}
           >
             <div
-              className="relative flex items-stretch justify-center gap-5 w-[92vw] max-w-[460px] max-h-full transition-opacity duration-200"
+              className="scanner-wide-guide relative w-[92vw] max-w-[680px] max-h-full transition-opacity duration-200"
               style={{
-                aspectRatio: '1.48 / 1',
+                aspectRatio: '1.5 / 1',
                 opacity: bookDetection && !isMockMode ? 0.28 : 1,
               }}
             >
-              <div className="relative flex-1 rounded-[10px] border-2 border-white/60 bg-white/[0.025] shadow-[0_0_0_1px_rgba(0,0,0,0.16)]">
-                <div className="absolute inset-[5px] rounded-[6px] border border-white/10" />
-              </div>
-              <div className="relative flex-1 rounded-[10px] border-2 border-white/60 bg-white/[0.025] shadow-[0_0_0_1px_rgba(0,0,0,0.16)]">
-                <div className="absolute inset-[5px] rounded-[6px] border border-white/10" />
-              </div>
+              <div className="absolute inset-0 rounded-[12px] border-2 border-white/65 bg-white/[0.025] shadow-[0_0_0_1px_rgba(0,0,0,0.16)]" />
+              <div className="absolute inset-[6px] rounded-[8px] border border-white/12" />
               <div
-                className="absolute left-1/2 -translate-x-1/2 -top-2 -bottom-2 border-l-2 border-dashed border-white/75"
+                className="absolute left-1/2 -translate-x-1/2 top-0 bottom-0 border-l-2 border-dashed border-white/75"
                 aria-hidden="true"
               />
+              <span className="landscape-only-hint absolute left-1/2 -translate-x-1/2 -top-7 whitespace-nowrap text-[10px] font-semibold tracking-wide text-white/55">
+                가로 모드 · 펼친 책 전체를 프레임에 맞춰 주세요
+              </span>
             </div>
           </div>
         )}
 
         {/* Presentation: wide 16:9 */}
         {scanMode === 'presentation' && (
-          <div className="absolute inset-0 pointer-events-none flex items-center justify-center"
+          <div className="scanner-wide-guide-region absolute inset-0 pointer-events-none flex items-center justify-center"
             style={{ top:'12%', bottom:'32%', transform:'translateY(48px)' }}>
             <div
-              className="relative flex-shrink-0 transition-opacity duration-200"
+              className="scanner-wide-guide relative flex-shrink-0 transition-opacity duration-200"
               style={{
                 width:'88vw',
-                maxWidth:'420px',
+                maxWidth:'680px',
                 aspectRatio:'16/9',
                 opacity: edgeCorners && !isMockMode ? 0.2 : 1,
               }}
@@ -1932,6 +1935,9 @@ export default function ScannerScreen() {
               <div className="absolute bottom-0 left-0 w-8 h-8 border-b-[3px] border-l-[3px] border-white/55" />
               <div className="absolute bottom-0 right-0 w-8 h-8 border-b-[3px] border-r-[3px] border-white/55" />
               <span className="absolute top-2 left-1/2 -translate-x-1/2 text-[9px] font-semibold text-white/35 uppercase tracking-widest select-none">16:9 · Perspective Auto-Correct</span>
+              <span className="landscape-only-hint absolute left-1/2 -translate-x-1/2 -top-7 whitespace-nowrap text-[10px] font-semibold tracking-wide text-white/55">
+                가로 모드 · 화면 전체를 프레임에 맞춰 주세요
+              </span>
             </div>
           </div>
         )}
@@ -2005,7 +2011,7 @@ export default function ScannerScreen() {
       {/* ── E: Glassmorphism bottom bar ── */}
       <div
         className={cn(
-          'absolute bottom-0 inset-x-0 z-20 pb-8 pt-4 px-5 flex flex-col',
+          'scanner-bottom-bar absolute bottom-0 inset-x-0 z-20 pb-8 pt-4 px-5 flex flex-col',
           pages.length > 0 ? 'gap-3' : 'gap-4',
         )}
         style={{
@@ -2017,7 +2023,7 @@ export default function ScannerScreen() {
 
         {/* Auto-mode status hint */}
         {mode === 'auto' && (
-          <div className="flex justify-center min-h-[20px]">
+          <div className="scanner-status-hint flex justify-center min-h-[20px]">
             {!isMockMode && !focusReady ? (
               <span className="text-amber-300 text-sm font-semibold animate-pulse">
                 Focusing camera…
@@ -2069,7 +2075,7 @@ export default function ScannerScreen() {
 
         {/* Page thumbnails */}
         {pages.length > 0 && (
-          <div className="flex gap-2.5 overflow-x-auto snap-x px-1 pb-1 no-scrollbar">
+          <div className="scanner-thumbnails flex gap-2.5 overflow-x-auto snap-x px-1 pb-1 no-scrollbar">
             {pages.map((p, i) => (
               <button
                 key={i}
@@ -2221,7 +2227,7 @@ export default function ScannerScreen() {
         {/* Scan modes are only needed before the first capture. Once pages
             exist, this space is dedicated to the edit toolbar above. */}
         {pages.length === 0 && (
-          <div className="flex justify-center transition-all duration-200 pointer-events-auto">
+          <div className="scanner-mode-selector flex justify-center transition-all duration-200 pointer-events-auto">
             <div className="flex items-center gap-0 bg-white/8 border border-white/10 rounded-full px-1 py-1">
               {([
                 { id: 'document',     label: 'Document'     },
@@ -2248,7 +2254,7 @@ export default function ScannerScreen() {
 
         {/* ID Cards stage indicator */}
         {pages.length === 0 && scanMode === 'id-cards' && (
-          <div className="flex justify-center -mt-2">
+          <div className="scanner-id-stage flex justify-center -mt-2">
             <span className="text-[10px] font-semibold text-sky-400">
               {idStage === 'front'
                 ? (mode === 'auto'
@@ -2263,7 +2269,7 @@ export default function ScannerScreen() {
 
         {/* Controls row */}
         <div
-          className="flex items-center justify-between"
+          className="scanner-controls-row flex items-center justify-between"
           style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
         >
 

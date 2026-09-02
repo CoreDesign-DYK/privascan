@@ -29,6 +29,7 @@ _Populate as you build — short repo map plus pointers to the source-of-truth f
 - Android와 iOS는 동일한 PrivaScan 내부 `getUserMedia` 실시간 카메라를 사용한다. 시스템 카메라 앱으로 전환하는 촬영 경로는 사용하지 않는다.
 - 두 모바일 플랫폼은 동일한 스캐너 UI, 실시간 감지, 자동 촬영, 보정, JPEG 품질 및 모바일 메모리 한도를 사용한다.
 - Capacitor 네이티브 기능은 파일 저장과 공유에 사용하고, 문서 촬영과 경계 감지는 WebView 내부에서 처리한다.
+- Book과 Presentation은 휴대폰을 가로로 잡는 스캔 모드다. 가로 화면에서는 좌우 컨트롤 레일과 넓은 단일 프레임을 사용하며, Book의 중앙선은 페이지 분할선이 아니라 실제 제본선 감지 안내선이다.
 
 ## Product
 
