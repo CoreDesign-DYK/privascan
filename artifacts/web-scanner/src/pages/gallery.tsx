@@ -104,7 +104,10 @@ export default function GalleryScreen() {
   return (
     <div className="min-h-[100dvh] bg-secondary flex flex-col">
       {/* Header */}
-      <div className="bg-background px-4 h-16 flex items-center border-b sticky top-0 z-10 gap-2">
+      <div
+        className="bg-background px-4 min-h-16 h-auto flex items-center border-b sticky top-0 z-10 gap-2 pb-3"
+        style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0px))' }}
+      >
         <Button variant="ghost" size="icon" onClick={() => { setMergeMode(false); setLocation('/'); }} className="-ml-2">
           <ChevronLeft className="w-6 h-6" />
         </Button>
@@ -148,7 +151,10 @@ export default function GalleryScreen() {
       )}
 
       {/* List */}
-      <div className="flex-1 p-4 overflow-y-auto">
+      <div
+        className="flex-1 p-4 overflow-y-auto"
+        style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 0px))' }}
+      >
         {isLoading ? (
           <div className="space-y-4">
             {[1, 2, 3].map(i => <div key={i} className="bg-background h-24 rounded-xl border animate-pulse" />)}

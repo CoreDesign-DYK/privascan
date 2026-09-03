@@ -10,7 +10,10 @@ export function TopBar() {
   const isScanner = location === '/';
 
   return (
-    <div className="fixed top-0 right-0 z-50 flex items-center gap-1 px-4 py-3 pr-8">
+    <div
+      className="fixed top-0 right-0 z-50 flex items-center gap-1 px-4 pb-3 pr-8"
+      style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0px))' }}
+    >
       <div className="flex items-center px-1 py-1 gap-0.5">
 
         {/* Home */}
