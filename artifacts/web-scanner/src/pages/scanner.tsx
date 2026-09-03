@@ -57,38 +57,45 @@ import fileBoxIcon from '@/assets/file-box-icon.png';
 function AutoManualToggleIcon({ mode }: { mode: 'auto' | 'manual' }) {
   return (
     <svg
-      viewBox="0 0 200 185"
+      viewBox="0 0 40 40"
       aria-hidden="true"
       className="h-8 w-9 text-white"
     >
+      <defs>
+        <marker
+          id="auto-manual-arrow-head"
+          markerWidth="8"
+          markerHeight="8"
+          markerUnits="userSpaceOnUse"
+          orient="auto"
+          refX="7"
+          refY="4"
+        >
+          <path d="M0 0 8 4 0 8Z" fill="currentColor" />
+        </marker>
+      </defs>
       <path
-        d="M17 70C30 34 62 14 103 14c38 0 66 20 77 52"
+        d="M7 21C7 11 15 5 24 7c5 1 9 4 10 9"
         fill="none"
+        markerEnd="url(#auto-manual-arrow-head)"
         stroke="currentColor"
         strokeLinecap="round"
-        strokeWidth="14"
+        strokeWidth="3"
       />
       <path
-        d="m172 47 20 36-40-5Z"
-        fill="currentColor"
-      />
-      <path
-        d="M169 115c-11 38-39 57-78 57-36 0-64-21-73-52"
+        d="M33 20c0 10-8 16-17 14-5-1-9-4-10-10"
         fill="none"
+        markerEnd="url(#auto-manual-arrow-head)"
         stroke="currentColor"
         strokeLinecap="round"
-        strokeWidth="14"
-      />
-      <path
-        d="m27 148-20-38 41 8Z"
-        fill="currentColor"
+        strokeWidth="3"
       />
       <text
-        x="100"
-        y="125"
+        x="20"
+        y="26"
         fill="currentColor"
         fontFamily="Arial, sans-serif"
-        fontSize="86"
+        fontSize="16"
         fontWeight="800"
         textAnchor="middle"
       >
