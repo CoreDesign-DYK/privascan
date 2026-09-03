@@ -1902,29 +1902,28 @@ export default function ScannerScreen() {
             )}
           </div>
 
-          {/* ── Auto / Manual toggle ── */}
-          <div className="relative flex items-center h-8 bg-white/10 border border-white/15 rounded-full px-[2px] ml-0 sm:ml-[5px] shrink-0">
-              {/* Sliding pill */}
-              <div
-                className="absolute top-[2px] bottom-[2px] rounded-full bg-white shadow-sm transition-all duration-300 ease-out"
-                style={{
-                  width: 'calc(50% - 2px)',
-                  left: mode === 'auto' ? '2px' : 'calc(50%)',
-                }}
-              />
-              {(['auto', 'manual'] as const).map(m => (
-                <button
-                  key={m}
-                  onClick={() => setMode(m)}
-                  className={cn(
-                    'relative z-10 h-full px-1.5 sm:px-2 rounded-full text-[9px] font-semibold transition-colors duration-200 capitalize select-none',
-                    mode === m ? 'text-gray-900' : 'text-white/60 hover:text-white/90',
-                  )}
-                >
-                  {m}
-                </button>
-              ))}
-          </div>
+          {/* ── A / M capture mode toggle ── */}
+          <button
+            type="button"
+            onClick={() => setMode(mode === 'auto' ? 'manual' : 'auto')}
+            aria-label={mode === 'auto' ? 'Switch to Manual mode' : 'Switch to Auto mode'}
+            className={cn(
+              'relative ml-0 sm:ml-[5px] w-11 h-8 shrink-0 rounded-[7px] border-[3px]',
+              'flex items-center justify-center text-[19px] leading-none font-bold',
+              'transition-all duration-200 active:scale-95',
+              mode === 'auto'
+                ? 'border-sky-300 text-sky-100 shadow-[0_0_10px_rgba(56,189,248,0.2)]'
+                : 'border-white/85 text-white',
+            )}
+          >
+            <span aria-hidden="true">{mode === 'auto' ? 'A' : 'M'}</span>
+            <span
+              aria-hidden="true"
+              className="absolute -top-[13px] -right-[7px] text-[20px] leading-none font-semibold text-white"
+            >
+              +
+            </span>
+          </button>
 
         </div>
 
