@@ -1908,8 +1908,8 @@ export default function ScannerScreen() {
             onClick={() => setMode(mode === 'auto' ? 'manual' : 'auto')}
             aria-label={mode === 'auto' ? 'Switch to Manual mode' : 'Switch to Auto mode'}
             className={cn(
-              'relative ml-0 sm:ml-[5px] w-11 h-8 shrink-0 rounded-[7px] border-[3px]',
-              'flex items-center justify-center text-[19px] leading-none font-bold',
+              'relative ml-0 sm:ml-[5px] w-[38px] h-[27px] shrink-0 rounded-[6px] border-[2px]',
+              'flex items-center justify-center text-[16px] leading-none font-bold',
               'transition-all duration-200 active:scale-95',
               mode === 'auto'
                 ? 'border-sky-300 text-sky-100 shadow-[0_0_10px_rgba(56,189,248,0.2)]'
@@ -1919,7 +1919,7 @@ export default function ScannerScreen() {
             <span aria-hidden="true">{mode === 'auto' ? 'A' : 'M'}</span>
             <span
               aria-hidden="true"
-              className="absolute -top-[13px] -right-[7px] text-[20px] leading-none font-semibold text-white"
+              className="absolute -top-[16px] -right-[8px] text-[24px] leading-none font-extrabold text-white"
             >
               +
             </span>
