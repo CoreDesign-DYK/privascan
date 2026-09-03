@@ -62,19 +62,19 @@ function AutoManualToggleIcon({ mode }: { mode: 'auto' | 'manual' }) {
       className="h-8 w-9 text-white"
     >
       <path
-        d="M61 230C93 92 205 10 344 10c141 0 253 84 285 208l39-14-30 110-81-79 34-8C559 121 462 48 344 48 224 48 126 121 99 244Z"
+        d="M61 230C93 92 205 10 344 10c141 0 253 84 285 208l51-28-34 150-121-112 60-14C559 121 462 48 344 48 224 48 126 121 99 244Z"
         fill="currentColor"
       />
       <path
-        d="M630 390C590 520 485 604 344 604 204 604 95 520 57 410l-30-1 30-108 81 79-39 6c34 103 129 181 245 181 119 0 215-74 253-191Z"
+        d="M630 390C590 520 485 604 344 604 204 604 95 520 57 410l-49-2 39-138 128 108-77 14c34 103 129 181 245 181 119 0 215-74 253-191Z"
         fill="currentColor"
       />
       <text
         x="344"
-        y="435"
+        y="421"
         fill="currentColor"
         fontFamily="Arial Black, Arial, sans-serif"
-        fontSize="390"
+        fontSize="340"
         fontWeight="900"
         textAnchor="middle"
       >
