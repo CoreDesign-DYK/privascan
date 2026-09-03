@@ -7,7 +7,7 @@
  * E: Glassmorphism bottom bar
  * F: iOS-style capture button
  * H: DocScan brand wordmark in header
- * I: Sliding mode toggle pill
+ * I: Auto/manual circular toggle icon
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocation } from 'wouter';
@@ -54,7 +54,7 @@ import {
 } from '@/lib/id-card-detection';
 import fileBoxIcon from '@/assets/file-box-icon.png';
 
-function AutoManualToggleIcon() {
+function AutoManualToggleIcon({ mode }: { mode: 'auto' | 'manual' }) {
   return (
     <svg
       viewBox="0 0 200 185"
@@ -69,7 +69,7 @@ function AutoManualToggleIcon() {
         strokeWidth="14"
       />
       <path
-        d="m173 52 12 23-26-2Z"
+        d="m172 47 20 36-40-5Z"
         fill="currentColor"
       />
       <path
@@ -80,19 +80,19 @@ function AutoManualToggleIcon() {
         strokeWidth="14"
       />
       <path
-        d="m26 139-14-24 26 5Z"
+        d="m27 148-20-38 41 8Z"
         fill="currentColor"
       />
       <text
-        x="101"
-        y="128"
+        x="100"
+        y="125"
         fill="currentColor"
         fontFamily="Arial, sans-serif"
         fontSize="86"
         fontWeight="800"
         textAnchor="middle"
       >
-        A
+        {mode === 'auto' ? 'A' : 'M'}
       </text>
     </svg>
   );
@@ -1957,7 +1957,7 @@ export default function ScannerScreen() {
               'transition-all duration-200 active:scale-95',
             )}
           >
-            <AutoManualToggleIcon />
+            <AutoManualToggleIcon mode={mode} />
           </button>
 
         </div>
