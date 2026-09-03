@@ -54,6 +54,50 @@ import {
 } from '@/lib/id-card-detection';
 import fileBoxIcon from '@/assets/file-box-icon.png';
 
+function AutoManualToggleIcon() {
+  return (
+    <svg
+      viewBox="0 0 200 185"
+      aria-hidden="true"
+      className="h-8 w-9 text-white"
+    >
+      <path
+        d="M17 70C30 34 62 14 103 14c38 0 66 20 77 52"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="14"
+      />
+      <path
+        d="m173 52 12 23-26-2Z"
+        fill="currentColor"
+      />
+      <path
+        d="M169 115c-11 38-39 57-78 57-36 0-64-21-73-52"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="14"
+      />
+      <path
+        d="m26 139-14-24 26 5Z"
+        fill="currentColor"
+      />
+      <text
+        x="101"
+        y="128"
+        fill="currentColor"
+        fontFamily="Arial, sans-serif"
+        fontSize="86"
+        fontWeight="800"
+        textAnchor="middle"
+      >
+        A
+      </text>
+    </svg>
+  );
+}
+
 // Wait between completed detector passes instead of running on a fixed
 // interval. On WKWebView this leaves the main thread available for touch input.
 const EDGE_INTERVAL_MS = 250;
@@ -1908,21 +1952,12 @@ export default function ScannerScreen() {
             onClick={() => setMode(mode === 'auto' ? 'manual' : 'auto')}
             aria-label={mode === 'auto' ? 'Switch to Manual mode' : 'Switch to Auto mode'}
             className={cn(
-              'relative ml-0 sm:ml-[5px] w-[38px] h-[27px] shrink-0 rounded-[6px] border-[2px]',
-              'flex items-center justify-center text-[16px] leading-none font-bold',
+              'relative ml-0 sm:ml-[5px] w-10 h-9 shrink-0',
+              'flex items-center justify-center',
               'transition-all duration-200 active:scale-95',
-              mode === 'auto'
-                ? 'border-sky-300 text-sky-100 shadow-[0_0_10px_rgba(56,189,248,0.2)]'
-                : 'border-white/85 text-white',
             )}
           >
-            <span aria-hidden="true">{mode === 'auto' ? 'A' : 'M'}</span>
-            <span
-              aria-hidden="true"
-              className="absolute -top-[16px] -right-[8px] text-[24px] leading-none font-extrabold text-white"
-            >
-              +
-            </span>
+            <AutoManualToggleIcon />
           </button>
 
         </div>
