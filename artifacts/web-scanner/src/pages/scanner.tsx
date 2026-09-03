@@ -45,6 +45,7 @@ import {
 import { enhanceDocumentCanvas } from '@/lib/filters';
 import { isNative as isNativePlatform } from '@/lib/platform';
 import { hasRequiredSharpness } from '@/lib/scan-quality';
+import { playSuccessfulCaptureSound } from '@/lib/capture-feedback';
 import {
   detectIdCardFromCanvas,
   isLikelyIdCardQuad,
@@ -63,7 +64,7 @@ const JUMP_CONFIRM_FRAMES = 2;
 const JUMP_BLEND = 0.78;
 const INITIAL_TRACK_CONFIRM_FRAMES = 2;
 const MAX_MISSED_EDGE_FRAMES = 6;
-const MAX_MOBILE_CAPTURE_PIXELS = 6_500_000;
+const MAX_MOBILE_CAPTURE_PIXELS = 10_500_000;
 const BOOK_FOLD_STABLE_DISTANCE = 0.025;
 const BOOK_FOLD_CONFIRM_FRAMES = 3;
 const ID_CARD_WIDTH_MM = 85.6;
@@ -348,6 +349,44 @@ function captureVideoFrame(
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
   ctx.filter = 'none';
   return canvas;
+}
+
+async function captureBestCameraFrame(
+  video: HTMLVideoElement,
+  greyscale: boolean,
+): Promise<HTMLCanvasElement> {
+  if (isNativePlatform()) {
+    const track = (video.srcObject as MediaStream | null)?.getVideoTracks()[0];
+    const ImageCaptureConstructor = (
+      window as Window & {
+        ImageCapture?: new (track: MediaStreamTrack) => {
+          takePhoto(): Promise<Blob>;
+        };
+      }
+    ).ImageCapture;
+    if (track && ImageCaptureConstructor) {
+      try {
+        const photo = await new ImageCaptureConstructor(track).takePhoto();
+        const bitmap = await createImageBitmap(photo);
+        const canvas = document.createElement('canvas');
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        const context = canvas.getContext('2d')!;
+        if (greyscale) context.filter = 'grayscale(100%)';
+        context.drawImage(bitmap, 0, 0);
+        context.filter = 'none';
+        bitmap.close();
+        console.info('[PrivaScan] high-resolution still capture', {
+          width: canvas.width,
+          height: canvas.height,
+        });
+        return canvas;
+      } catch (error) {
+        console.warn('[PrivaScan] still capture unavailable; using video frame', error);
+      }
+    }
+  }
+  return captureVideoFrame(video, greyscale);
 }
 
 function createBookPageDataUrls(
@@ -704,7 +743,9 @@ function QualityGaugeIcon({ dpi }: { dpi: number }) {
 
 export default function ScannerScreen() {
   const [, setLocation] = useLocation();
-  const { videoRef, startCamera, stopCamera, hasPermission, isMockMode, focusReady } = useCamera();
+  const {
+    videoRef, startCamera, stopCamera, hasPermission, isMockMode, focusReady, requestFocus,
+  } = useCamera();
   const {
     mode, setMode, pages, addPage, removePage, clearPages, settings, setSettings,
     setActivePageIndex, setPendingPage, setPendingEditMode, setDetectedCorners,
@@ -720,6 +761,7 @@ export default function ScannerScreen() {
   const [idCardReady, setIdCardReady] = useState(false);
   const [stableProgress, setStableProgress] = useState(0);
   const [capturedLabel,  setCapturedLabel]  = useState<number | null>(null);
+  const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
   const [selectedThumb,  setSelectedThumb]  = useState(-1);
 
   type FlashMode = 'off' | 'on' | 'auto';
@@ -870,7 +912,7 @@ export default function ScannerScreen() {
   }, []);
 
   /* ── Auto-capture ───────────────────────────────────────────────────────── */
-  const autoCaptureFrame = useCallback(() => {
+  const autoCaptureFrame = useCallback(async () => {
     if (!isMockMode && !focusReady) return;
     if (scanModeRef.current === 'book') {
       captureBookAutoRef.current();
@@ -894,7 +936,7 @@ export default function ScannerScreen() {
     } else {
       const video = videoRef.current;
       const useMobileQualityPipeline = isNativePlatform();
-      const canvas = captureVideoFrame(
+      const canvas = await captureBestCameraFrame(
         video,
         settingsRef.current.colorMode === 'greyscale',
       );
@@ -932,6 +974,7 @@ export default function ScannerScreen() {
     rejectedBookDetectionRef.current = null;
 
     triggerCaptureEffects();
+    playSuccessfulCaptureSound();
     setCapturedLabel(pageNum);
     setTimeout(() => setCapturedLabel(null), 1800);
 
@@ -1200,13 +1243,11 @@ export default function ScannerScreen() {
   }, [isMockMode, videoRef, focusReady]);
 
   /* ── Manual capture ─────────────────────────────────────────────────────── */
-  const manualCaptureFrame = useCallback(() => {
+  const manualCaptureFrame = useCallback(async () => {
     if (!isMockMode && !focusReady) {
       toast.info('카메라 초점을 맞추는 중입니다. 잠시 기다려 주세요');
       return;
     }
-    triggerCaptureEffects();
-
     const pageNum = pagesLenRef.current + 1;
 
     if (isMockMode || !videoRef.current) {
@@ -1214,7 +1255,7 @@ export default function ScannerScreen() {
     } else {
       const video  = videoRef.current;
       const useMobileQualityPipeline = isNativePlatform();
-      const canvas = captureVideoFrame(
+      const canvas = await captureBestCameraFrame(
         video,
         settingsRef.current.colorMode === 'greyscale',
       );
@@ -1232,6 +1273,8 @@ export default function ScannerScreen() {
       }
       addPage(page);
     }
+    triggerCaptureEffects();
+    playSuccessfulCaptureSound();
     setActivePageIndex(pageNum - 1);
 
     // Review the page first. Crop is available from the review toolbar only
@@ -1240,7 +1283,7 @@ export default function ScannerScreen() {
   }, [isMockMode, focusReady, videoRef, edgeCorners, addPage, setActivePageIndex, setLocation, triggerCaptureEffects]);
 
   /* ── Book capture ───────────────────────────────────────────────────────── */
-  const bookCapture = useCallback(() => {
+  const bookCapture = useCallback(async () => {
     if (!isMockMode && !focusReady) {
       toast.info('카메라 초점을 맞추는 중입니다. 잠시 기다려 주세요');
       return;
@@ -1256,7 +1299,7 @@ export default function ScannerScreen() {
       // Capture and validate the exact frame before splitting the corrected
       // book spread. Keep iOS processing within the same memory ceiling used
       // by standard document capture.
-      const full = captureVideoFrame(
+      const full = await captureBestCameraFrame(
         video,
         grey,
       );
@@ -1290,6 +1333,7 @@ export default function ScannerScreen() {
 
     rejectedBookDetectionRef.current = null;
     triggerCaptureEffects();
+    playSuccessfulCaptureSound();
     setCapturedLabel(base + 2);
     setTimeout(() => setCapturedLabel(null), 1800);
     setActivePageIndex(base + 1);
@@ -1301,12 +1345,11 @@ export default function ScannerScreen() {
   }, [bookCapture]);
 
   /* ── Presentation capture ───────────────────────────────────────────────── */
-  const presentationCapture = useCallback(() => {
+  const presentationCapture = useCallback(async () => {
     if (!isMockMode && !focusReady) {
       toast.info('카메라 초점을 맞추는 중입니다. 잠시 기다려 주세요');
       return;
     }
-    triggerCaptureEffects();
     const grey = settingsRef.current.colorMode === 'greyscale';
     const pageNum = pagesLenRef.current + 1;
 
@@ -1314,7 +1357,7 @@ export default function ScannerScreen() {
       addPage(generateMockPresentation(pageNum, settingsRef.current));
     } else {
       const video = videoRef.current;
-      const src = captureVideoFrame(
+      const src = await captureBestCameraFrame(
         video,
         grey,
       );
@@ -1343,6 +1386,8 @@ export default function ScannerScreen() {
     }
 
     setCapturedLabel(pageNum);
+    triggerCaptureEffects();
+    playSuccessfulCaptureSound();
     setTimeout(() => setCapturedLabel(null), 1800);
     setActivePageIndex(pageNum - 1);
     setLocation('/preview');
@@ -1376,10 +1421,10 @@ export default function ScannerScreen() {
       toast.error(message);
     };
 
-    const captureCardDataUrl = (): string | null => {
+    const captureCardDataUrl = async (): Promise<string | null> => {
       if (isMockMode || !videoRef.current) return 'mock';
       const video = videoRef.current;
-      const src = captureVideoFrame(
+      const src = await captureBestCameraFrame(
         video,
         grey,
       );
@@ -1400,13 +1445,14 @@ export default function ScannerScreen() {
     };
 
     if (idStage === 'front') {
-      const frontData = captureCardDataUrl();
+      const frontData = await captureCardDataUrl();
       if (!frontData) {
         rejectCapture('카드 네 변 또는 초점을 확인한 뒤 다시 맞춰 주세요');
         return;
       }
       idFrontRef.current = frontData;
       triggerCaptureEffects();
+      playSuccessfulCaptureSound();
       setIdStage('back');
       setIdCardDetection(null);
       setIdCardReady(false);
@@ -1428,7 +1474,7 @@ export default function ScannerScreen() {
         setActivePageIndex(pagesLenRef.current);
         setLocation('/preview');
       } else {
-        const backData = captureCardDataUrl();
+        const backData = await captureCardDataUrl();
         if (!backData) {
           rejectCapture('카드 뒷면의 네 변 또는 초점을 확인한 뒤 다시 맞춰 주세요');
           return;
@@ -1445,6 +1491,7 @@ export default function ScannerScreen() {
       }
 
       triggerCaptureEffects();
+      playSuccessfulCaptureSound();
       idFrontRef.current = null;
       setIdStage('front');
       setIdCardDetection(null);
@@ -1538,7 +1585,6 @@ export default function ScannerScreen() {
 
   /* ── Derived colours ────────────────────────────────────────────────────── */
   const isStable   = stableProgress > 0.85;
-  const isLandscapeScanMode = scanMode === 'book' || scanMode === 'presentation';
   const edgeStroke = scanMode === 'id-cards' && !idCardReady ? '#38bdf8' : '#4ade80';
   const edgeFill   = isStable
     ? 'rgba(74,222,128,0.12)'
@@ -1557,10 +1603,7 @@ export default function ScannerScreen() {
   return (
     <div
       ref={scannerRootRef}
-      className={cn(
-        'relative min-h-[100dvh] overflow-hidden flex flex-col',
-        isLandscapeScanMode && 'scanner-landscape-mode',
-      )}
+      className="relative min-h-[100dvh] overflow-hidden flex flex-col"
       style={{ background: '#0d0d14' }}
     >
       <canvas ref={canvasRef} className="hidden" />
@@ -1857,7 +1900,23 @@ export default function ScannerScreen() {
       </div>
 
       {/* ── Main viewfinder ── */}
-      <div className="flex-1 relative flex items-center justify-center">
+      <div
+        className="flex-1 relative flex items-center justify-center"
+        onPointerDown={(event) => {
+          if (isMockMode) return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          setFocusPoint({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+          void requestFocus();
+          window.setTimeout(() => setFocusPoint(null), 850);
+        }}
+      >
+        {focusPoint && (
+          <div
+            className="scanner-focus-reticle absolute z-20 pointer-events-none"
+            style={{ left: focusPoint.x, top: focusPoint.y }}
+            aria-hidden="true"
+          />
+        )}
 
         {/* Dev-mode mock document */}
         {isMockMode && (

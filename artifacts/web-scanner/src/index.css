@@ -154,124 +154,30 @@
   animation: captureGlow 1.4s ease-in-out infinite;
 }
 
-/* ── Wide scan modes ─────────────────────────────────────────────────────── */
-/* Book and Presentation are designed for a phone held horizontally. Keep the
-   guide wide on landscape devices while preserving enough vertical room for
-   the camera controls. */
+@keyframes scannerFocusLock {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(1.45); }
+  24% { opacity: 1; transform: translate(-50%, -50%) scale(0.9); }
+  70% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+}
+
+.scanner-focus-reticle {
+  width: 58px;
+  height: 58px;
+  border: 2px solid rgba(250, 204, 21, 0.95);
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.28);
+  animation: scannerFocusLock 0.85s ease-out forwards;
+}
+
+/* Wide document guides stay inside the portrait-locked scanner UI. */
 .scanner-wide-guide {
   width: min(92vw, 680px);
   max-height: 100%;
 }
 
 .landscape-only-hint {
-  display: none;
-}
-
-@media (orientation: portrait) {
-  .scanner-landscape-mode .landscape-only-hint {
-    display: block;
-  }
-}
-
-@media (orientation: landscape) {
-  .scanner-landscape-mode .scanner-wide-guide-region {
-    top: 0 !important;
-    right: 96px !important;
-    bottom: 0 !important;
-    left: 78px !important;
-    transform: translateY(0) !important;
-  }
-
-  .scanner-landscape-mode .scanner-wide-guide {
-    width: min(84vw, 760px);
-  }
-
-  .scanner-landscape-mode .scanner-topbar {
-    top: 0;
-    right: auto;
-    bottom: 0;
-    left: 0;
-    width: 78px;
-    padding: max(12px, env(safe-area-inset-top, 0px)) 8px max(12px, env(safe-area-inset-bottom, 0px)) !important;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    background: linear-gradient(to right, rgba(13,13,20,0.92) 35%, rgba(13,13,20,0.58) 78%, transparent);
-  }
-
-  .scanner-landscape-mode .scanner-brand {
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .scanner-landscape-mode .scanner-brand-label {
-    display: none;
-  }
-
-  .scanner-landscape-mode .scanner-capture-preferences {
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .scanner-landscape-mode .scanner-topbar-actions {
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .scanner-landscape-mode .scanner-bottom-bar {
-    top: 0;
-    right: 0;
-    bottom: 0;
-    left: auto;
-    width: 96px;
-    padding: max(12px, env(safe-area-inset-top, 0px)) 8px max(12px, env(safe-area-inset-bottom, 0px)) !important;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    overflow-y: auto;
-    background: linear-gradient(to left, rgba(13,13,20,0.92) 35%, rgba(13,13,20,0.58) 78%, transparent);
-  }
-
-  .scanner-landscape-mode .scanner-status-hint {
-    width: 100%;
-    min-height: 0;
-    text-align: center;
-  }
-
-  .scanner-landscape-mode .scanner-thumbnails {
-    max-height: 92px;
-    flex-direction: column;
-    overflow-x: hidden;
-    overflow-y: auto;
-  }
-
-  .scanner-landscape-mode .scanner-mode-selector {
-    flex-direction: column;
-    width: 42px;
-    border-radius: 22px;
-    padding: 4px;
-  }
-
-  .scanner-landscape-mode .scanner-mode-selector button {
-    width: 34px;
-    min-height: 42px;
-    padding: 6px 3px;
-    writing-mode: vertical-rl;
-    transform: rotate(180deg);
-    line-height: 1;
-  }
-
-  .scanner-landscape-mode .scanner-id-stage {
-    text-align: center;
-  }
-
-  .scanner-landscape-mode .scanner-controls-row {
-    flex-direction: column;
-    justify-content: center;
-    gap: 16px;
-  }
+  display: block;
 }
 
 /* ── Hide scrollbar (thumbnail strip) ── */
