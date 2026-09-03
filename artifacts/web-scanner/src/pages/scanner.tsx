@@ -11,7 +11,7 @@
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocation } from 'wouter';
-import { Zap, ZapOff, ChevronRight, Smartphone, Edit2, ScanLine, House, Camera, Crop, RotateCw, Type, Trash2, Check, X as XIcon } from 'lucide-react';
+import { Zap, ZapOff, ChevronRight, Smartphone, Edit2, ScanLine, House, Camera, Crop, RotateCw, Type, Trash2, Check, FileText, X as XIcon } from 'lucide-react';
 import { useCamera } from '@/hooks/use-camera';
 import { useScannerContext } from '@/contexts/scanner-context';
 import { SettingsSheet } from '@/components/settings-sheet';
@@ -773,6 +773,7 @@ export default function ScannerScreen() {
   const [scanMode,    setScanMode]    = useState<ScanMode>('document');
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [homeOpen,    setHomeOpen]    = useState(false);
+  const [resultsTrayCollapsed, setResultsTrayCollapsed] = useState(false);
 
   // ── Text tool state ────────────────────────────────────────────────────────
   const [textPanelOpen,  setTextPanelOpen]  = useState(false);
@@ -788,6 +789,8 @@ export default function ScannerScreen() {
   const scannerRootRef = useRef<HTMLDivElement>(null);
 
   const lastThumbRef     = useRef<HTMLButtonElement>(null);
+  const trayGestureStartRef = useRef<{ x: number; y: number } | null>(null);
+  const trayGestureConsumedRef = useRef(false);
   const modeRef          = useRef(mode);
   const pagesLenRef      = useRef(pages.length);
   const settingsRef      = useRef(settings);
@@ -850,6 +853,47 @@ export default function ScannerScreen() {
       lastThumbRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'end' });
     }, 60);
   }, [pages.length]);
+
+  useEffect(() => {
+    if (pages.length === 0) {
+      setResultsTrayCollapsed(false);
+      setTextPanelOpen(false);
+    }
+  }, [pages.length]);
+
+  const handleResultsTrayPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (pages.length === 0 || event.pointerType === 'mouse') return;
+    const target = event.target as HTMLElement;
+    if (target.closest('input, textarea')) return;
+    trayGestureStartRef.current = { x: event.clientX, y: event.clientY };
+    trayGestureConsumedRef.current = false;
+  }, [pages.length]);
+
+  const handleResultsTrayPointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const start = trayGestureStartRef.current;
+    trayGestureStartRef.current = null;
+    if (!start) return;
+
+    const deltaX = event.clientX - start.x;
+    const deltaY = event.clientY - start.y;
+    if (Math.abs(deltaY) < 42 || Math.abs(deltaY) <= Math.abs(deltaX)) return;
+
+    trayGestureConsumedRef.current = true;
+    event.preventDefault();
+    if (deltaY > 0) {
+      setResultsTrayCollapsed(true);
+      setTextPanelOpen(false);
+    } else {
+      setResultsTrayCollapsed(false);
+    }
+  }, []);
+
+  const handleResultsTrayClickCapture = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (!trayGestureConsumedRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    trayGestureConsumedRef.current = false;
+  }, []);
 
   // Reset stability when switching modes
   useEffect(() => {
@@ -2070,18 +2114,31 @@ export default function ScannerScreen() {
       {/* ── E: Glassmorphism bottom bar ── */}
       <div
         className={cn(
-          'scanner-bottom-bar absolute bottom-0 inset-x-0 z-20 pb-8 pt-4 px-5 flex flex-col',
-          pages.length > 0 ? 'gap-3' : 'gap-4',
+          'scanner-bottom-bar absolute bottom-0 inset-x-0 z-20 pb-8 px-5 flex flex-col',
+          resultsTrayCollapsed && pages.length > 0 ? 'gap-1 pt-2' : pages.length > 0 ? 'gap-3 pt-4' : 'gap-4 pt-4',
         )}
         style={{
-          background: 'linear-gradient(to top, rgba(13,13,20,0.92) 60%, rgba(13,13,20,0.6) 85%, transparent)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
+          background: resultsTrayCollapsed && pages.length > 0
+            ? 'linear-gradient(to top, rgba(13,13,20,0.92) 0%, rgba(13,13,20,0.55) 72%, transparent 100%)'
+            : 'linear-gradient(to top, rgba(13,13,20,0.92) 60%, rgba(13,13,20,0.6) 85%, transparent)',
+          backdropFilter: resultsTrayCollapsed && pages.length > 0 ? 'none' : 'blur(20px)',
+          WebkitBackdropFilter: resultsTrayCollapsed && pages.length > 0 ? 'none' : 'blur(20px)',
+          touchAction: 'pan-y',
         }}
+        onPointerDown={handleResultsTrayPointerDown}
+        onPointerUp={handleResultsTrayPointerUp}
+        onClickCapture={handleResultsTrayClickCapture}
       >
 
+        {/* Swipe down anywhere in the result area to give the camera more room. */}
+        {pages.length > 0 && !resultsTrayCollapsed && (
+          <div className="flex justify-center h-3 shrink-0 pointer-events-none" aria-hidden="true">
+            <span className="mt-1 w-10 h-1 rounded-full bg-white/35" />
+          </div>
+        )}
+
         {/* Auto-mode status hint */}
-        {mode === 'auto' && (
+        {mode === 'auto' && !resultsTrayCollapsed && (
           <div className="scanner-status-hint flex justify-center min-h-[20px]">
             {!isMockMode && !focusReady ? (
               <span className="text-amber-300 text-sm font-semibold animate-pulse">
@@ -2133,7 +2190,7 @@ export default function ScannerScreen() {
         )}
 
         {/* Page thumbnails */}
-        {pages.length > 0 && (
+        {pages.length > 0 && !resultsTrayCollapsed && (
           <div className="scanner-thumbnails flex gap-2.5 overflow-x-auto snap-x px-1 pb-1 no-scrollbar">
             {pages.map((p, i) => (
               <button
@@ -2168,7 +2225,7 @@ export default function ScannerScreen() {
         )}
 
         {/* ── Adobe-style horizontal edit toolbar ── */}
-        {pages.length > 0 && (
+        {pages.length > 0 && !resultsTrayCollapsed && (
           <div className="flex justify-around items-center py-1 animate-in fade-in slide-in-from-bottom-2 duration-200">
 
             {/* Retake */}
@@ -2218,7 +2275,7 @@ export default function ScannerScreen() {
         )}
 
         {/* ── Text input panel ── */}
-        {textPanelOpen && pages.length > 0 && (
+        {textPanelOpen && pages.length > 0 && !resultsTrayCollapsed && (
           <div className="bg-gray-900/95 rounded-2xl px-4 py-3 space-y-3 border border-white/10 animate-in slide-in-from-bottom-2 duration-200">
             {/* Input row */}
             <div className="flex items-center gap-2">
@@ -2333,23 +2390,37 @@ export default function ScannerScreen() {
         >
 
           {/* Gallery thumbnail button — iOS camera style */}
-          <button
-            onClick={() => setGalleryOpen(true)}
-            aria-label={`Open saved scans${localScans.length > 0 ? ` (${localScans.length})` : ''}`}
-            className="relative w-12 h-12 rounded-xl transition-all active:scale-95 shrink-0 bg-transparent flex items-center justify-center"
-          >
-            <img
-              src={fileBoxIcon}
-              alt=""
-              aria-hidden="true"
-              className="w-8 h-8 object-contain brightness-0 invert"
-            />
-            {localScans.length > 0 && (
-              <span className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-sky-500 text-white text-[9px] font-bold leading-4 text-center">
-                {localScans.length > 99 ? '99+' : localScans.length}
-              </span>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => setGalleryOpen(true)}
+              aria-label={`Open saved scans${localScans.length > 0 ? ` (${localScans.length})` : ''}`}
+              className="relative w-12 h-12 rounded-xl transition-all active:scale-95 shrink-0 bg-transparent flex items-center justify-center"
+            >
+              <img
+                src={fileBoxIcon}
+                alt=""
+                aria-hidden="true"
+                className="w-8 h-8 object-contain brightness-0 invert"
+              />
+              {localScans.length > 0 && (
+                <span className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-sky-500 text-white text-[9px] font-bold leading-4 text-center">
+                  {localScans.length > 99 ? '99+' : localScans.length}
+                </span>
+              )}
+            </button>
+            {pages.length > 0 && resultsTrayCollapsed && (
+              <button
+                onClick={() => setResultsTrayCollapsed(false)}
+                aria-label={`Show scanned pages (${pages.length})`}
+                className="relative w-10 h-10 rounded-xl flex items-center justify-center text-white/90 bg-white/10 border border-white/20 active:scale-95 transition-transform"
+              >
+                <FileText className="w-5 h-5" />
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-sky-500 text-white text-[9px] font-bold leading-4 text-center">
+                  {pages.length > 99 ? '99+' : pages.length}
+                </span>
+              </button>
             )}
-          </button>
+          </div>
 
           {/* ── F: iOS-style capture button (standalone) ── */}
           <div className="relative w-16 h-16">
