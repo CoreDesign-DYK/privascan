@@ -213,6 +213,32 @@ export function useCamera() {
     return startCameraWeb();
   }, [startCameraWeb]);
 
+  const requestFocus = useCallback(async (): Promise<void> => {
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+    setFocusReady(false);
+    try {
+      const capabilities = track.getCapabilities?.() as
+        (MediaTrackCapabilities & { focusMode?: string[] }) | undefined;
+      const modes = capabilities?.focusMode ?? [];
+      const focusMode = modes.includes('single-shot')
+        ? 'single-shot'
+        : modes.includes('continuous')
+          ? 'continuous'
+          : null;
+      if (focusMode) {
+        await track.applyConstraints({
+          advanced: [{ focusMode } as MediaTrackConstraintSet],
+        });
+        setFocusMode(focusMode);
+      }
+    } catch {
+      // The visual focus cycle still gives useful feedback on fixed-focus devices.
+    } finally {
+      window.setTimeout(() => setFocusReady(true), 700);
+    }
+  }, []);
+
   return {
     videoRef,
     hasPermission,
@@ -222,5 +248,6 @@ export function useCamera() {
     isMockMode: IS_DEV,
     focusMode,
     focusReady,
+    requestFocus,
   };
 }

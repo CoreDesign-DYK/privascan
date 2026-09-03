@@ -1,5 +1,5 @@
-const MIN_SHARPNESS_VARIANCE = 28;
-const MIN_DETAIL_COVERAGE = 0.006;
+const MIN_SHARPNESS_VARIANCE = 36;
+const MIN_DETAIL_COVERAGE = 0.008;
 
 export function hasRequiredSharpness(canvas: HTMLCanvasElement): boolean {
   const { variance, detailCoverage } = measureSharpness(canvas);
