@@ -57,46 +57,25 @@ import fileBoxIcon from '@/assets/file-box-icon.png';
 function AutoManualToggleIcon({ mode }: { mode: 'auto' | 'manual' }) {
   return (
     <svg
-      viewBox="0 0 40 40"
+      viewBox="0 0 688 612"
       aria-hidden="true"
       className="h-8 w-9 text-white"
     >
-      <defs>
-        <marker
-          id="auto-manual-arrow-head"
-          markerWidth="8"
-          markerHeight="8"
-          markerUnits="userSpaceOnUse"
-          orient="auto"
-          refX="7"
-          refY="4"
-        >
-          <path d="M0 0 8 4 0 8Z" fill="currentColor" />
-        </marker>
-      </defs>
       <path
-        d="M7 21C7 11 15 5 24 7c5 1 9 4 10 9"
-        fill="none"
-        markerEnd="url(#auto-manual-arrow-head)"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="3"
+        d="M61 230C93 92 205 10 344 10c141 0 253 84 285 208l39-14-30 110-81-79 34-8C559 121 462 48 344 48 224 48 126 121 99 244Z"
+        fill="currentColor"
       />
       <path
-        d="M33 20c0 10-8 16-17 14-5-1-9-4-10-10"
-        fill="none"
-        markerEnd="url(#auto-manual-arrow-head)"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="3"
+        d="M630 390C590 520 485 604 344 604 204 604 95 520 57 410l-30-1 30-108 81 79-39 6c34 103 129 181 245 181 119 0 215-74 253-191Z"
+        fill="currentColor"
       />
       <text
-        x="20"
-        y="26"
+        x="344"
+        y="435"
         fill="currentColor"
-        fontFamily="Arial, sans-serif"
-        fontSize="16"
-        fontWeight="800"
+        fontFamily="Arial Black, Arial, sans-serif"
+        fontSize="390"
+        fontWeight="900"
         textAnchor="middle"
       >
         {mode === 'auto' ? 'A' : 'M'}
