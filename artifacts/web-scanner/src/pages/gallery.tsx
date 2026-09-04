@@ -152,22 +152,22 @@ export default function GalleryScreen() {
 
       {/* List */}
       <div
-        className="flex-1 p-4 overflow-y-auto"
+        className="flex-1 p-3 overflow-y-auto"
         style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 0px))' }}
       >
         {isLoading ? (
-          <div className="space-y-4">
-            {[1, 2, 3].map(i => <div key={i} className="bg-background h-24 rounded-xl border animate-pulse" />)}
+          <div className="space-y-2">
+            {[1, 2, 3].map(i => <div key={i} className="bg-background h-[4.5rem] border animate-pulse" />)}
           </div>
         ) : scans.length > 0 ? (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {scans.map(scan => {
               const isMergeSelected = mergeIds.has(scan.id);
               return (
                 <div
                   key={scan.id}
                   className={cn(
-                    'bg-background border rounded-xl p-4 flex items-center gap-4 cursor-pointer active:scale-[0.98] transition-all shadow-sm hover:shadow-md',
+                    'bg-background border p-2 flex items-center gap-3 cursor-pointer active:scale-[0.98] transition-all shadow-sm hover:shadow-md',
                     mergeMode && isMergeSelected && 'border-primary ring-1 ring-primary bg-primary/5'
                   )}
                   onClick={() => mergeMode ? toggleMergeId(scan.id) : setSelectedId(scan.id)}
@@ -176,49 +176,49 @@ export default function GalleryScreen() {
                   {mergeMode && (
                     <div className="shrink-0">
                       {isMergeSelected
-                        ? <CheckSquare className="w-5 h-5 text-primary" />
-                        : <Square className="w-5 h-5 text-muted-foreground" />}
+                        ? <CheckSquare className="w-4 h-4 text-primary" />
+                        : <Square className="w-4 h-4 text-muted-foreground" />}
                     </div>
                   )}
 
                   {/* Thumbnail */}
-                  <div className="w-14 min-w-[3.5rem] h-[4.5rem] bg-secondary rounded-md flex items-center justify-center overflow-hidden border shrink-0">
+                  <div className="w-10 min-w-10 h-14 bg-secondary rounded-sm flex items-center justify-center overflow-hidden border shrink-0">
                     {scan.thumbnail
                       ? <img src={scan.thumbnail} alt={scan.name} className="w-full h-full object-cover" />
                       : scan.scanType === 'document'
-                        ? <FileText className="w-6 h-6 text-muted-foreground" />
-                        : <ImageIcon className="w-6 h-6 text-muted-foreground" />}
+                        ? <FileText className="w-5 h-5 text-muted-foreground" />
+                        : <ImageIcon className="w-5 h-5 text-muted-foreground" />}
                   </div>
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold truncate">{scan.name}</h3>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                    <h3 className="font-semibold text-sm leading-tight truncate">{scan.name}</h3>
+                    <div className="flex items-center gap-2 mt-0.5 text-[10px] leading-tight text-muted-foreground">
                       <span className="flex items-center gap-1">
-                        <FileText className="w-3 h-3" />
+                        <FileText className="w-2.5 h-2.5" />
                         {scan.pageCount}p
                       </span>
                       <span className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
+                        <Calendar className="w-2.5 h-2.5" />
                         {fmt(scan.createdAt)}
                       </span>
                     </div>
-                    <div className="mt-1.5 flex gap-1.5">
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary uppercase">{scan.format}</span>
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-secondary text-secondary-foreground uppercase">{scan.colorMode}</span>
+                    <div className="mt-1 flex gap-1">
+                      <span className="px-1 py-0.5 rounded text-[9px] leading-none font-medium bg-primary/10 text-primary uppercase">{scan.format}</span>
+                      <span className="px-1 py-0.5 rounded text-[9px] leading-none font-medium bg-secondary text-secondary-foreground uppercase">{scan.colorMode}</span>
                     </div>
                   </div>
 
                   {/* Row actions (hidden in merge mode) */}
                   {!mergeMode && (
-                    <div className="flex flex-col gap-1 shrink-0">
-                      <Button variant="ghost" size="icon" className="w-9 h-9 text-muted-foreground hover:text-foreground"
+                    <div className="flex flex-col gap-0 shrink-0">
+                      <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-foreground"
                         onClick={e => { e.stopPropagation(); handleDownload(scan); }}>
-                        <Download className="w-4 h-4" />
+                        <Download className="w-3.5 h-3.5" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="w-9 h-9 text-muted-foreground hover:text-destructive"
+                      <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-destructive"
                         onClick={e => handleDelete(scan, e)}>
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     </div>
                   )}
