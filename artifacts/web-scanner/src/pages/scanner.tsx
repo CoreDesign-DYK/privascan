@@ -45,7 +45,6 @@ import {
 import { enhanceDocumentCanvas } from '@/lib/filters';
 import { isNative as isNativePlatform } from '@/lib/platform';
 import { hasRequiredSharpness } from '@/lib/scan-quality';
-import { playSuccessfulCaptureSound } from '@/lib/capture-feedback';
 import {
   detectIdCardFromCanvas,
   isLikelyIdCardQuad,
@@ -1048,7 +1047,6 @@ export default function ScannerScreen() {
     rejectedBookDetectionRef.current = null;
 
     triggerCaptureEffects();
-    playSuccessfulCaptureSound();
     setCapturedLabel(pageNum);
     setTimeout(() => setCapturedLabel(null), 1800);
 
@@ -1348,7 +1346,6 @@ export default function ScannerScreen() {
       addPage(page);
     }
     triggerCaptureEffects();
-    playSuccessfulCaptureSound();
     setActivePageIndex(pageNum - 1);
 
     // Review the page first. Crop is available from the review toolbar only
@@ -1407,7 +1404,6 @@ export default function ScannerScreen() {
 
     rejectedBookDetectionRef.current = null;
     triggerCaptureEffects();
-    playSuccessfulCaptureSound();
     setCapturedLabel(base + 2);
     setTimeout(() => setCapturedLabel(null), 1800);
     setActivePageIndex(base + 1);
@@ -1461,7 +1457,6 @@ export default function ScannerScreen() {
 
     setCapturedLabel(pageNum);
     triggerCaptureEffects();
-    playSuccessfulCaptureSound();
     setTimeout(() => setCapturedLabel(null), 1800);
     setActivePageIndex(pageNum - 1);
     setLocation('/preview');
@@ -1526,7 +1521,6 @@ export default function ScannerScreen() {
       }
       idFrontRef.current = frontData;
       triggerCaptureEffects();
-      playSuccessfulCaptureSound();
       setIdStage('back');
       setIdCardDetection(null);
       setIdCardReady(false);
@@ -1565,7 +1559,6 @@ export default function ScannerScreen() {
       }
 
       triggerCaptureEffects();
-      playSuccessfulCaptureSound();
       idFrontRef.current = null;
       setIdStage('front');
       setIdCardDetection(null);
@@ -1992,9 +1985,12 @@ export default function ScannerScreen() {
             style={{ top:'12%', bottom:'32%', transform:'translateY(48px)' }}
           >
             <div
-              className="scanner-wide-guide relative w-[92vw] max-w-[680px] max-h-full transition-opacity duration-200"
+              className="relative flex-shrink-0 transition-opacity duration-200"
               style={{
-                aspectRatio: '1.5 / 1',
+                height: '100%',
+                maxHeight: '500px',
+                maxWidth: '78vw',
+                aspectRatio: '2 / 3',
               }}
             >
               <div className="absolute top-0 left-0 w-10 h-10 border-t-[4px] border-l-[4px] transition-colors duration-200"
@@ -2006,7 +2002,7 @@ export default function ScannerScreen() {
               <div className="absolute bottom-0 right-0 w-10 h-10 border-b-[4px] border-r-[4px] transition-colors duration-200"
                 style={{ borderColor: bookGuideColor }} />
               <div
-                className="absolute left-1/2 -translate-x-1/2 top-0 bottom-0 border-l-[3px] border-dashed transition-colors duration-200"
+                className="absolute top-1/2 -translate-y-1/2 left-0 right-0 border-t-[3px] border-dashed transition-colors duration-200"
                 style={{ borderColor: bookGuideColor }}
                 aria-hidden="true"
               />
