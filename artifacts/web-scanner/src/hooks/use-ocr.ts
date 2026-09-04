@@ -9,18 +9,6 @@ import { type Language } from '@/contexts/language-context';
 
 const LANG_MAP: Record<Language, string> = {
   EN: 'eng',
-  DE: 'deu',
-  FR: 'fra',
-  ES: 'spa',
-  IT: 'ita',
-  PT: 'por',
-  RU: 'rus',
-  ZH: 'chi_sim',
-  JA: 'jpn',
-  KO: 'kor',
-  AR: 'ara',
-  HI: 'hin',
-  NL: 'nld',
 };
 
 export type OcrStatus = 'idle' | 'loading' | 'recognizing' | 'done' | 'error';

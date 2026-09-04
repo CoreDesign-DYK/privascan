@@ -1487,7 +1487,7 @@ export default function ScannerScreen() {
   /* ── Manual capture ─────────────────────────────────────────────────────── */
   const manualCaptureFrame = useCallback(async () => {
     if (!isMockMode && !focusReady) {
-      toast.info('카메라 초점을 맞추는 중입니다. 잠시 기다려 주세요');
+      toast.info('Focusing camera. Please wait a moment.');
       return;
     }
     const pageNum = pagesLenRef.current + 1;
@@ -1497,7 +1497,7 @@ export default function ScannerScreen() {
     } else {
       const video  = videoRef.current;
       const useMobileQualityPipeline = isNativePlatform();
-      toast.info('초점을 확인하고 있습니다…');
+      toast.info('Checking focus…');
       if (focusMode === 'single-shot' || focusMode === 'unknown') {
         await requestFocus();
       }
@@ -1507,7 +1507,7 @@ export default function ScannerScreen() {
         edgeCorners,
       );
       if (!previewFocused) {
-        toast.error('글자가 아직 선명하지 않습니다. 휴대폰을 고정하고 다시 촬영해 주세요');
+        toast.error('Text is not sharp yet. Hold the phone steady and try again.');
         return;
       }
       const canvas = await captureBestCameraFrame(
@@ -1525,7 +1525,7 @@ export default function ScannerScreen() {
           shortEdge: Math.round(sourceSize.shortEdge),
         });
         if (sourceSize.shortEdge < MIN_DOCUMENT_SOURCE_SHORT_EDGE) {
-          toast.error('작은 글자가 선명하게 나오도록 문서에 더 가까이 이동해 주세요');
+          toast.error('Move closer to the document so small text stays sharp.');
           return;
         }
       }
@@ -1536,7 +1536,7 @@ export default function ScannerScreen() {
         useMobileQualityPipeline,
       );
       if (!page) {
-        toast.error('문서 경계 또는 초점을 확인한 뒤 다시 촬영하세요');
+        toast.error('Check the document edges and focus, then try again.');
         return;
       }
       addPage(page);
@@ -1552,7 +1552,7 @@ export default function ScannerScreen() {
   /* ── Book capture ───────────────────────────────────────────────────────── */
   const bookCapture = useCallback(async () => {
     if (!isMockMode && !focusReady) {
-      toast.info('카메라 초점을 맞추는 중입니다. 잠시 기다려 주세요');
+      toast.info('Focusing camera. Please wait a moment.');
       return;
     }
     const grey = settingsRef.current.colorMode === 'greyscale';
@@ -1591,7 +1591,7 @@ export default function ScannerScreen() {
           rejectedCornersRef.current = detection?.outer ?? edgeCorners;
           rejectedBookDetectionRef.current = detection ?? bookDetection;
         }
-        toast.error('책의 좌우 페이지와 중앙 접힘선을 확인한 뒤 다시 촬영하세요');
+        toast.error('Align both pages and the center fold, then try again.');
         return;
       }
       addPage(bookPages[0]);
@@ -1613,7 +1613,7 @@ export default function ScannerScreen() {
   /* ── Presentation capture ───────────────────────────────────────────────── */
   const presentationCapture = useCallback(async () => {
     if (!isMockMode && !focusReady) {
-      toast.info('카메라 초점을 맞추는 중입니다. 잠시 기다려 주세요');
+      toast.info('Focusing camera. Please wait a moment.');
       return;
     }
     const grey = settingsRef.current.colorMode === 'greyscale';
@@ -1634,7 +1634,7 @@ export default function ScannerScreen() {
         setPendingPage(src.toDataURL('image/jpeg', outputJpegQuality(isNativePlatform())));
         setPendingEditMode('presentation');
         setDetectedCorners(edgeCorners);
-        toast.info('화면 모서리를 자동으로 찾지 못했습니다. 네 모서리를 직접 맞춰 주세요');
+        toast.info('Screen corners were not detected. Align all four corners manually.');
         setLocation('/edit');
         return;
       }
@@ -1645,7 +1645,7 @@ export default function ScannerScreen() {
         isNativePlatform(),
       );
       if (!page) {
-        toast.error('초점이 맞지 않았습니다. 잠시 기다린 뒤 다시 촬영하세요');
+        toast.error('The image is out of focus. Wait a moment and try again.');
         return;
       }
       addPage(page);
@@ -1669,7 +1669,7 @@ export default function ScannerScreen() {
   /* ── ID Cards capture (2-stage) ─────────────────────────────────────────── */
   const idCardsCapture = useCallback(async () => {
     if (!isMockMode && !focusReady) {
-      toast.info('카메라 초점을 맞추는 중입니다. 잠시 기다려 주세요');
+      toast.info('Focusing camera. Please wait a moment.');
       return;
     }
     const grey = settingsRef.current.colorMode === 'greyscale';
@@ -1712,7 +1712,7 @@ export default function ScannerScreen() {
     if (idStage === 'front') {
       const frontData = await captureCardDataUrl();
       if (!frontData) {
-        rejectCapture('카드 네 변 또는 초점을 확인한 뒤 다시 맞춰 주세요');
+        rejectCapture('Check all four card edges and focus, then align the card again.');
         return;
       }
       idFrontRef.current = frontData;
@@ -1728,7 +1728,7 @@ export default function ScannerScreen() {
         waitingClear.current = true;
         setIsWaitingClear(true);
       }
-      toast.success('앞면 촬영 완료 — 카드를 뒤집어 뒷면을 촬영하세요');
+      toast.success('Front captured — flip the card to scan the back.');
     } else {
       const frontData = idFrontRef.current;
       if (!frontData) { setIdStage('front'); return; }
@@ -1740,7 +1740,7 @@ export default function ScannerScreen() {
       } else {
         const backData = await captureCardDataUrl();
         if (!backData) {
-          rejectCapture('카드 뒷면의 네 변 또는 초점을 확인한 뒤 다시 맞춰 주세요');
+          rejectCapture('Check all four back edges and focus, then align the card again.');
           return;
         }
         const composite = await combineIdCardPages(
@@ -1750,7 +1750,7 @@ export default function ScannerScreen() {
         );
         addPage(composite);
         setActivePageIndex(pagesLenRef.current);
-        toast.success('ID Card 저장 완료 — 앞면과 뒷면을 한 페이지로 만들었습니다');
+        toast.success('ID Card saved — front and back combined on one page.');
         setLocation('/preview');
       }
 
@@ -1837,11 +1837,11 @@ export default function ScannerScreen() {
   if (hasPermission === false) {
     return (
       <div className="min-h-screen bg-[#0d0d14] flex flex-col items-center justify-center p-6 text-center">
-        <h2 className="text-xl font-semibold mb-2 text-white">카메라 접근 권한 없음</h2>
+        <h2 className="text-xl font-semibold mb-2 text-white">Camera Access Required</h2>
         <p className="text-white/50 mb-6 max-w-sm">
-          설정에서 PrivaScan의 카메라 권한을 허용한 뒤 다시 시도하세요.
+          Allow camera access for PrivaScan in Settings, then try again.
         </p>
-        <Button onClick={() => { void startCamera(); }} variant="outline">다시 시도</Button>
+        <Button onClick={() => { void startCamera(); }} variant="outline">Try Again</Button>
       </div>
     );
   }
@@ -2203,7 +2203,7 @@ export default function ScannerScreen() {
                 aria-hidden="true"
               />
               <span className="landscape-only-hint absolute left-1/2 -translate-x-1/2 -top-7 whitespace-nowrap text-[10px] font-semibold tracking-wide text-white/55">
-                휴대폰을 가로로 돌려 펼친 책 전체를 맞춰 주세요
+                Turn your phone sideways and align the full book spread
               </span>
             </div>
           </div>
@@ -2230,7 +2230,7 @@ export default function ScannerScreen() {
               <div className="absolute bottom-0 right-0 w-8 h-8 border-b-[3px] border-r-[3px] border-white/55" />
               <span className="absolute top-2 left-1/2 -translate-x-1/2 text-[9px] font-semibold text-white/35 uppercase tracking-widest select-none">16:9 · Perspective Auto-Correct</span>
               <span className="landscape-only-hint absolute left-1/2 -translate-x-1/2 -top-7 whitespace-nowrap text-[10px] font-semibold tracking-wide text-white/55">
-                휴대폰을 가로로 돌려 화면 전체를 맞춰 주세요
+                Turn your phone sideways and align the full screen
               </span>
             </div>
           </div>
@@ -2339,8 +2339,8 @@ export default function ScannerScreen() {
               <span className="text-amber-400 text-sm font-semibold animate-in fade-in flex items-center gap-1.5">
                 <span>↑</span> {scanMode === 'id-cards'
                   ? (needsClearerCapture
-                      ? '카드를 다시 맞춘 뒤 잠시 프레임 밖으로 이동해 주세요'
-                      : '카드를 뒤집어 Back 프레임에 맞춰 주세요')
+                      ? 'Realign the card, then move it out of frame briefly'
+                      : 'Flip the card and align it with the Back frame')
                   : needsClearerCapture
                     ? 'Image was unclear — move document and try again'
                     : 'Remove document to scan next'}
@@ -2360,10 +2360,10 @@ export default function ScannerScreen() {
               )}>
                 {scanMode === 'id-cards'
                   ? (isStable
-                      ? `${idStage === 'front' ? 'Front' : 'Back'} 고정됨 — 자동 촬영 중…`
+                      ? `${idStage === 'front' ? 'Front' : 'Back'} locked — capturing…`
                       : edgeIsLive
-                        ? '카드 네 변 감지됨 — 그대로 유지해 주세요'
-                        : '카드 엣지를 다시 찾는 중…')
+                        ? 'All four card edges detected — hold steady'
+                        : 'Reacquiring card edges…')
                   : isStable
                     ? 'Frame locked — capturing…'
                     : edgeIsLive
@@ -2373,7 +2373,7 @@ export default function ScannerScreen() {
             ) : (
               <span className="text-white/35 text-sm">
                 {scanMode === 'id-cards'
-                  ? `${idStage === 'front' ? 'Front' : 'Back'} 카드를 활성 프레임에 맞춰 주세요`
+                  ? `Align the ${idStage === 'front' ? 'Front' : 'Back'} card with the active frame`
                   : 'Point camera at a document'}
               </span>
             )}
@@ -2568,11 +2568,11 @@ export default function ScannerScreen() {
             <span className="text-[10px] font-semibold text-sky-400">
               {idStage === 'front'
                 ? (mode === 'auto'
-                    ? '① Front를 위 프레임에 맞추면 자동 촬영됩니다'
-                    : '① Front를 위 프레임에 맞춘 뒤 촬영하세요')
+                    ? '① Align the Front with the upper frame for auto capture'
+                    : '① Align the Front with the upper frame, then capture')
                 : (mode === 'auto'
-                    ? '② 카드를 뒤집어 Back을 아래 프레임에 맞춰 주세요'
-                    : '② Back을 아래 프레임에 맞춘 뒤 촬영하세요')}
+                    ? '② Flip the card and align the Back with the lower frame'
+                    : '② Align the Back with the lower frame, then capture')}
             </span>
           </div>
         )}

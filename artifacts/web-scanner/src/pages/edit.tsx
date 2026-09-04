@@ -182,7 +182,7 @@ export default function EditScreen() {
       pendingEditMode === 'presentation' &&
       !isValidPresentationQuad(corners, displayW, displayH)
     ) {
-      toast.error('네 모서리가 교차하지 않도록 화면 가장자리에 맞춰 주세요');
+      toast.error('Align all four corners with the screen edges without crossing them.');
       return;
     }
     setApplying(true);
@@ -221,7 +221,7 @@ export default function EditScreen() {
         },
       );
       if (!hasRequiredSharpness(warped)) {
-        toast.error('초점이 흐립니다. 다시 촬영해 주세요', { id: tid });
+        toast.error('The image is out of focus. Please capture it again.', { id: tid });
         return;
       }
       const enhanced = pendingEditMode === 'presentation' && useMobileQualityPipeline
@@ -435,8 +435,8 @@ export default function EditScreen() {
             cornersValid ? 'text-white/60' : 'text-red-400',
           )}>
             {cornersValid
-              ? '네 점을 실제 화면의 모서리에 맞추면 정면 16:9 화면으로 보정됩니다.'
-              : '모서리가 교차했거나 선택 영역이 너무 작습니다.'}
+              ? 'Align the four points with the screen corners to correct it to a front-facing 16:9 view.'
+              : 'The corners cross or the selected area is too small.'}
           </p>
         )}
 
