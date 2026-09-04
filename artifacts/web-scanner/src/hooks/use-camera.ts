@@ -216,6 +216,7 @@ export function useCamera() {
   const requestFocus = useCallback(async (): Promise<void> => {
     const track = streamRef.current?.getVideoTracks()[0];
     if (!track) return;
+    const session = cameraSessionRef.current;
     setFocusReady(false);
     try {
       const capabilities = track.getCapabilities?.() as
@@ -235,7 +236,17 @@ export function useCamera() {
     } catch {
       // The visual focus cycle still gives useful feedback on fixed-focus devices.
     } finally {
-      window.setTimeout(() => setFocusReady(true), 700);
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 700);
+      });
+      const activeTrack = streamRef.current?.getVideoTracks()[0];
+      if (
+        cameraSessionRef.current === session &&
+        activeTrack === track &&
+        track.readyState === 'live'
+      ) {
+        setFocusReady(true);
+      }
     }
   }, []);
 
