@@ -385,11 +385,22 @@ type CameraCaptureCanvas = HTMLCanvasElement & {
   captureMethod?: 'still' | 'video';
 };
 
-const MIN_DOCUMENT_SOURCE_SHORT_EDGE = 1500;
 const FOCUS_SAMPLE_COUNT = 3;
 const FOCUS_SAMPLE_INTERVAL_MS = 80;
 
-function documentSourceSize(
+type CaptureQualityMode = 'document' | 'book' | 'presentation' | 'id-card';
+
+const CAPTURE_QUALITY_PROFILES: Record<
+  CaptureQualityMode,
+  { stillShortEdge: number; videoShortEdge: number; centerInset: number }
+> = {
+  document: { stillShortEdge: 1500, videoShortEdge: 900, centerInset: 0.04 },
+  book: { stillShortEdge: 1100, videoShortEdge: 700, centerInset: 0.06 },
+  presentation: { stillShortEdge: 900, videoShortEdge: 600, centerInset: 0.1 },
+  'id-card': { stillShortEdge: 600, videoShortEdge: 420, centerInset: 0.12 },
+};
+
+function sourceQuadSize(
   corners: [Point, Point, Point, Point],
 ): { width: number; height: number; shortEdge: number } {
   const [topLeft, topRight, bottomRight, bottomLeft] = corners;
@@ -404,28 +415,33 @@ function documentSourceSize(
   return { width, height, shortEdge: Math.min(width, height) };
 }
 
-function documentFocusRegion(
+function qualityRegionForQuad(
   frame: HTMLCanvasElement,
   corners: [Point, Point, Point, Point],
+  centerInset: number,
 ): HTMLCanvasElement | null {
-  const xs = corners.map(point => point.x);
-  const ys = corners.map(point => point.y);
-  const left = Math.max(0, Math.floor(Math.min(...xs)));
-  const top = Math.max(0, Math.floor(Math.min(...ys)));
-  const right = Math.min(frame.width, Math.ceil(Math.max(...xs)));
-  const bottom = Math.min(frame.height, Math.ceil(Math.max(...ys)));
-  const sourceWidth = right - left;
-  const sourceHeight = bottom - top;
-  if (sourceWidth < 120 || sourceHeight < 120) return null;
-
-  const scale = Math.min(1, 640 / sourceWidth);
-  const region = document.createElement('canvas');
-  region.width = Math.max(1, Math.round(sourceWidth * scale));
-  region.height = Math.max(1, Math.round(sourceHeight * scale));
-  region.getContext('2d')?.drawImage(
+  const { w, h } = estimateOutputSize(corners);
+  if (w < 120 || h < 120) return null;
+  const scale = Math.min(1, 640 / Math.max(w, h));
+  const rectified = warpPerspective(
     frame,
-    left,
-    top,
+    corners,
+    Math.max(1, Math.round(w * scale)),
+    Math.max(1, Math.round(h * scale)),
+    { maxCpuPixels: 500_000 },
+  );
+  const insetX = Math.round(rectified.width * centerInset);
+  const insetY = Math.round(rectified.height * centerInset);
+  const sourceWidth = rectified.width - insetX * 2;
+  const sourceHeight = rectified.height - insetY * 2;
+  if (sourceWidth < 100 || sourceHeight < 100) return null;
+  const region = document.createElement('canvas');
+  region.width = sourceWidth;
+  region.height = sourceHeight;
+  region.getContext('2d')?.drawImage(
+    rectified,
+    insetX,
+    insetY,
     sourceWidth,
     sourceHeight,
     0,
@@ -439,8 +455,11 @@ function documentFocusRegion(
 async function waitForPreviewFocus(
   video: HTMLVideoElement,
   greyscale: boolean,
-  liveCorners: [Point, Point, Point, Point] | null,
+  liveQuads: Array<[Point, Point, Point, Point]>,
+  qualityMode: CaptureQualityMode,
+  detectDocumentFallback = false,
 ): Promise<boolean> {
+  const profile = CAPTURE_QUALITY_PROFILES[qualityMode];
   const samples: Array<{
     variance: number;
     detailCoverage: number;
@@ -453,16 +472,29 @@ async function waitForPreviewFocus(
     const frame = captureVideoFrame(video, greyscale, 1_500_000);
     const scaleX = frame.width / Math.max(1, video.videoWidth);
     const scaleY = frame.height / Math.max(1, video.videoHeight);
-    const detectedCorners = detectCornersFromCanvas(frame);
-    const corners = detectedCorners ?? liveCorners?.map(point => ({
+    const scaledQuads = liveQuads.map(quad => quad.map(point => ({
       x: point.x * scaleX,
       y: point.y * scaleY,
-    })) as [Point, Point, Point, Point] | undefined;
-    const region = corners ? documentFocusRegion(frame, corners) : null;
-    const measurement = measureSharpness(region ?? frame);
+    })) as [Point, Point, Point, Point]);
+    if (!scaledQuads.length && detectDocumentFallback) {
+      const detected = detectCornersFromCanvas(frame);
+      if (detected) scaledQuads.push(detected);
+    }
+    const regions = scaledQuads
+      .map(quad => qualityRegionForQuad(frame, quad, profile.centerInset))
+      .filter((region): region is HTMLCanvasElement => Boolean(region));
+    const measurements = regions.map(region => measureSharpness(region));
+    const measurement = measurements.length
+      ? {
+          variance: Math.min(...measurements.map(value => value.variance)),
+          detailCoverage: Math.min(...measurements.map(value => value.detailCoverage)),
+        }
+      : { variance: 0, detailCoverage: 0 };
     samples.push({
       ...measurement,
-      sharp: Boolean(region && hasRequiredSharpness(region)),
+      sharp: regions.length === scaledQuads.length &&
+        regions.length > 0 &&
+        regions.every(region => hasRequiredSharpness(region)),
     });
     const current = samples.at(-1);
     const previous = samples.at(-2);
@@ -472,6 +504,7 @@ async function waitForPreviewFocus(
       current.variance >= previous.variance * 0.82
     ) {
       console.info('[PrivaScan] focus sampling converged early', {
+        qualityMode,
         samples: samples.map(sample => Math.round(sample.variance)),
       });
       return true;
@@ -485,6 +518,7 @@ async function waitForPreviewFocus(
   );
   const latest = samples.at(-1) ?? bestSharp;
   console.info('[PrivaScan] focus sampling', {
+    qualityMode,
     samples: samples.map(sample => Math.round(sample.variance)),
     sharpSamples: sharpSamples.length,
     bestVariance: Math.round(bestSharp.variance),
@@ -492,6 +526,29 @@ async function waitForPreviewFocus(
     detailCoverage: Number(latest.detailCoverage.toFixed(4)),
   });
   return latest.sharp && latest.variance >= bestSharp.variance * 0.82;
+}
+
+function hasRequiredSourcePixels(
+  quads: Array<[Point, Point, Point, Point]>,
+  qualityMode: CaptureQualityMode,
+  captureMethod: CameraCaptureCanvas['captureMethod'],
+): boolean {
+  const profile = CAPTURE_QUALITY_PROFILES[qualityMode];
+  const minimum = captureMethod === 'still'
+    ? profile.stillShortEdge
+    : profile.videoShortEdge;
+  const sizes = quads.map(sourceQuadSize);
+  console.info('[PrivaScan] source detail', {
+    qualityMode,
+    captureMethod,
+    minimum,
+    regions: sizes.map(size => ({
+      width: Math.round(size.width),
+      height: Math.round(size.height),
+      shortEdge: Math.round(size.shortEdge),
+    })),
+  });
+  return sizes.length > 0 && sizes.every(size => size.shortEdge >= minimum);
 }
 
 async function captureBestCameraFrame(
@@ -1144,7 +1201,9 @@ export default function ScannerScreen() {
       const previewFocused = await waitForPreviewFocus(
         video,
         settingsRef.current.colorMode === 'greyscale',
-        edgeCorners,
+        edgeCorners ? [edgeCorners] : [],
+        'document',
+        true,
       );
       if (!previewFocused) {
         rejectedCornersRef.current = edgeCorners;
@@ -1168,14 +1227,14 @@ export default function ScannerScreen() {
           })) as [Point, Point, Point, Point]
         : edgeCorners;
       if (corners) {
-        const sourceSize = documentSourceSize(corners);
+        const sourceSize = sourceQuadSize(corners);
         console.info('[PrivaScan] document source detail', {
           captureMethod: canvas.captureMethod,
           capture: `${canvas.width}x${canvas.height}`,
           document: `${Math.round(sourceSize.width)}x${Math.round(sourceSize.height)}`,
           shortEdge: Math.round(sourceSize.shortEdge),
         });
-        if (sourceSize.shortEdge < MIN_DOCUMENT_SOURCE_SHORT_EDGE) {
+        if (!hasRequiredSourcePixels([corners], 'document', canvas.captureMethod)) {
           rejectedCorners = corners;
           console.warn('[PrivaScan] document capture rejected: insufficient source pixels');
           setNeedsClearerCapture(true);
@@ -1504,7 +1563,9 @@ export default function ScannerScreen() {
       const previewFocused = await waitForPreviewFocus(
         video,
         settingsRef.current.colorMode === 'greyscale',
-        edgeCorners,
+        edgeCorners ? [edgeCorners] : [],
+        'document',
+        true,
       );
       if (!previewFocused) {
         toast.error('Text is not sharp yet. Hold the phone steady and try again.');
@@ -1517,14 +1578,14 @@ export default function ScannerScreen() {
       // Prefer the capture-frame result over a potentially stale live overlay.
       const corners = detectCornersFromCanvas(canvas);
       if (corners) {
-        const sourceSize = documentSourceSize(corners);
+        const sourceSize = sourceQuadSize(corners);
         console.info('[PrivaScan] document source detail', {
           captureMethod: canvas.captureMethod,
           capture: `${canvas.width}x${canvas.height}`,
           document: `${Math.round(sourceSize.width)}x${Math.round(sourceSize.height)}`,
           shortEdge: Math.round(sourceSize.shortEdge),
         });
-        if (sourceSize.shortEdge < MIN_DOCUMENT_SOURCE_SHORT_EDGE) {
+        if (!hasRequiredSourcePixels([corners], 'document', canvas.captureMethod)) {
           toast.error('Move closer to the document so small text stays sharp.');
           return;
         }
@@ -1563,6 +1624,30 @@ export default function ScannerScreen() {
       addPage(generateMockBookHalf('right', base + 2, settingsRef.current));
     } else {
       const video = videoRef.current;
+      if (focusMode === 'single-shot' || focusMode === 'unknown') {
+        await requestFocus();
+      }
+      const previewQuads = bookDetection
+        ? [bookDetection.left, bookDetection.right]
+        : edgeCorners ? [edgeCorners] : [];
+      const previewFocused = await waitForPreviewFocus(
+        video,
+        grey,
+        previewQuads,
+        'book',
+      );
+      if (!previewFocused) {
+        if (modeRef.current === 'auto') {
+          waitingClear.current = true;
+          setIsWaitingClear(true);
+          setNeedsClearerCapture(true);
+          needsClearerCaptureRef.current = true;
+          rejectedCornersRef.current = bookDetection?.outer ?? edgeCorners;
+          rejectedBookDetectionRef.current = bookDetection;
+        }
+        toast.error('Hold steady and keep both pages and the center fold in focus.');
+        return;
+      }
       // Capture and validate the exact frame before splitting the corrected
       // book spread. Keep iOS processing within the same memory ceiling used
       // by standard document capture.
@@ -1573,7 +1658,21 @@ export default function ScannerScreen() {
 
       const useMobileQualityPipeline = isNativePlatform();
       const detection = detectBookFromCanvas(full);
-      const bookPages = detection
+      const recoveryDetection = detection
+        ? scaleBookDetection(
+            detection,
+            video.videoWidth / Math.max(1, full.width),
+            video.videoHeight / Math.max(1, full.height),
+          )
+        : bookDetection;
+      const sourcePixelsOk = detection
+        ? hasRequiredSourcePixels(
+            [detection.left, detection.right],
+            'book',
+            full.captureMethod,
+          )
+        : false;
+      const bookPages = detection && sourcePixelsOk
         ? createBookPageDataUrls(
             full,
             detection,
@@ -1588,10 +1687,14 @@ export default function ScannerScreen() {
           setIsWaitingClear(true);
           setNeedsClearerCapture(true);
           needsClearerCaptureRef.current = true;
-          rejectedCornersRef.current = detection?.outer ?? edgeCorners;
-          rejectedBookDetectionRef.current = detection ?? bookDetection;
+          rejectedCornersRef.current = recoveryDetection?.outer ?? edgeCorners;
+          rejectedBookDetectionRef.current = recoveryDetection;
         }
-        toast.error('Align both pages and the center fold, then try again.');
+        toast.error(!detection
+          ? 'Align both pages and the center fold, then try again.'
+          : sourcePixelsOk
+            ? 'Both pages must be sharp. Hold steady and try again.'
+            : 'Move closer so text on both pages stays sharp.');
         return;
       }
       addPage(bookPages[0]);
@@ -1604,7 +1707,7 @@ export default function ScannerScreen() {
     setTimeout(() => setCapturedLabel(null), 1800);
     setActivePageIndex(base + 1);
     setLocation('/preview');
-  }, [isMockMode, focusReady, videoRef, edgeCorners, bookDetection, addPage, setActivePageIndex, setLocation, triggerCaptureEffects]);
+  }, [isMockMode, focusMode, focusReady, videoRef, edgeCorners, bookDetection, addPage, setActivePageIndex, setLocation, triggerCaptureEffects, requestFocus]);
 
   useEffect(() => {
     captureBookAutoRef.current = bookCapture;
@@ -1623,6 +1726,26 @@ export default function ScannerScreen() {
       addPage(generateMockPresentation(pageNum, settingsRef.current));
     } else {
       const video = videoRef.current;
+      if (focusMode === 'single-shot' || focusMode === 'unknown') {
+        await requestFocus();
+      }
+      const previewFocused = await waitForPreviewFocus(
+        video,
+        grey,
+        edgeCorners ? [edgeCorners] : [],
+        'presentation',
+      );
+      if (!previewFocused) {
+        if (modeRef.current === 'auto') {
+          waitingClear.current = true;
+          setIsWaitingClear(true);
+          setNeedsClearerCapture(true);
+          needsClearerCaptureRef.current = true;
+          rejectedCornersRef.current = edgeCorners;
+        }
+        toast.error('Keep the whole screen visible and hold the phone steady.');
+        return;
+      }
       const src = await captureBestCameraFrame(
         video,
         grey,
@@ -1631,11 +1754,38 @@ export default function ScannerScreen() {
       // user, but only capture-frame geometry is trusted for rectification.
       const detection = detectPresentationFromCanvas(src);
       if (!detection) {
+        if (modeRef.current === 'auto') {
+          waitingClear.current = true;
+          setIsWaitingClear(true);
+          setNeedsClearerCapture(true);
+          needsClearerCaptureRef.current = true;
+          rejectedCornersRef.current = edgeCorners;
+          toast.error('Keep the whole screen visible and try again.');
+          return;
+        }
         setPendingPage(src.toDataURL('image/jpeg', outputJpegQuality(isNativePlatform())));
         setPendingEditMode('presentation');
         setDetectedCorners(edgeCorners);
         toast.info('Screen corners were not detected. Align all four corners manually.');
         setLocation('/edit');
+        return;
+      }
+      if (!hasRequiredSourcePixels(
+        [detection.corners],
+        'presentation',
+        src.captureMethod,
+      )) {
+        if (modeRef.current === 'auto') {
+          waitingClear.current = true;
+          setIsWaitingClear(true);
+          setNeedsClearerCapture(true);
+          needsClearerCaptureRef.current = true;
+          rejectedCornersRef.current = detection.corners.map(point => ({
+            x: point.x * video.videoWidth / Math.max(1, src.width),
+            y: point.y * video.videoHeight / Math.max(1, src.height),
+          })) as [Point, Point, Point, Point];
+        }
+        toast.error('Move closer so text on the screen stays readable.');
         return;
       }
       const page = createPresentationPage(
@@ -1645,6 +1795,16 @@ export default function ScannerScreen() {
         isNativePlatform(),
       );
       if (!page) {
+        if (modeRef.current === 'auto') {
+          waitingClear.current = true;
+          setIsWaitingClear(true);
+          setNeedsClearerCapture(true);
+          needsClearerCaptureRef.current = true;
+          rejectedCornersRef.current = detection.corners.map(point => ({
+            x: point.x * video.videoWidth / Math.max(1, src.width),
+            y: point.y * video.videoHeight / Math.max(1, src.height),
+          })) as [Point, Point, Point, Point];
+        }
         toast.error('The image is out of focus. Wait a moment and try again.');
         return;
       }
@@ -1657,9 +1817,9 @@ export default function ScannerScreen() {
     setActivePageIndex(pageNum - 1);
     setLocation('/preview');
    }, [
-     isMockMode, focusReady, videoRef, edgeCorners, addPage,
+     isMockMode, focusMode, focusReady, videoRef, edgeCorners, addPage,
      setPendingPage, setPendingEditMode, setDetectedCorners,
-     setActivePageIndex, setLocation, triggerCaptureEffects,
+     setActivePageIndex, setLocation, triggerCaptureEffects, requestFocus,
    ]);
 
   useEffect(() => {
@@ -1689,6 +1849,17 @@ export default function ScannerScreen() {
     const captureCardDataUrl = async (): Promise<string | null> => {
       if (isMockMode || !videoRef.current) return 'mock';
       const video = videoRef.current;
+      if (focusMode === 'single-shot' || focusMode === 'unknown') {
+        await requestFocus();
+      }
+      const liveCardCorners = idCardDetection?.corners ?? edgeCorners;
+      const previewFocused = await waitForPreviewFocus(
+        video,
+        grey,
+        liveCardCorners ? [liveCardCorners] : [],
+        'id-card',
+      );
+      if (!previewFocused) return null;
       const src = await captureBestCameraFrame(
         video,
         grey,
@@ -1701,6 +1872,11 @@ export default function ScannerScreen() {
        );
       const detection = guide ? detectIdCardForCapture(src, guide) : null;
       if (!detection) return null;
+      if (!hasRequiredSourcePixels(
+        [detection.corners],
+        'id-card',
+        src.captureMethod,
+      )) return null;
       return createIdCardPage(
          src,
         detection.corners,
@@ -1712,7 +1888,7 @@ export default function ScannerScreen() {
     if (idStage === 'front') {
       const frontData = await captureCardDataUrl();
       if (!frontData) {
-        rejectCapture('Check all four card edges and focus, then align the card again.');
+        rejectCapture('Align the card inside the guide, move closer, and hold steady.');
         return;
       }
       idFrontRef.current = frontData;
@@ -1740,7 +1916,7 @@ export default function ScannerScreen() {
       } else {
         const backData = await captureCardDataUrl();
         if (!backData) {
-          rejectCapture('Check all four back edges and focus, then align the card again.');
+          rejectCapture('Align the card back inside the guide, move closer, and hold steady.');
           return;
         }
         const composite = await combineIdCardPages(
@@ -1763,8 +1939,8 @@ export default function ScannerScreen() {
       setTimeout(() => setCapturedLabel(null), 1800);
     }
   }, [
-    isMockMode, focusReady, videoRef, addPage, edgeCorners, idStage,
-    setActivePageIndex, setLocation, triggerCaptureEffects,
+    isMockMode, focusMode, focusReady, videoRef, addPage, edgeCorners, idCardDetection, idStage,
+    setActivePageIndex, setLocation, triggerCaptureEffects, requestFocus,
   ]);
 
   useEffect(() => {
