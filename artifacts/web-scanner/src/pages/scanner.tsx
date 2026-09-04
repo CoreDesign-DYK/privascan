@@ -2040,16 +2040,18 @@ export default function ScannerScreen() {
           </div>
         )}
 
-        {/* Presentation: wide 16:9 */}
+        {/* Presentation: portrait 9:16 guide; it becomes landscape 16:9 when
+            the user turns the portrait-locked phone sideways. */}
         {scanMode === 'presentation' && (
           <div className="scanner-wide-guide-region absolute inset-0 pointer-events-none flex items-center justify-center"
             style={{ top:'12%', bottom:'32%', transform:'translateY(48px)' }}>
             <div
-              className="scanner-wide-guide relative flex-shrink-0 transition-opacity duration-200"
+              className="relative flex-shrink-0 transition-opacity duration-200"
               style={{
-                width:'88vw',
-                maxWidth:'680px',
-                aspectRatio:'16/9',
+                height:'100%',
+                maxHeight:'500px',
+                maxWidth:'78vw',
+                aspectRatio:'9/16',
                 opacity: edgeCorners && !isMockMode ? 0.2 : 1,
               }}
             >
@@ -2059,7 +2061,7 @@ export default function ScannerScreen() {
               <div className="absolute bottom-0 right-0 w-8 h-8 border-b-[3px] border-r-[3px] border-white/55" />
               <span className="absolute top-2 left-1/2 -translate-x-1/2 text-[9px] font-semibold text-white/35 uppercase tracking-widest select-none">16:9 · Perspective Auto-Correct</span>
               <span className="landscape-only-hint absolute left-1/2 -translate-x-1/2 -top-7 whitespace-nowrap text-[10px] font-semibold tracking-wide text-white/55">
-                가로 모드 · 화면 전체를 프레임에 맞춰 주세요
+                휴대폰을 가로로 돌려 화면 전체를 맞춰 주세요
               </span>
             </div>
           </div>
