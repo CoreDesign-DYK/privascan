@@ -1659,6 +1659,8 @@ export default function ScannerScreen() {
 
   /* ── Derived colours ────────────────────────────────────────────────────── */
   const isStable   = stableProgress > 0.85;
+  const isBookGuideReady = Boolean(bookDetection && focusReady && !isMockMode);
+  const bookGuideColor = isBookGuideReady ? '#4ade80' : '#0ea5e9';
   const edgeStroke = scanMode === 'id-cards' && !idCardReady ? '#38bdf8' : '#4ade80';
   const edgeFill   = isStable
     ? 'rgba(74,222,128,0.12)'
@@ -1723,38 +1725,6 @@ export default function ScannerScreen() {
               opacity: edgeIsLive ? 1 : 0.62,
               transition: 'opacity 0.18s ease, fill 0.3s, stroke 0.3s ease',
             }}
-          />
-        </svg>
-      )}
-      {!isMockMode && scanMode === 'book' && bookDetection && (
-        <svg
-          className="absolute inset-0 w-full h-full z-10 pointer-events-none"
-          viewBox={`0 0 ${viewW} ${viewH}`}
-          preserveAspectRatio="xMidYMid slice"
-        >
-          <polygon
-            points={bookDetection.left.map(point => `${point.x},${point.y}`).join(' ')}
-            fill={edgeFill}
-            stroke={edgeStroke}
-            strokeWidth="8"
-            strokeLinejoin="round"
-          />
-          <polygon
-            points={bookDetection.right.map(point => `${point.x},${point.y}`).join(' ')}
-            fill={edgeFill}
-            stroke={edgeStroke}
-            strokeWidth="8"
-            strokeLinejoin="round"
-          />
-          <polyline
-            points={bookDetection.foldCurve.map(point => `${point.x},${point.y}`).join(' ')}
-            fill="none"
-            stroke="#f8fafc"
-            strokeWidth="7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeDasharray="22 18"
-            opacity="0.92"
           />
         </svg>
       )}
@@ -2014,7 +1984,8 @@ export default function ScannerScreen() {
           </div>
         )}
 
-        {/* Book: one wide landscape frame with a binding guide between pages */}
+        {/* Book: corner guides and a binding line stay portrait-locked, then
+            become a landscape book frame when the user turns the phone. */}
         {scanMode === 'book' && (
           <div
             className="scanner-wide-guide-region absolute inset-0 pointer-events-none flex items-center justify-center"
@@ -2024,17 +1995,23 @@ export default function ScannerScreen() {
               className="scanner-wide-guide relative w-[92vw] max-w-[680px] max-h-full transition-opacity duration-200"
               style={{
                 aspectRatio: '1.5 / 1',
-                opacity: bookDetection && !isMockMode ? 0.28 : 1,
               }}
             >
-              <div className="absolute inset-0 rounded-[12px] border-2 border-white/65 bg-white/[0.025] shadow-[0_0_0_1px_rgba(0,0,0,0.16)]" />
-              <div className="absolute inset-[6px] rounded-[8px] border border-white/12" />
+              <div className="absolute top-0 left-0 w-10 h-10 border-t-[4px] border-l-[4px] transition-colors duration-200"
+                style={{ borderColor: bookGuideColor }} />
+              <div className="absolute top-0 right-0 w-10 h-10 border-t-[4px] border-r-[4px] transition-colors duration-200"
+                style={{ borderColor: bookGuideColor }} />
+              <div className="absolute bottom-0 left-0 w-10 h-10 border-b-[4px] border-l-[4px] transition-colors duration-200"
+                style={{ borderColor: bookGuideColor }} />
+              <div className="absolute bottom-0 right-0 w-10 h-10 border-b-[4px] border-r-[4px] transition-colors duration-200"
+                style={{ borderColor: bookGuideColor }} />
               <div
-                className="absolute left-1/2 -translate-x-1/2 top-0 bottom-0 border-l-2 border-dashed border-white/75"
+                className="absolute left-1/2 -translate-x-1/2 top-0 bottom-0 border-l-[3px] border-dashed transition-colors duration-200"
+                style={{ borderColor: bookGuideColor }}
                 aria-hidden="true"
               />
               <span className="landscape-only-hint absolute left-1/2 -translate-x-1/2 -top-7 whitespace-nowrap text-[10px] font-semibold tracking-wide text-white/55">
-                가로 모드 · 펼친 책 전체를 프레임에 맞춰 주세요
+                휴대폰을 가로로 돌려 펼친 책 전체를 맞춰 주세요
               </span>
             </div>
           </div>
@@ -2375,7 +2352,10 @@ export default function ScannerScreen() {
               ] as { id: ScanMode; label: string }[]).map(({ id, label }) => (
                 <button
                   key={id}
-                  onClick={() => setScanMode(id)}
+                  onClick={() => {
+                    setScanMode(id);
+                    if (id === 'book') setMode('auto');
+                  }}
                   className={cn(
                     'px-3 py-1 rounded-full text-[10px] font-semibold transition-all select-none',
                     scanMode === id
