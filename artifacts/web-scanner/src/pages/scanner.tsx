@@ -44,7 +44,7 @@ import {
 } from '@/lib/scanner-types';
 import { enhanceDocumentCanvas } from '@/lib/filters';
 import { isNative as isNativePlatform } from '@/lib/platform';
-import { hasRequiredSharpness } from '@/lib/scan-quality';
+import { hasRequiredSharpness, measureSharpness } from '@/lib/scan-quality';
 import {
   detectIdCardFromCanvas,
   isLikelyIdCardQuad,
@@ -367,10 +367,11 @@ function captureVideoFrame(
   video: HTMLVideoElement,
   greyscale: boolean,
   maxPixels = Number.POSITIVE_INFINITY,
-): HTMLCanvasElement {
+): CameraCaptureCanvas {
   const sourcePixels = video.videoWidth * video.videoHeight;
   const scale = sourcePixels > maxPixels ? Math.sqrt(maxPixels / sourcePixels) : 1;
-  const canvas = document.createElement('canvas');
+  const canvas = document.createElement('canvas') as CameraCaptureCanvas;
+  canvas.captureMethod = 'video';
   canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
   canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
   const ctx = canvas.getContext('2d')!;
@@ -380,10 +381,123 @@ function captureVideoFrame(
   return canvas;
 }
 
+type CameraCaptureCanvas = HTMLCanvasElement & {
+  captureMethod?: 'still' | 'video';
+};
+
+const MIN_DOCUMENT_SOURCE_SHORT_EDGE = 1500;
+const FOCUS_SAMPLE_COUNT = 3;
+const FOCUS_SAMPLE_INTERVAL_MS = 80;
+
+function documentSourceSize(
+  corners: [Point, Point, Point, Point],
+): { width: number; height: number; shortEdge: number } {
+  const [topLeft, topRight, bottomRight, bottomLeft] = corners;
+  const width = (
+    Math.hypot(topRight.x - topLeft.x, topRight.y - topLeft.y) +
+    Math.hypot(bottomRight.x - bottomLeft.x, bottomRight.y - bottomLeft.y)
+  ) / 2;
+  const height = (
+    Math.hypot(bottomLeft.x - topLeft.x, bottomLeft.y - topLeft.y) +
+    Math.hypot(bottomRight.x - topRight.x, bottomRight.y - topRight.y)
+  ) / 2;
+  return { width, height, shortEdge: Math.min(width, height) };
+}
+
+function documentFocusRegion(
+  frame: HTMLCanvasElement,
+  corners: [Point, Point, Point, Point],
+): HTMLCanvasElement | null {
+  const xs = corners.map(point => point.x);
+  const ys = corners.map(point => point.y);
+  const left = Math.max(0, Math.floor(Math.min(...xs)));
+  const top = Math.max(0, Math.floor(Math.min(...ys)));
+  const right = Math.min(frame.width, Math.ceil(Math.max(...xs)));
+  const bottom = Math.min(frame.height, Math.ceil(Math.max(...ys)));
+  const sourceWidth = right - left;
+  const sourceHeight = bottom - top;
+  if (sourceWidth < 120 || sourceHeight < 120) return null;
+
+  const scale = Math.min(1, 640 / sourceWidth);
+  const region = document.createElement('canvas');
+  region.width = Math.max(1, Math.round(sourceWidth * scale));
+  region.height = Math.max(1, Math.round(sourceHeight * scale));
+  region.getContext('2d')?.drawImage(
+    frame,
+    left,
+    top,
+    sourceWidth,
+    sourceHeight,
+    0,
+    0,
+    region.width,
+    region.height,
+  );
+  return region;
+}
+
+async function waitForPreviewFocus(
+  video: HTMLVideoElement,
+  greyscale: boolean,
+  liveCorners: [Point, Point, Point, Point] | null,
+): Promise<boolean> {
+  const samples: Array<{
+    variance: number;
+    detailCoverage: number;
+    sharp: boolean;
+  }> = [];
+  for (let index = 0; index < FOCUS_SAMPLE_COUNT; index += 1) {
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, FOCUS_SAMPLE_INTERVAL_MS);
+    });
+    const frame = captureVideoFrame(video, greyscale, 1_500_000);
+    const scaleX = frame.width / Math.max(1, video.videoWidth);
+    const scaleY = frame.height / Math.max(1, video.videoHeight);
+    const detectedCorners = detectCornersFromCanvas(frame);
+    const corners = detectedCorners ?? liveCorners?.map(point => ({
+      x: point.x * scaleX,
+      y: point.y * scaleY,
+    })) as [Point, Point, Point, Point] | undefined;
+    const region = corners ? documentFocusRegion(frame, corners) : null;
+    const measurement = measureSharpness(region ?? frame);
+    samples.push({
+      ...measurement,
+      sharp: Boolean(region && hasRequiredSharpness(region)),
+    });
+    const current = samples.at(-1);
+    const previous = samples.at(-2);
+    if (
+      current?.sharp &&
+      previous?.sharp &&
+      current.variance >= previous.variance * 0.82
+    ) {
+      console.info('[PrivaScan] focus sampling converged early', {
+        samples: samples.map(sample => Math.round(sample.variance)),
+      });
+      return true;
+    }
+  }
+
+  const sharpSamples = samples.filter(sample => sample.sharp);
+  const bestSharp = sharpSamples.reduce(
+    (current, sample) => sample.variance > current.variance ? sample : current,
+    { variance: 0, detailCoverage: 0, sharp: false },
+  );
+  const latest = samples.at(-1) ?? bestSharp;
+  console.info('[PrivaScan] focus sampling', {
+    samples: samples.map(sample => Math.round(sample.variance)),
+    sharpSamples: sharpSamples.length,
+    bestVariance: Math.round(bestSharp.variance),
+    latestVariance: Math.round(latest.variance),
+    detailCoverage: Number(latest.detailCoverage.toFixed(4)),
+  });
+  return latest.sharp && latest.variance >= bestSharp.variance * 0.82;
+}
+
 async function captureBestCameraFrame(
   video: HTMLVideoElement,
   greyscale: boolean,
-): Promise<HTMLCanvasElement> {
+): Promise<CameraCaptureCanvas> {
   if (isNativePlatform()) {
     const track = (video.srcObject as MediaStream | null)?.getVideoTracks()[0];
     const ImageCaptureConstructor = (
@@ -394,28 +508,43 @@ async function captureBestCameraFrame(
       }
     ).ImageCapture;
     if (track && ImageCaptureConstructor) {
-      try {
-        const photo = await new ImageCaptureConstructor(track).takePhoto();
-        const bitmap = await createImageBitmap(photo);
-        const canvas = document.createElement('canvas');
-        canvas.width = bitmap.width;
-        canvas.height = bitmap.height;
-        const context = canvas.getContext('2d')!;
-        if (greyscale) context.filter = 'grayscale(100%)';
-        context.drawImage(bitmap, 0, 0);
-        context.filter = 'none';
-        bitmap.close();
-        console.info('[PrivaScan] high-resolution still capture', {
-          width: canvas.width,
-          height: canvas.height,
-        });
-        return canvas;
-      } catch (error) {
-        console.warn('[PrivaScan] still capture unavailable; using video frame', error);
+      const imageCapture = new ImageCaptureConstructor(track);
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        try {
+          const photo = await imageCapture.takePhoto();
+          const bitmap = await createImageBitmap(photo);
+          const canvas = document.createElement('canvas') as CameraCaptureCanvas;
+          canvas.captureMethod = 'still';
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+          const context = canvas.getContext('2d')!;
+          if (greyscale) context.filter = 'grayscale(100%)';
+          context.drawImage(bitmap, 0, 0);
+          context.filter = 'none';
+          bitmap.close();
+          console.info('[PrivaScan] camera capture', {
+            method: canvas.captureMethod,
+            width: canvas.width,
+            height: canvas.height,
+            attempt,
+          });
+          return canvas;
+        } catch (error) {
+          console.warn(`[PrivaScan] high-resolution still attempt ${attempt} failed`, error);
+          if (attempt < 2) {
+            await new Promise<void>((resolve) => window.setTimeout(resolve, 180));
+          }
+        }
       }
     }
   }
-  return captureVideoFrame(video, greyscale);
+  const fallback = captureVideoFrame(video, greyscale);
+  console.warn('[PrivaScan] camera capture fallback', {
+    method: fallback.captureMethod,
+    width: fallback.width,
+    height: fallback.height,
+  });
+  return fallback;
 }
 
 function createBookPageDataUrls(
@@ -773,7 +902,7 @@ function QualityGaugeIcon({ dpi }: { dpi: number }) {
 export default function ScannerScreen() {
   const [, setLocation] = useLocation();
   const {
-    videoRef, startCamera, stopCamera, hasPermission, isMockMode, focusReady, requestFocus,
+    videoRef, startCamera, stopCamera, hasPermission, isMockMode, focusMode, focusReady, requestFocus,
   } = useCamera();
   const {
     mode, setMode, pages, addPage, removePage, clearPages, settings, setSettings,
@@ -1009,6 +1138,22 @@ export default function ScannerScreen() {
     } else {
       const video = videoRef.current;
       const useMobileQualityPipeline = isNativePlatform();
+      if (focusMode === 'single-shot' || focusMode === 'unknown') {
+        await requestFocus();
+      }
+      const previewFocused = await waitForPreviewFocus(
+        video,
+        settingsRef.current.colorMode === 'greyscale',
+        edgeCorners,
+      );
+      if (!previewFocused) {
+        rejectedCornersRef.current = edgeCorners;
+        setNeedsClearerCapture(true);
+        needsClearerCaptureRef.current = true;
+        waitingClear.current = true;
+        setIsWaitingClear(true);
+        return;
+      }
       const canvas = await captureBestCameraFrame(
         video,
         settingsRef.current.colorMode === 'greyscale',
@@ -1016,6 +1161,31 @@ export default function ScannerScreen() {
       // Re-check the exact high-resolution frame being saved. Live detection
       // can be one or more frames old after the phone has moved.
       const corners = detectCornersFromCanvas(canvas);
+      const recoveryCorners = corners
+        ? corners.map(point => ({
+            x: point.x * video.videoWidth / Math.max(1, canvas.width),
+            y: point.y * video.videoHeight / Math.max(1, canvas.height),
+          })) as [Point, Point, Point, Point]
+        : edgeCorners;
+      if (corners) {
+        const sourceSize = documentSourceSize(corners);
+        console.info('[PrivaScan] document source detail', {
+          captureMethod: canvas.captureMethod,
+          capture: `${canvas.width}x${canvas.height}`,
+          document: `${Math.round(sourceSize.width)}x${Math.round(sourceSize.height)}`,
+          shortEdge: Math.round(sourceSize.shortEdge),
+        });
+        if (sourceSize.shortEdge < MIN_DOCUMENT_SOURCE_SHORT_EDGE) {
+          rejectedCorners = corners;
+          console.warn('[PrivaScan] document capture rejected: insufficient source pixels');
+          setNeedsClearerCapture(true);
+          needsClearerCaptureRef.current = true;
+          waitingClear.current = true;
+          setIsWaitingClear(true);
+          rejectedCornersRef.current = recoveryCorners;
+          return;
+        }
+      }
       const page = createDocumentPage(
         canvas,
         corners,
@@ -1029,7 +1199,7 @@ export default function ScannerScreen() {
         // The live quad is never used to crop an image, but it is useful as
         // a movement baseline when the exact capture frame is too soft to
         // detect on its own.
-        rejectedCorners = corners ?? edgeCorners;
+        rejectedCorners = recoveryCorners;
       }
     }
     if (!captured) {
@@ -1053,7 +1223,7 @@ export default function ScannerScreen() {
     // Enter waiting-clear state — block next scan until doc leaves frame
     waitingClear.current = true;
     setIsWaitingClear(true);
-  }, [isMockMode, focusReady, videoRef, edgeCorners, addPage, setActivePageIndex, triggerCaptureEffects]);
+  }, [isMockMode, focusMode, focusReady, videoRef, edgeCorners, addPage, setActivePageIndex, triggerCaptureEffects, requestFocus]);
 
   useEffect(() => { captureAutoRef.current = autoCaptureFrame; }, [autoCaptureFrame]);
 
@@ -1327,12 +1497,38 @@ export default function ScannerScreen() {
     } else {
       const video  = videoRef.current;
       const useMobileQualityPipeline = isNativePlatform();
+      toast.info('초점을 확인하고 있습니다…');
+      if (focusMode === 'single-shot' || focusMode === 'unknown') {
+        await requestFocus();
+      }
+      const previewFocused = await waitForPreviewFocus(
+        video,
+        settingsRef.current.colorMode === 'greyscale',
+        edgeCorners,
+      );
+      if (!previewFocused) {
+        toast.error('글자가 아직 선명하지 않습니다. 휴대폰을 고정하고 다시 촬영해 주세요');
+        return;
+      }
       const canvas = await captureBestCameraFrame(
         video,
         settingsRef.current.colorMode === 'greyscale',
       );
       // Prefer the capture-frame result over a potentially stale live overlay.
       const corners = detectCornersFromCanvas(canvas);
+      if (corners) {
+        const sourceSize = documentSourceSize(corners);
+        console.info('[PrivaScan] document source detail', {
+          captureMethod: canvas.captureMethod,
+          capture: `${canvas.width}x${canvas.height}`,
+          document: `${Math.round(sourceSize.width)}x${Math.round(sourceSize.height)}`,
+          shortEdge: Math.round(sourceSize.shortEdge),
+        });
+        if (sourceSize.shortEdge < MIN_DOCUMENT_SOURCE_SHORT_EDGE) {
+          toast.error('작은 글자가 선명하게 나오도록 문서에 더 가까이 이동해 주세요');
+          return;
+        }
+      }
       const page = createDocumentPage(
         canvas,
         corners,
@@ -1351,7 +1547,7 @@ export default function ScannerScreen() {
     // Review the page first. Crop is available from the review toolbar only
     // when a user wants to adjust the automatic correction.
     setLocation('/preview');
-  }, [isMockMode, focusReady, videoRef, edgeCorners, addPage, setActivePageIndex, setLocation, triggerCaptureEffects]);
+  }, [isMockMode, focusMode, focusReady, videoRef, edgeCorners, addPage, setActivePageIndex, setLocation, triggerCaptureEffects, requestFocus]);
 
   /* ── Book capture ───────────────────────────────────────────────────────── */
   const bookCapture = useCallback(async () => {
