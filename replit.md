@@ -62,7 +62,8 @@ artifacts/web-scanner/package.json
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- 개발 중인 앱의 모든 사용자 표시 문구, 안내, 오류 메시지, OCR 기본 언어는 영어만 고려한다.
+- 다국어 지원은 핵심 기능이 완성된 뒤 별도 단계에서 추가하며, 개발 중에는 번역이나 다국어 구조 확장을 진행하지 않는다.
 
 ## Gotchas
 
