@@ -102,11 +102,11 @@ async function downloadBlobNative(blob: Blob, filename: string): Promise<void> {
       data: base64,
       directory: Directory.Documents,
     });
-    toast.success(`저장 완료: ${filename}`);
+    toast.success(`Saved: ${filename}`);
   } catch (err) {
     const { toast } = await import('sonner');
     console.error('Native download failed:', err);
-    toast.error('저장 실패. 다시 시도해 주세요.');
+    toast.error('Save failed. Please try again.');
   }
 }
 
@@ -130,7 +130,7 @@ async function shareFileNative(blob: Blob, filename: string): Promise<void> {
     await Share.share({
       title: filename,
       url: result.uri,
-      dialogTitle: 'PrivaScan 파일 공유',
+      dialogTitle: 'Share PrivaScan File',
     });
   } catch (err) {
     // User cancelled share — not an error worth toasting
@@ -138,7 +138,7 @@ async function shareFileNative(blob: Blob, filename: string): Promise<void> {
       return;
     }
     console.error('Native share failed:', err);
-    toast.error('공유 실패. 다시 시도해 주세요.');
+    toast.error('Share failed. Please try again.');
   } finally {
     // Always clean up the temporary cache file
     if (wrote) {
