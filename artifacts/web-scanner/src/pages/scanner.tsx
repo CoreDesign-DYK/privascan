@@ -2508,9 +2508,11 @@ export default function ScannerScreen() {
           resultsTrayCollapsed && pages.length > 0 ? 'gap-1 pt-2' : pages.length > 0 ? 'gap-3 pt-4' : 'gap-4 pt-4',
         )}
         style={{
-          background: resultsTrayCollapsed && pages.length > 0
-            ? 'linear-gradient(to top, rgba(13,13,20,0.92) 0%, rgba(13,13,20,0.55) 72%, transparent 100%)'
-            : 'linear-gradient(to top, rgba(13,13,20,0.92) 60%, rgba(13,13,20,0.6) 85%, transparent)',
+          background: scanMode === 'book' && pages.length === 0
+            ? 'linear-gradient(to top, rgba(13,13,20,0.92) 0%, rgba(13,13,20,0.72) 42%, rgba(13,13,20,0.32) 58%, transparent 72%)'
+            : resultsTrayCollapsed && pages.length > 0
+              ? 'linear-gradient(to top, rgba(13,13,20,0.92) 0%, rgba(13,13,20,0.55) 72%, transparent 100%)'
+              : 'linear-gradient(to top, rgba(13,13,20,0.92) 60%, rgba(13,13,20,0.6) 85%, transparent)',
           backdropFilter: resultsTrayCollapsed && pages.length > 0 ? 'none' : 'blur(20px)',
           WebkitBackdropFilter: resultsTrayCollapsed && pages.length > 0 ? 'none' : 'blur(20px)',
           touchAction: 'pan-y',
@@ -2519,6 +2521,18 @@ export default function ScannerScreen() {
         onPointerUp={handleResultsTrayPointerUp}
         onClickCapture={handleResultsTrayClickCapture}
       >
+        {scanMode === 'book' && pages.length === 0 && (
+          <div
+            className={cn(
+              'absolute inset-0 pointer-events-none transition-opacity duration-500 ease-in-out',
+              showBookGuidance ? 'opacity-100' : 'opacity-0',
+            )}
+            style={{
+              background: 'linear-gradient(to top, transparent 42%, rgba(13,13,20,0.52) 68%, rgba(13,13,20,0.38) 86%, transparent 100%)',
+            }}
+            aria-hidden="true"
+          />
+        )}
 
         {/* Swipe down anywhere in the result area to give the camera more room. */}
         {pages.length > 0 && !resultsTrayCollapsed && (
