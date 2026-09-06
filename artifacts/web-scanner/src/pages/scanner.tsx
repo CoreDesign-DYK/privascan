@@ -2368,16 +2368,18 @@ export default function ScannerScreen() {
             become a landscape book frame when the user turns the phone. */}
         {scanMode === 'book' && (
           <div
-            className="scanner-wide-guide-region absolute inset-0 pointer-events-none flex items-center justify-center"
-            style={{ top:'12%', bottom:'32%', transform:'translateY(48px)' }}
+            className="scanner-wide-guide-region absolute pointer-events-none"
+            style={{
+              top: 'calc(env(safe-area-inset-top) + clamp(72px, 9svh, 96px))',
+              right: 'clamp(14px, 4vw, 24px)',
+              bottom: 'calc(env(safe-area-inset-bottom) + clamp(172px, 21svh, 220px))',
+              left: 'clamp(14px, 4vw, 24px)',
+            }}
           >
             <div
-              className="relative flex-shrink-0 transition-opacity duration-200"
+              className="relative h-full w-full border transition-colors duration-200"
               style={{
-                height: '100%',
-                maxHeight: '500px',
-                maxWidth: '78vw',
-                aspectRatio: '2 / 3',
+                borderColor: `${bookGuideColor}55`,
               }}
             >
               <div className="absolute top-0 left-0 w-10 h-10 border-t-[4px] border-l-[4px] transition-colors duration-200"
@@ -2389,8 +2391,12 @@ export default function ScannerScreen() {
               <div className="absolute bottom-0 right-0 w-10 h-10 border-b-[4px] border-r-[4px] transition-colors duration-200"
                 style={{ borderColor: bookGuideColor }} />
               <div
-                className="absolute top-1/2 -translate-y-1/2 left-0 right-0 border-t-[3px] border-dashed transition-colors duration-200"
-                style={{ borderColor: bookGuideColor }}
+                className="absolute top-1/2 left-1/2 border-t-[4px] border-dashed transition-colors duration-200"
+                style={{
+                  width: '100vw',
+                  borderColor: bookGuideColor,
+                  transform: 'translate(-50%, -50%)',
+                }}
                 aria-hidden="true"
               />
               <span
