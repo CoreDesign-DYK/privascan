@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
+import { isNative } from '@/lib/platform';
 
 // Keep the physical camera off while developing in the browser. Production
 // builds (including the Android release build) retain the normal camera flow.
@@ -10,16 +11,17 @@ type FocusMode = 'continuous' | 'single-shot' | 'unsupported' | 'unknown';
  * Android와 iOS에서 같은 UI, 실시간 경계 감지, 자동 촬영 흐름을 유지한다.
  */
 export function useCamera() {
+  const isMockMode = IS_DEV && !isNative();
   const videoRef   = useRef<HTMLVideoElement>(null);
   const streamRef  = useRef<MediaStream | null>(null);
   const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const focusFrameListenerRef = useRef<{ video: HTMLVideoElement; listener: () => void } | null>(null);
   const cameraSessionRef = useRef(0);
   const pendingStartRef = useRef<Promise<void> | null>(null);
-  const [hasPermission, setHasPermission] = useState<boolean | null>(IS_DEV ? true : null);
+  const [hasPermission, setHasPermission] = useState<boolean | null>(isMockMode ? true : null);
   const [error, setError]                 = useState<Error | null>(null);
-  const [focusMode, setFocusMode]         = useState<FocusMode>(IS_DEV ? 'continuous' : 'unknown');
-  const [focusReady, setFocusReady]       = useState(IS_DEV);
+  const [focusMode, setFocusMode]         = useState<FocusMode>(isMockMode ? 'continuous' : 'unknown');
+  const [focusReady, setFocusReady]       = useState(isMockMode);
 
   /* ── 공통: 카메라 중지 ─────────────────────────────────────────────────── */
   const stopCamera = useCallback(() => {
@@ -45,7 +47,7 @@ export function useCamera() {
 
   /* ── 웹 전용: getUserMedia ──────────────────────────────────────────────── */
   const startCameraWeb = useCallback((): Promise<void> => {
-    if (IS_DEV) {
+    if (isMockMode) {
       setHasPermission(true);
       setFocusReady(true);
       return Promise.resolve();
@@ -206,7 +208,7 @@ export function useCamera() {
       if (pendingStartRef.current === request) pendingStartRef.current = null;
     });
     return request;
-  }, []);
+  }, [isMockMode]);
 
   /* ── 통합 startCamera ───────────────────────────────────────────────────── */
   const startCamera = useCallback((): Promise<void> => {
@@ -256,7 +258,7 @@ export function useCamera() {
     startCamera,
     stopCamera,
     error,
-    isMockMode: IS_DEV,
+    isMockMode,
     focusMode,
     focusReady,
     requestFocus,
