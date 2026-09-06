@@ -2519,8 +2519,13 @@ export default function ScannerScreen() {
             : resultsTrayCollapsed && pages.length > 0
               ? 'linear-gradient(to top, rgba(13,13,20,0.92) 0%, rgba(13,13,20,0.55) 72%, transparent 100%)'
               : 'linear-gradient(to top, rgba(13,13,20,0.92) 60%, rgba(13,13,20,0.6) 85%, transparent)',
-          backdropFilter: resultsTrayCollapsed && pages.length > 0 ? 'none' : 'blur(20px)',
-          WebkitBackdropFilter: resultsTrayCollapsed && pages.length > 0 ? 'none' : 'blur(20px)',
+          backdropFilter: scanMode === 'book' && pages.length === 0
+            ? `blur(${showBookGuidance ? 20 : 0}px)`
+            : resultsTrayCollapsed && pages.length > 0 ? 'none' : 'blur(20px)',
+          WebkitBackdropFilter: scanMode === 'book' && pages.length === 0
+            ? `blur(${showBookGuidance ? 20 : 0}px)`
+            : resultsTrayCollapsed && pages.length > 0 ? 'none' : 'blur(20px)',
+          transition: 'backdrop-filter 500ms ease-in-out, -webkit-backdrop-filter 500ms ease-in-out',
           touchAction: 'pan-y',
         }}
         onPointerDown={handleResultsTrayPointerDown}
