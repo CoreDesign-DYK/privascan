@@ -1,10 +1,23 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
+const rawLiveReloadUrl = process.env.CAPACITOR_LIVE_RELOAD_URL?.trim();
+let liveReloadUrl: string | undefined;
+if (rawLiveReloadUrl) {
+  const parsedUrl = new URL(rawLiveReloadUrl);
+  if (parsedUrl.protocol !== 'https:' || parsedUrl.username || parsedUrl.password) {
+    throw new Error(
+      'CAPACITOR_LIVE_RELOAD_URL must be a credential-free HTTPS URL.',
+    );
+  }
+  liveReloadUrl = parsedUrl.toString().replace(/\/$/, '');
+}
+
 const config: CapacitorConfig = {
   appId: 'com.privascan.app',
   appName: 'PrivaScan',
   webDir: 'dist/public',
   server: {
+    ...(liveReloadUrl ? { url: liveReloadUrl } : {}),
     androidScheme: 'https',
   },
   android: {
