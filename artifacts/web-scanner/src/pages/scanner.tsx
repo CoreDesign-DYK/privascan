@@ -986,6 +986,7 @@ export default function ScannerScreen() {
   const [dpiInput,    setDpiInput]    = useState(String(settings.targetDpi));
 
   const [scanMode,    setScanMode]    = useState<ScanMode>('document');
+  const [showBookPointHint, setShowBookPointHint] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [homeOpen,    setHomeOpen]    = useState(false);
   const [resultsTrayCollapsed, setResultsTrayCollapsed] = useState(false);
@@ -1037,6 +1038,20 @@ export default function ScannerScreen() {
   useEffect(() => { setDpiInput(String(settings.targetDpi)); }, [settings.targetDpi]);
   // Reset ID card stage when switching scan modes
   useEffect(() => { setIdStage('front'); idFrontRef.current = null; }, [scanMode]);
+
+  useEffect(() => {
+    if (scanMode !== 'book') {
+      setShowBookPointHint(false);
+      return;
+    }
+
+    setShowBookPointHint(true);
+    const timer = window.setTimeout(() => {
+      setShowBookPointHint(false);
+    }, 2_500);
+
+    return () => window.clearTimeout(timer);
+  }, [scanMode]);
 
   const applyTargetDpi = useCallback((value: number) => {
     const dpi = clampScanDpi(value);
@@ -2547,11 +2562,25 @@ export default function ScannerScreen() {
                       : 'Keeping frame — reacquiring edges…'}
               </span>
             ) : (
-              <span className="text-white/35 text-sm">
-                {scanMode === 'id-cards'
-                  ? `Align the ${idStage === 'front' ? 'Front' : 'Back'} card with the active frame`
-                  : 'Point camera at a document'}
-              </span>
+              scanMode === 'book' ? (
+                <span
+                  className={cn(
+                    'text-white/35 text-sm transition-all duration-500 ease-in-out',
+                    showBookPointHint
+                      ? 'translate-y-0 opacity-100'
+                      : 'translate-y-4 opacity-0 pointer-events-none',
+                  )}
+                  aria-hidden={!showBookPointHint}
+                >
+                  Point camera at a document
+                </span>
+              ) : (
+                <span className="text-white/35 text-sm">
+                  {scanMode === 'id-cards'
+                    ? `Align the ${idStage === 'front' ? 'Front' : 'Back'} card with the active frame`
+                    : 'Point camera at a document'}
+                </span>
+              )
             )}
           </div>
         )}
