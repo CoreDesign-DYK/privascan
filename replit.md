@@ -68,7 +68,7 @@ artifacts/web-scanner/package.json
 
 ## Gotchas
 
-- Live Reload는 `CAPACITOR_LIVE_RELOAD_URL`이 있는 Debug 동기화에서만 활성화한다. Release 빌드는 이 변수를 사용하지 않고 반드시 로컬 `dist/public`을 포함해야 한다.
+- Android Live Reload 주소는 `android/app/src/debug/assets/capacitor.config.json`에만 있으며 Debug APK에만 포함된다. iOS Live Reload는 `CAPACITOR_LIVE_RELOAD_URL`이 있는 Debug 동기화에서만 활성화한다. Release는 반드시 로컬 `dist/public`을 포함해야 한다.
 - Android Debug 앱 ID는 `com.privascan.app.dev`, iOS Debug Bundle ID는 `com.privascan.app.dev`이며 표시 이름은 `PrivaScan Dev`다. Release는 기존 `com.privascan.app`과 `PrivaScan`을 유지한다.
 
 ## Pointers

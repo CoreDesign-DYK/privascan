@@ -1,0 +1,19 @@
+{
+  "appId": "com.privascan.app.dev",
+  "appName": "PrivaScan Dev",
+  "webDir": "dist/public",
+  "server": {
+    "url": "https://d5de93de-5701-46fb-97ee-22e0fbd8641a-00-1au42e6daqd1p.janeway.replit.dev",
+    "androidScheme": "https"
+  },
+  "android": {
+    "edgeToEdgeEnabled": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1500,
+      "backgroundColor": "#0f172a",
+      "showSpinner": false
+    }
+  }
+}

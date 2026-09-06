@@ -12,7 +12,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "cap:sync": "cap sync android",
     "cap:build": "pnpm build:android && cap sync android",
-    "cap:live:android": "pnpm build:android && node scripts/capacitor-live-sync.mjs android && cd android && ./gradlew assembleDebug --no-daemon",
+    "cap:live:android": "pnpm build:android && cap sync android && cd android && ./gradlew assembleDebug --no-daemon",
     "cap:sync:ios": "cap sync ios",
     "cap:build:ios": "pnpm build:ios && cap sync ios",
     "cap:live:ios": "pnpm build:ios && node scripts/capacitor-live-sync.mjs ios",
