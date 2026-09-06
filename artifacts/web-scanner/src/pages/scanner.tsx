@@ -986,7 +986,7 @@ export default function ScannerScreen() {
   const [dpiInput,    setDpiInput]    = useState(String(settings.targetDpi));
 
   const [scanMode,    setScanMode]    = useState<ScanMode>('document');
-  const [showBookPointHint, setShowBookPointHint] = useState(false);
+  const [showBookGuidance, setShowBookGuidance] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [homeOpen,    setHomeOpen]    = useState(false);
   const [resultsTrayCollapsed, setResultsTrayCollapsed] = useState(false);
@@ -1041,13 +1041,13 @@ export default function ScannerScreen() {
 
   useEffect(() => {
     if (scanMode !== 'book') {
-      setShowBookPointHint(false);
+      setShowBookGuidance(false);
       return;
     }
 
-    setShowBookPointHint(true);
+    setShowBookGuidance(true);
     const timer = window.setTimeout(() => {
-      setShowBookPointHint(false);
+      setShowBookGuidance(false);
     }, 2_500);
 
     return () => window.clearTimeout(timer);
@@ -2393,7 +2393,15 @@ export default function ScannerScreen() {
                 style={{ borderColor: bookGuideColor }}
                 aria-hidden="true"
               />
-              <span className="landscape-only-hint absolute left-1/2 -translate-x-1/2 -top-7 whitespace-nowrap text-[10px] font-semibold tracking-wide text-white/55">
+              <span
+                className={cn(
+                  'landscape-only-hint absolute left-1/2 -translate-x-1/2 -top-7 whitespace-nowrap text-[10px] font-semibold tracking-wide text-white/55 transition-all duration-500 ease-in-out',
+                  showBookGuidance
+                    ? 'translate-y-0 opacity-100'
+                    : '-translate-y-4 opacity-0 pointer-events-none',
+                )}
+                aria-hidden={!showBookGuidance}
+              >
                 Turn your phone sideways and align the full book spread
               </span>
             </div>
@@ -2566,11 +2574,11 @@ export default function ScannerScreen() {
                 <span
                   className={cn(
                     'text-white/35 text-sm transition-all duration-500 ease-in-out',
-                    showBookPointHint
+                    showBookGuidance
                       ? 'translate-y-0 opacity-100'
                       : 'translate-y-4 opacity-0 pointer-events-none',
                   )}
-                  aria-hidden={!showBookPointHint}
+                  aria-hidden={!showBookGuidance}
                 >
                   Point camera at a document
                 </span>
