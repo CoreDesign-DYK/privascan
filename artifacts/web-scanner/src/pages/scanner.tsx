@@ -2573,7 +2573,7 @@ export default function ScannerScreen() {
               scanMode === 'book' ? (
                 <span
                   className={cn(
-                    'text-white/35 text-sm transition-all duration-500 ease-in-out',
+                    'text-white/35 text-[10px] transition-all duration-500 ease-in-out',
                     showBookGuidance
                       ? 'translate-y-0 opacity-100'
                       : 'translate-y-4 opacity-0 pointer-events-none',
