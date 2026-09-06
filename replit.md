@@ -62,11 +62,14 @@ artifacts/web-scanner/package.json
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- 개발 중인 앱의 모든 사용자 표시 문구, 안내, 오류 메시지, OCR 기본 언어는 영어만 고려한다.
+- 다국어 지원은 핵심 기능이 완성된 뒤 별도 단계에서 추가하며, 개발 중에는 번역이나 다국어 구조 확장을 진행하지 않는다.
+- 웹 UI와 스캔 로직은 `PrivaScan Dev` Live Reload 앱으로 즉시 확인한다. 권한, 네이티브 코드, Capacitor 플러그인, 저장·공유 방식, 출시 후보 변경은 재빌드가 필요하므로 작업 시점마다 사용자에게 안내한다.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Android Live Reload 주소는 `android/app/src/debug/assets/capacitor.config.json`에만 있으며 Debug APK에만 포함된다. iOS Live Reload는 `CAPACITOR_LIVE_RELOAD_URL`이 있는 Debug 동기화에서만 활성화한다. Release는 반드시 로컬 `dist/public`을 포함해야 한다.
+- Android Debug 앱 ID는 `com.privascan.app.dev`, iOS Debug Bundle ID는 `com.privascan.app.dev`이며 표시 이름은 `PrivaScan Dev`다. Release는 기존 `com.privascan.app`과 `PrivaScan`을 유지한다.
 
 ## Pointers
 
