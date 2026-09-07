@@ -11,8 +11,8 @@ import { type Point } from './perspective';
 
 // Live detection must leave enough main-thread time for WKWebView to deliver
 // touch events. Captured frames keep the larger sample for crop validation.
-const LIVE_SAMPLE_W = 320;
-const LIVE_SAMPLE_H = 240;
+const LIVE_SAMPLE_W = 400;
+const LIVE_SAMPLE_H = 300;
 const CAPTURE_SAMPLE_W = 480;
 const CAPTURE_SAMPLE_H = 360;
 const LIVE_PEAK_LIMIT = 8;
@@ -251,7 +251,73 @@ function findDocumentBounds(
     }
   }
 
-  return best?.bounds ?? null;
+  if (!best) return null;
+  return refineHorizontalBoundsFromSideEndpoints(gx, gy, w, h, best.bounds);
+}
+
+/**
+ * Horizontal texture inside a page (tables, headings, desk seams) can be
+ * stronger than the paper boundary. Once the two vertical sides are known,
+ * prefer the rows where both sides start or stop instead of trusting row
+ * strength alone.
+ */
+function refineHorizontalBoundsFromSideEndpoints(
+  gx: Float32Array,
+  gy: Float32Array,
+  w: number,
+  h: number,
+  bounds: Bounds,
+): Bounds {
+  const searchRadius = Math.max(8, Math.round(h * 0.1));
+  const probe = Math.max(3, Math.round(h * 0.018));
+  const sideRadius = Math.max(2, Math.round(w * 0.01));
+
+  const sideStrength = (x: number, y: number) => {
+    let strongest = 0;
+    for (let xx = Math.max(1, x - sideRadius); xx <= Math.min(w - 2, x + sideRadius); xx++) {
+      strongest = Math.max(strongest, Math.abs(gx[y * w + xx]));
+    }
+    return strongest / 24;
+  };
+  const pairedSideStrength = (y: number) =>
+    Math.min(sideStrength(bounds.left, y), sideStrength(bounds.right, y));
+  const bandStrength = (from: number, to: number) => {
+    let sum = 0;
+    let count = 0;
+    for (let y = Math.max(1, from); y <= Math.min(h - 2, to); y++) {
+      sum += pairedSideStrength(y);
+      count += 1;
+    }
+    return sum / Math.max(1, count);
+  };
+
+  const chooseBoundary = (expected: number, kind: 'top' | 'bottom') => {
+    let bestY = expected;
+    let bestScore = Number.NEGATIVE_INFINITY;
+    const start = Math.max(2, expected - searchRadius);
+    const end = Math.min(h - 3, expected + searchRadius);
+    for (let y = start; y <= end; y++) {
+      const inside = kind === 'top'
+        ? bandStrength(y + 2, y + probe)
+        : bandStrength(y - probe, y - 2);
+      const outside = kind === 'top'
+        ? bandStrength(y - probe, y - 2)
+        : bandStrength(y + 2, y + probe);
+      const horizontal = edgeSupportHorizontal(gy, w, h, y, bounds.left, bounds.right, 3);
+      const distancePenalty = Math.abs(y - expected) / Math.max(1, searchRadius);
+      const score = inside * 1.35 - outside * 0.9 + horizontal * 0.8 - distancePenalty * 0.3;
+      if (score > bestScore) {
+        bestScore = score;
+        bestY = y;
+      }
+    }
+    return bestY;
+  };
+
+  const top = chooseBoundary(bounds.top, 'top');
+  const bottom = chooseBoundary(bounds.bottom, 'bottom');
+  if (bottom - top < h * 0.22) return bounds;
+  return { ...bounds, top, bottom };
 }
 
 function findPeaks(

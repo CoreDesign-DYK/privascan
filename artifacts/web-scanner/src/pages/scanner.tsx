@@ -86,7 +86,9 @@ function AutoManualToggleIcon({ mode }: { mode: 'auto' | 'manual' }) {
 // Wait between completed detector passes instead of running on a fixed
 // interval. On WKWebView this leaves the main thread available for touch input.
 const EDGE_INTERVAL_MS = 250;
+const DOCUMENT_EDGE_INTERVAL_MS = 140;
 const STABLE_TARGET = 10;
+const DOCUMENT_STABLE_TARGET = 5;
 const TRACK_BLEND = 0.58;
 const MAX_TRACK_JUMP = 0.08;
 const JUMP_CONFIRM_FRAMES = 2;
@@ -478,7 +480,22 @@ async function waitForPreviewFocus(
     })) as [Point, Point, Point, Point]);
     if (!scaledQuads.length && detectDocumentFallback) {
       const detected = detectCornersFromCanvas(frame);
-      if (detected) scaledQuads.push(detected);
+      if (detected) {
+        scaledQuads.push(detected);
+      } else {
+        // Manual capture must remain usable even when automatic edge detection
+        // cannot close all four corners. Use only the central region to verify
+        // focus; the uncropped source is then sent to the corner editor rather
+        // than silently treating the whole camera frame as a document.
+        const insetX = frame.width * 0.16;
+        const insetY = frame.height * 0.16;
+        scaledQuads.push([
+          { x: insetX, y: insetY },
+          { x: frame.width - insetX, y: insetY },
+          { x: frame.width - insetX, y: frame.height - insetY },
+          { x: insetX, y: frame.height - insetY },
+        ]);
+      }
     }
     const regions = scaledQuads
       .map(quad => qualityRegionForQuad(frame, quad, profile.centerInset))
@@ -1269,6 +1286,21 @@ export default function ScannerScreen() {
       if (page) {
         addPage(page);
         captured = true;
+      } else if (!corners) {
+        const editableCorners = edgeCorners
+          ? scaleQuad(
+              edgeCorners,
+              canvas.width / Math.max(1, video.videoWidth),
+              canvas.height / Math.max(1, video.videoHeight),
+            )
+          : null;
+        setPendingPage(canvas.toDataURL('image/jpeg', outputJpegQuality(useMobileQualityPipeline)));
+        setPendingEditMode('document');
+        setDetectedCorners(editableCorners);
+        triggerCaptureEffects();
+        toast.info('Adjust the document corners before saving.');
+        setLocation('/edit');
+        return;
       } else {
         // The live quad is never used to crop an image, but it is useful as
         // a movement baseline when the exact capture frame is too soft to
@@ -1297,7 +1329,11 @@ export default function ScannerScreen() {
     // Enter waiting-clear state — block next scan until doc leaves frame
     waitingClear.current = true;
     setIsWaitingClear(true);
-  }, [isMockMode, focusMode, focusReady, videoRef, edgeCorners, addPage, setActivePageIndex, triggerCaptureEffects, requestFocus]);
+  }, [
+    isMockMode, focusMode, focusReady, videoRef, edgeCorners, addPage, setActivePageIndex,
+    setPendingPage, setPendingEditMode, setDetectedCorners, setLocation,
+    triggerCaptureEffects, requestFocus,
+  ]);
 
   useEffect(() => { captureAutoRef.current = autoCaptureFrame; }, [autoCaptureFrame]);
 
@@ -1372,7 +1408,10 @@ export default function ScannerScreen() {
 
     const scheduleNextDetection = () => {
       if (cancelled) return;
-      edgeTimerRef.current = setTimeout(runDetection, EDGE_INTERVAL_MS);
+      const delay = scanModeRef.current === 'document'
+        ? DOCUMENT_EDGE_INTERVAL_MS
+        : EDGE_INTERVAL_MS;
+      edgeTimerRef.current = setTimeout(runDetection, delay);
     };
 
     const runDetection = () => {
@@ -1528,16 +1567,19 @@ export default function ScannerScreen() {
         }
 
         // ── Normal detection phase ───────────────────────────────────────────
+        const stableTarget = scanModeRef.current === 'document'
+          ? DOCUMENT_STABLE_TARGET
+          : STABLE_TARGET;
         if (corners && tracked.stable && bookFoldStable) {
-          stableFrames.current = Math.min(stableFrames.current + 1, STABLE_TARGET);
+          stableFrames.current = Math.min(stableFrames.current + 1, stableTarget);
         } else {
           stableFrames.current = Math.max(stableFrames.current - 2, 0);
         }
 
-        const progress = stableFrames.current / STABLE_TARGET;
+        const progress = stableFrames.current / stableTarget;
         setStableProgress(progress);
 
-        if (stableFrames.current >= STABLE_TARGET) {
+        if (stableFrames.current >= stableTarget) {
           stableFrames.current = 0;
           setStableProgress(0);
           captureAutoRef.current();
@@ -1612,7 +1654,23 @@ export default function ScannerScreen() {
         useMobileQualityPipeline,
       );
       if (!page) {
-        toast.error('Check the document edges and focus, then try again.');
+        if (!corners) {
+          const editableCorners = edgeCorners
+            ? scaleQuad(
+                edgeCorners,
+                canvas.width / Math.max(1, video.videoWidth),
+                canvas.height / Math.max(1, video.videoHeight),
+              )
+            : null;
+          setPendingPage(canvas.toDataURL('image/jpeg', outputJpegQuality(useMobileQualityPipeline)));
+          setPendingEditMode('document');
+          setDetectedCorners(editableCorners);
+          triggerCaptureEffects();
+          toast.info('Document edges need adjustment.');
+          setLocation('/edit');
+          return;
+        }
+        toast.error('The captured document is not sharp enough. Hold steady and try again.');
         return;
       }
       addPage(page);
@@ -1623,7 +1681,11 @@ export default function ScannerScreen() {
     // Review the page first. Crop is available from the review toolbar only
     // when a user wants to adjust the automatic correction.
     setLocation('/preview');
-  }, [isMockMode, focusMode, focusReady, videoRef, edgeCorners, addPage, setActivePageIndex, setLocation, triggerCaptureEffects, requestFocus]);
+  }, [
+    isMockMode, focusMode, focusReady, videoRef, edgeCorners, addPage, setActivePageIndex,
+    setPendingPage, setPendingEditMode, setDetectedCorners, setLocation,
+    triggerCaptureEffects, requestFocus,
+  ]);
 
   /* ── Book capture ───────────────────────────────────────────────────────── */
   const bookCapture = useCallback(async () => {
@@ -2355,17 +2417,6 @@ export default function ScannerScreen() {
         )}
 
         {/* ── A: Guide brackets — mode-specific ── */}
-
-        {/* Document: A4 portrait — hide when edge detected on real camera */}
-        {scanMode === 'document' && (!edgeCorners || isMockMode) && (
-          <div className="absolute pointer-events-none"
-            style={{ top:'12%', bottom:'32%', left:'50%', transform:'translate(-50%, 48px)', aspectRatio:'0.707/1', maxHeight:'100%' }}>
-            <div className="absolute top-0 left-0 w-8 h-8 border-t-[3px] border-l-[3px] border-white/55" />
-            <div className="absolute top-0 right-0 w-8 h-8 border-t-[3px] border-r-[3px] border-white/55" />
-            <div className="absolute bottom-0 left-0 w-8 h-8 border-b-[3px] border-l-[3px] border-white/55" />
-            <div className="absolute bottom-0 right-0 w-8 h-8 border-b-[3px] border-r-[3px] border-white/55" />
-          </div>
-        )}
 
         {/* Book: corner guides and a binding line stay portrait-locked, then
             become a landscape book frame when the user turns the phone. */}
