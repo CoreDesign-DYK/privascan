@@ -1697,25 +1697,44 @@ export default function ScannerScreen() {
       if (corners) {
         const sourceSize = sourceQuadSize(corners);
         const liveSourceSize = edgeCorners ? sourceQuadSize(edgeCorners) : null;
-        const liveFrameShortEdge = Math.min(video.videoWidth, video.videoHeight);
-        const liveDocumentCoverage = liveSourceSize && liveFrameShortEdge > 0
-          ? liveSourceSize.shortEdge / liveFrameShortEdge
+        const liveFrameArea = video.videoWidth * video.videoHeight;
+        const liveDocumentArea = edgeCorners
+          ? Math.abs(edgeCorners.reduce((sum, point, index) => {
+              const next = edgeCorners[(index + 1) % edgeCorners.length];
+              return sum + point.x * next.y - next.x * point.y;
+            }, 0)) / 2
+          : null;
+        const liveDocumentAreaCoverage = liveDocumentArea !== null && liveFrameArea > 0
+          ? liveDocumentArea / liveFrameArea
+          : null;
+        const liveDocumentLongestAxisCoverage = liveSourceSize
+          ? Math.max(
+              liveSourceSize.width / Math.max(1, video.videoWidth),
+              liveSourceSize.height / Math.max(1, video.videoHeight),
+            )
           : null;
         console.info('[PrivaScan] document source detail', {
           captureMethod: canvas.captureMethod,
           capture: `${canvas.width}x${canvas.height}`,
           document: `${Math.round(sourceSize.width)}x${Math.round(sourceSize.height)}`,
           shortEdge: Math.round(sourceSize.shortEdge),
-          liveDocumentCoverage: liveDocumentCoverage === null
+          liveDocumentAreaCoverage: liveDocumentAreaCoverage === null
             ? null
-            : Number(liveDocumentCoverage.toFixed(3)),
+            : Number(liveDocumentAreaCoverage.toFixed(3)),
+          liveDocumentLongestAxisCoverage: liveDocumentLongestAxisCoverage === null
+            ? null
+            : Number(liveDocumentLongestAxisCoverage.toFixed(3)),
         });
         // In Manual mode, only ask the user to move closer when the document
-        // is genuinely small in the preview. Android still captures can use a
-        // wider sensor field of view than the visible preview, so an absolute
-        // captured-pixel threshold can reject a document that already fills
-        // the screen and cannot reasonably be moved closer.
-        if (liveDocumentCoverage !== null && liveDocumentCoverage < 0.45) {
+        // is genuinely small in both preview area and linear span. Using the
+        // document's short edge misclassifies landscape pages in a portrait
+        // camera frame even when they already fill most of the available width.
+        if (
+          liveDocumentAreaCoverage !== null &&
+          liveDocumentLongestAxisCoverage !== null &&
+          liveDocumentAreaCoverage < 0.1 &&
+          liveDocumentLongestAxisCoverage < 0.55
+        ) {
           toast.error('Move closer to the document so small text stays sharp.');
           return;
         }
