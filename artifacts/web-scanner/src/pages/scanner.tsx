@@ -959,7 +959,7 @@ function QualityGaugeIcon({ dpi }: { dpi: number }) {
 export default function ScannerScreen() {
   const [, setLocation] = useLocation();
   const {
-    videoRef, startCamera, stopCamera, hasPermission, isMockMode, focusMode, focusReady, requestFocus,
+    videoRef, startCamera, stopCamera, hasPermission, isMockMode, focusMode, focusReady, videoReady, requestFocus,
   } = useCamera();
   const {
     mode, setMode, pages, addPage, removePage, clearPages, settings, setSettings,
@@ -2085,11 +2085,14 @@ export default function ScannerScreen() {
       {/* ── Live camera — Android, iOS, and web share the same scanner UI ── */}
       {!isMockMode && (
         <video ref={videoRef} autoPlay playsInline muted
-          className="absolute inset-0 w-full h-full object-cover z-0" />
+          className={cn(
+            'absolute inset-0 w-full h-full object-cover z-0 transition-opacity duration-300 ease-out',
+            videoReady ? 'opacity-100' : 'opacity-0',
+          )} />
       )}
       {/* Source-coordinate overlays share the live video's full-root viewport
           and the same object-cover transform, so detected corners stay aligned. */}
-      {!isMockMode && scanMode !== 'book' && edgeCorners && (
+      {!isMockMode && videoReady && scanMode !== 'book' && edgeCorners && (
         <svg
           className="absolute inset-0 w-full h-full z-10 pointer-events-none"
           viewBox={`0 0 ${viewW} ${viewH}`}

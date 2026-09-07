@@ -16,12 +16,15 @@ export function useCamera() {
   const streamRef  = useRef<MediaStream | null>(null);
   const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const focusFrameListenerRef = useRef<{ video: HTMLVideoElement; listener: () => void } | null>(null);
+  const videoReadyListenerRef = useRef<{ video: HTMLVideoElement; listener: () => void } | null>(null);
+  const videoReadyFramesRef = useRef<number[]>([]);
   const cameraSessionRef = useRef(0);
   const pendingStartRef = useRef<Promise<void> | null>(null);
   const [hasPermission, setHasPermission] = useState<boolean | null>(isMockMode ? true : null);
   const [error, setError]                 = useState<Error | null>(null);
   const [focusMode, setFocusMode]         = useState<FocusMode>(isMockMode ? 'continuous' : 'unknown');
   const [focusReady, setFocusReady]       = useState(isMockMode);
+  const [videoReady, setVideoReady]       = useState(isMockMode);
 
   /* ── 공통: 카메라 중지 ─────────────────────────────────────────────────── */
   const stopCamera = useCallback(() => {
@@ -36,12 +39,20 @@ export function useCamera() {
       video.removeEventListener('loadeddata', listener);
       focusFrameListenerRef.current = null;
     }
+    if (videoReadyListenerRef.current) {
+      const { video, listener } = videoReadyListenerRef.current;
+      video.removeEventListener('loadeddata', listener);
+      videoReadyListenerRef.current = null;
+    }
+    videoReadyFramesRef.current.forEach(frame => cancelAnimationFrame(frame));
+    videoReadyFramesRef.current = [];
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     }
     if (videoRef.current) videoRef.current.srcObject = null;
     setFocusReady(false);
+    setVideoReady(false);
     setFocusMode('unknown');
   }, []);
 
@@ -50,6 +61,7 @@ export function useCamera() {
     if (isMockMode) {
       setHasPermission(true);
       setFocusReady(true);
+      setVideoReady(true);
       return Promise.resolve();
     }
 
@@ -110,10 +122,7 @@ export function useCamera() {
         streamRef.current = mediaStream;
         setHasPermission(true);
         setFocusReady(false);
-
-        if (videoRef.current) {
-          videoRef.current.srcObject = mediaStream;
-        }
+        setVideoReady(false);
 
         const track = mediaStream.getVideoTracks()[0];
         // Apply the high-resolution preference once more after the stream is
@@ -163,6 +172,49 @@ export function useCamera() {
         if (cameraSessionRef.current !== session || streamRef.current !== mediaStream) return;
         setFocusMode(selectedFocusMode);
 
+        const preview = videoRef.current;
+        if (preview) {
+          const revealStablePreview = () => {
+            if (
+              cameraSessionRef.current !== session ||
+              streamRef.current !== mediaStream ||
+              track?.readyState !== 'live' ||
+              preview.videoWidth <= 0 ||
+              preview.videoHeight <= 0
+            ) return;
+
+            if (videoReadyListenerRef.current?.video === preview) {
+              preview.removeEventListener('loadeddata', videoReadyListenerRef.current.listener);
+              videoReadyListenerRef.current = null;
+            }
+
+            const firstFrame = requestAnimationFrame(() => {
+              const secondFrame = requestAnimationFrame(() => {
+                videoReadyFramesRef.current = [];
+                if (
+                  cameraSessionRef.current === session &&
+                  streamRef.current === mediaStream &&
+                  track?.readyState === 'live'
+                ) {
+                  setVideoReady(true);
+                }
+              });
+              videoReadyFramesRef.current.push(secondFrame);
+            });
+            videoReadyFramesRef.current.push(firstFrame);
+          };
+
+          videoReadyListenerRef.current = { video: preview, listener: revealStablePreview };
+          preview.addEventListener('loadeddata', revealStablePreview, { once: true });
+          preview.srcObject = mediaStream;
+          void preview.play().catch(() => {
+            // autoPlay retries when the WebView marks the media element ready.
+          });
+          if (preview.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+            revealStablePreview();
+          }
+        }
+
         const settleDelay = selectedFocusMode === 'continuous' ? 1_200 : 1_500;
         const armFocusReady = () => {
           if (cameraSessionRef.current !== session || streamRef.current !== mediaStream) return;
@@ -178,7 +230,6 @@ export function useCamera() {
             }
           }, settleDelay);
         };
-        const preview = videoRef.current;
         if (preview && preview.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
           focusFrameListenerRef.current = { video: preview, listener: armFocusReady };
           preview.addEventListener('loadeddata', armFocusReady, { once: true });
@@ -199,6 +250,7 @@ export function useCamera() {
         if (cameraSessionRef.current !== session) return;
         setHasPermission(false);
         setFocusReady(false);
+        setVideoReady(false);
         setError(err instanceof Error ? err : new Error('Camera access denied'));
       }
     })();
@@ -261,6 +313,7 @@ export function useCamera() {
     isMockMode,
     focusMode,
     focusReady,
+    videoReady,
     requestFocus,
   };
 }
