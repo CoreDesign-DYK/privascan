@@ -1015,6 +1015,7 @@ export default function ScannerScreen() {
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [homeOpen,    setHomeOpen]    = useState(false);
   const [resultsTrayCollapsed, setResultsTrayCollapsed] = useState(false);
+  const [resultsTrayClosing, setResultsTrayClosing] = useState(false);
 
   // ── Text tool state ────────────────────────────────────────────────────────
   const [textPanelOpen,  setTextPanelOpen]  = useState(false);
@@ -1032,6 +1033,9 @@ export default function ScannerScreen() {
   const lastThumbRef     = useRef<HTMLButtonElement>(null);
   const trayGestureStartRef = useRef<{ x: number; y: number } | null>(null);
   const trayGestureConsumedRef = useRef(false);
+  const previousPageCountRef = useRef(pages.length);
+  const trayAutoCollapseTimerRef = useRef<number | null>(null);
+  const trayCollapseFinishTimerRef = useRef<number | null>(null);
   const modeRef          = useRef(mode);
   const pagesLenRef      = useRef(pages.length);
   const settingsRef      = useRef(settings);
@@ -1109,12 +1113,55 @@ export default function ScannerScreen() {
     }, 60);
   }, [pages.length]);
 
-  useEffect(() => {
-    if (pages.length === 0) {
-      setResultsTrayCollapsed(false);
-      setTextPanelOpen(false);
+  const clearResultsTrayTimers = useCallback(() => {
+    if (trayAutoCollapseTimerRef.current !== null) {
+      window.clearTimeout(trayAutoCollapseTimerRef.current);
+      trayAutoCollapseTimerRef.current = null;
     }
-  }, [pages.length]);
+    if (trayCollapseFinishTimerRef.current !== null) {
+      window.clearTimeout(trayCollapseFinishTimerRef.current);
+      trayCollapseFinishTimerRef.current = null;
+    }
+  }, []);
+
+  const collapseResultsTray = useCallback(() => {
+    clearResultsTrayTimers();
+    setTextPanelOpen(false);
+    setResultsTrayClosing(true);
+    trayCollapseFinishTimerRef.current = window.setTimeout(() => {
+      setResultsTrayCollapsed(true);
+      setResultsTrayClosing(false);
+      trayCollapseFinishTimerRef.current = null;
+    }, 360);
+  }, [clearResultsTrayTimers]);
+
+  const openResultsTray = useCallback(() => {
+    clearResultsTrayTimers();
+    setResultsTrayClosing(false);
+    setResultsTrayCollapsed(false);
+  }, [clearResultsTrayTimers]);
+
+  useEffect(() => {
+    const previousCount = previousPageCountRef.current;
+    previousPageCountRef.current = pages.length;
+
+    if (pages.length === 0) {
+      clearResultsTrayTimers();
+      setResultsTrayCollapsed(false);
+      setResultsTrayClosing(false);
+      setTextPanelOpen(false);
+      return;
+    }
+
+    if (pages.length > previousCount) {
+      openResultsTray();
+      trayAutoCollapseTimerRef.current = window.setTimeout(() => {
+        collapseResultsTray();
+      }, 1_400);
+    }
+  }, [pages.length, clearResultsTrayTimers, collapseResultsTray, openResultsTray]);
+
+  useEffect(() => () => clearResultsTrayTimers(), [clearResultsTrayTimers]);
 
   const handleResultsTrayPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (pages.length === 0 || event.pointerType === 'mouse') return;
@@ -1136,12 +1183,11 @@ export default function ScannerScreen() {
     trayGestureConsumedRef.current = true;
     event.preventDefault();
     if (deltaY > 0) {
-      setResultsTrayCollapsed(true);
-      setTextPanelOpen(false);
+      collapseResultsTray();
     } else {
-      setResultsTrayCollapsed(false);
+      openResultsTray();
     }
-  }, []);
+  }, [collapseResultsTray, openResultsTray]);
 
   const handleResultsTrayClickCapture = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (!trayGestureConsumedRef.current) return;
@@ -2603,16 +2649,16 @@ export default function ScannerScreen() {
         style={{
           background: scanMode === 'book' && pages.length === 0
             ? 'linear-gradient(to top, rgba(13,13,20,0.92) 0%, rgba(13,13,20,0.72) 42%, rgba(13,13,20,0.32) 58%, transparent 72%)'
-            : resultsTrayCollapsed && pages.length > 0
+            : (resultsTrayCollapsed || resultsTrayClosing) && pages.length > 0
               ? 'linear-gradient(to top, rgba(13,13,20,0.92) 0%, rgba(13,13,20,0.55) 72%, transparent 100%)'
               : 'linear-gradient(to top, rgba(13,13,20,0.92) 60%, rgba(13,13,20,0.6) 85%, transparent)',
           backdropFilter: scanMode === 'book' && pages.length === 0
             ? `blur(${showBookGuidance ? 20 : 0}px)`
-            : resultsTrayCollapsed && pages.length > 0 ? 'none' : 'blur(20px)',
+            : (resultsTrayCollapsed || resultsTrayClosing) && pages.length > 0 ? 'none' : 'blur(20px)',
           WebkitBackdropFilter: scanMode === 'book' && pages.length === 0
             ? `blur(${showBookGuidance ? 20 : 0}px)`
-            : resultsTrayCollapsed && pages.length > 0 ? 'none' : 'blur(20px)',
-          transition: 'backdrop-filter 500ms ease-in-out, -webkit-backdrop-filter 500ms ease-in-out',
+            : (resultsTrayCollapsed || resultsTrayClosing) && pages.length > 0 ? 'none' : 'blur(20px)',
+          transition: 'backdrop-filter 360ms ease-in-out, -webkit-backdrop-filter 360ms ease-in-out',
           touchAction: 'pan-y',
         }}
         onPointerDown={handleResultsTrayPointerDown}
@@ -2634,14 +2680,20 @@ export default function ScannerScreen() {
 
         {/* Swipe down anywhere in the result area to give the camera more room. */}
         {pages.length > 0 && !resultsTrayCollapsed && (
-          <div className="flex justify-center h-3 shrink-0 pointer-events-none" aria-hidden="true">
+          <div className={cn(
+            'flex justify-center h-3 shrink-0 pointer-events-none transition-all duration-300 ease-in',
+            resultsTrayClosing && 'translate-y-12 opacity-0',
+          )} aria-hidden="true">
             <span className="mt-1 w-10 h-1 rounded-full bg-white/35" />
           </div>
         )}
 
         {/* Auto-mode status hint */}
         {mode === 'auto' && !resultsTrayCollapsed && (
-          <div className="scanner-status-hint flex justify-center min-h-[20px]">
+          <div className={cn(
+            'scanner-status-hint flex justify-center min-h-[20px] transition-all duration-300 ease-in',
+            resultsTrayClosing && 'translate-y-12 opacity-0',
+          )}>
             {!isMockMode && !focusReady ? (
               <span className="text-amber-300 text-sm font-semibold animate-pulse">
                 Focusing camera…
@@ -2707,7 +2759,10 @@ export default function ScannerScreen() {
 
         {/* Page thumbnails */}
         {pages.length > 0 && !resultsTrayCollapsed && (
-          <div className="scanner-thumbnails flex gap-2.5 overflow-x-auto snap-x px-1 pb-1 no-scrollbar">
+          <div className={cn(
+            'scanner-thumbnails flex gap-2.5 overflow-x-auto snap-x px-1 pb-1 no-scrollbar transition-all duration-300 ease-in',
+            resultsTrayClosing && 'translate-y-16 opacity-0',
+          )}>
             {pages.map((p, i) => (
               <button
                 key={i}
@@ -2742,7 +2797,10 @@ export default function ScannerScreen() {
 
         {/* ── Adobe-style horizontal edit toolbar ── */}
         {pages.length > 0 && !resultsTrayCollapsed && (
-          <div className="flex justify-around items-center py-1 animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <div className={cn(
+            'flex justify-around items-center py-1 animate-in fade-in slide-in-from-bottom-2 duration-200 transition-all ease-in',
+            resultsTrayClosing && 'translate-y-16 opacity-0',
+          )}>
 
             {/* Retake */}
             <ToolbarBtn icon={<Camera className="w-5 h-5" />} label="Retake" onClick={() => {
@@ -2792,7 +2850,10 @@ export default function ScannerScreen() {
 
         {/* ── Text input panel ── */}
         {textPanelOpen && pages.length > 0 && !resultsTrayCollapsed && (
-          <div className="bg-gray-900/95 rounded-2xl px-4 py-3 space-y-3 border border-white/10 animate-in slide-in-from-bottom-2 duration-200">
+          <div className={cn(
+            'bg-gray-900/95 rounded-2xl px-4 py-3 space-y-3 border border-white/10 animate-in slide-in-from-bottom-2 duration-200 transition-all ease-in',
+            resultsTrayClosing && 'translate-y-16 opacity-0',
+          )}>
             {/* Input row */}
             <div className="flex items-center gap-2">
               <input
@@ -2929,7 +2990,7 @@ export default function ScannerScreen() {
             </button>
             {pages.length > 0 && resultsTrayCollapsed && (
               <button
-                onClick={() => setResultsTrayCollapsed(false)}
+                onClick={openResultsTray}
                 aria-label={`Show scanned pages (${pages.length})`}
                 className="relative w-10 h-10 rounded-xl flex items-center justify-center text-white/90 bg-white/10 border border-white/20 active:scale-95 transition-transform"
               >

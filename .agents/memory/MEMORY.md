@@ -3,6 +3,7 @@
 - [Active scan recovery](active-scan-recovery.md) — Keep unfinished scans recoverable on-device without mixing drafts into the saved-document gallery.
 - [Capture quality safeguards](capture-quality-safeguards.md) — Never turn an uncertain or soft camera frame into a completed document scan.
 - [Preview control layout](preview-control-layout.md) — Keep save actions visible in one viewport; let secondary edit tools scroll horizontally on small screens.
+- [Scanner results tray](scanner-results-tray.md) — Auto-clear captured-page controls before the next scan; reopen them from the page-count document icon.
 - [Camera focus fallback](camera-focus-fallback.md) — Request continuous focus when exposed, but preserve safe capture timing when mobile browsers hide focus controls.
 - [iOS camera architecture](ios-camera-architecture.md) — Keep iOS on the live WKWebView camera path; native file/share remains enabled.
 - [Capacitor iOS startup](capacitor-ios-startup.md) — Capacitor 8.5 UIScene startup requires SceneDelegate plus its Main scene-storyboard entry.
