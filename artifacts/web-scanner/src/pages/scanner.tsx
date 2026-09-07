@@ -396,7 +396,7 @@ const CAPTURE_QUALITY_PROFILES: Record<
   CaptureQualityMode,
   { stillShortEdge: number; videoShortEdge: number; centerInset: number }
 > = {
-  document: { stillShortEdge: 1500, videoShortEdge: 900, centerInset: 0.04 },
+  document: { stillShortEdge: 1500, videoShortEdge: 650, centerInset: 0.04 },
   book: { stillShortEdge: 1100, videoShortEdge: 700, centerInset: 0.06 },
   presentation: { stillShortEdge: 900, videoShortEdge: 600, centerInset: 0.1 },
   'id-card': { stillShortEdge: 600, videoShortEdge: 420, centerInset: 0.12 },
@@ -566,6 +566,14 @@ function hasRequiredSourcePixels(
     })),
   });
   return sizes.length > 0 && sizes.every(size => size.shortEdge >= minimum);
+}
+
+function hasPreferredDocumentPixels(
+  corners: [Point, Point, Point, Point],
+  captureMethod: CameraCaptureCanvas['captureMethod'],
+): boolean {
+  if (captureMethod === 'still') return true;
+  return sourceQuadSize(corners).shortEdge >= 900;
 }
 
 async function captureBestCameraFrame(
@@ -1220,6 +1228,7 @@ export default function ScannerScreen() {
     const pageNum = pagesLenRef.current + 1;
     let captured = false;
     let rejectedCorners: [Point, Point, Point, Point] | null = null;
+    let limitedResolution = false;
 
     if (isMockMode || !videoRef.current) {
       addPage(generateMockPage(pageNum, settingsRef.current));
@@ -1276,6 +1285,7 @@ export default function ScannerScreen() {
           rejectedCornersRef.current = recoveryCorners;
           return;
         }
+        limitedResolution = !hasPreferredDocumentPixels(corners, canvas.captureMethod);
       }
       const page = createDocumentPage(
         canvas,
@@ -1325,6 +1335,9 @@ export default function ScannerScreen() {
     triggerCaptureEffects();
     setCapturedLabel(pageNum);
     setTimeout(() => setCapturedLabel(null), 1800);
+    if (limitedResolution) {
+      toast.warning('Scan captured. Review small text because this camera frame has limited resolution.');
+    }
 
     // Enter waiting-clear state — block next scan until doc leaves frame
     waitingClear.current = true;
@@ -1634,6 +1647,7 @@ export default function ScannerScreen() {
       );
       // Prefer the capture-frame result over a potentially stale live overlay.
       const corners = detectCornersFromCanvas(canvas);
+      let limitedResolution = false;
       if (corners) {
         const sourceSize = sourceQuadSize(corners);
         console.info('[PrivaScan] document source detail', {
@@ -1646,6 +1660,7 @@ export default function ScannerScreen() {
           toast.error('Move closer to the document so small text stays sharp.');
           return;
         }
+        limitedResolution = !hasPreferredDocumentPixels(corners, canvas.captureMethod);
       }
       const page = createDocumentPage(
         canvas,
@@ -1674,6 +1689,9 @@ export default function ScannerScreen() {
         return;
       }
       addPage(page);
+      if (limitedResolution) {
+        toast.warning('Scan captured. Review small text because this camera frame has limited resolution.');
+      }
     }
     triggerCaptureEffects();
     setActivePageIndex(pageNum - 1);
