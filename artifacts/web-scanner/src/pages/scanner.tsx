@@ -1650,17 +1650,32 @@ export default function ScannerScreen() {
       let limitedResolution = false;
       if (corners) {
         const sourceSize = sourceQuadSize(corners);
+        const liveSourceSize = edgeCorners ? sourceQuadSize(edgeCorners) : null;
+        const liveFrameShortEdge = Math.min(video.videoWidth, video.videoHeight);
+        const liveDocumentCoverage = liveSourceSize && liveFrameShortEdge > 0
+          ? liveSourceSize.shortEdge / liveFrameShortEdge
+          : null;
         console.info('[PrivaScan] document source detail', {
           captureMethod: canvas.captureMethod,
           capture: `${canvas.width}x${canvas.height}`,
           document: `${Math.round(sourceSize.width)}x${Math.round(sourceSize.height)}`,
           shortEdge: Math.round(sourceSize.shortEdge),
+          liveDocumentCoverage: liveDocumentCoverage === null
+            ? null
+            : Number(liveDocumentCoverage.toFixed(3)),
         });
-        if (!hasRequiredSourcePixels([corners], 'document', canvas.captureMethod)) {
+        // In Manual mode, only ask the user to move closer when the document
+        // is genuinely small in the preview. Android still captures can use a
+        // wider sensor field of view than the visible preview, so an absolute
+        // captured-pixel threshold can reject a document that already fills
+        // the screen and cannot reasonably be moved closer.
+        if (liveDocumentCoverage !== null && liveDocumentCoverage < 0.45) {
           toast.error('Move closer to the document so small text stays sharp.');
           return;
         }
-        limitedResolution = !hasPreferredDocumentPixels(corners, canvas.captureMethod);
+        limitedResolution =
+          !hasRequiredSourcePixels([corners], 'document', canvas.captureMethod) ||
+          !hasPreferredDocumentPixels(corners, canvas.captureMethod);
       }
       const page = createDocumentPage(
         canvas,

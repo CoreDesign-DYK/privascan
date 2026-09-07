@@ -50,3 +50,9 @@ Calibrate detector sharpness thresholds on the same downscaled frame the live de
 **Why:** A threshold that looks reasonable on native-size synthetic pixels can reject a sharp high-resolution card after detector downscaling, while a live-only check is not enough to prevent a soft saved crop.
 
 **How to apply:** Measure representative sharp and blurred fixtures after the detector's real resize step. Use the live threshold for readiness, and independently reject the perspective-corrected output before saving.
+
+Manual Document capture must judge whether the user is too far away from the visible preview occupancy, not from an absolute pixel threshold on the Android still frame.
+
+**Why:** Android still capture can use a wider sensor field of view than the WebView preview, so a document that already fills the screen can fall below a fixed still-pixel threshold even though moving closer is not a realistic remedy.
+
+**How to apply:** Show “Move closer” only when a detected document is genuinely small in the live preview. Let sharp manual captures proceed with a clear limited-resolution warning, while retaining the post-warp sharpness gate.
