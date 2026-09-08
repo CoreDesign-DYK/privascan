@@ -56,3 +56,9 @@ Manual Document capture must judge whether the user is too far away from the vis
 **Why:** Android still capture can use a wider sensor field of view than the WebView preview, so a document that already fills the screen can fall below a fixed still-pixel threshold even though moving closer is not a realistic remedy.
 
 **How to apply:** Show “Move closer” only when a detected document is genuinely small by both live-preview area and longest-axis occupancy. Never use short-edge occupancy alone because it rejects landscape pages in portrait camera frames. Let sharp manual captures proceed with a clear limited-resolution warning, while retaining the post-warp sharpness gate.
+
+Document sharpening must remain conservative, edge-gated, and mathematically consistent between WebGL and CPU perspective paths.
+
+**Why:** Linear warp sampling softens small glyph boundaries, but blanket sharpening creates noise and halos; different GPU/CPU sampling phases make scan quality depend on WebGL availability.
+
+**How to apply:** Use the same fractional five-tap sampling and luminance gate on both paths, preserve color and alpha, avoid large intermediate buffers, and apply it only to Document processing before final encoding.

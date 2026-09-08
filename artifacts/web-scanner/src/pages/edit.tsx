@@ -218,6 +218,7 @@ export default function EditScreen() {
           maxCpuPixels: useMobileQualityPipeline
             ? 6_500_000
             : outputSize.width * outputSize.height,
+          sharpen: pendingEditMode === 'document' ? 0.16 : 0,
         },
       );
       if (!hasRequiredSharpness(warped)) {

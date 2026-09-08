@@ -253,7 +253,9 @@ function createDocumentPage(
     corners,
     outputSize.width,
     outputSize.height,
-    enhanceForMobile ? { maxCpuPixels: MAX_MOBILE_CAPTURE_PIXELS } : undefined,
+    enhanceForMobile
+      ? { maxCpuPixels: MAX_MOBILE_CAPTURE_PIXELS, sharpen: 0.16 }
+      : { sharpen: 0.16 },
   );
   if (!hasRequiredSharpness(warped)) return null;
   const output = enhanceForMobile ? enhanceDocumentCanvas(warped) : warped;

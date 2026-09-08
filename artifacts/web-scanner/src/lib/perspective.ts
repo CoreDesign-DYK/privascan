@@ -7,6 +7,7 @@
 export interface Point { x: number; y: number }
 export interface WarpPerspectiveOptions {
   maxCpuPixels?: number;
+  sharpen?: number;
 }
 
 export interface CurvedPageWarp {
@@ -40,7 +41,8 @@ export function warpPerspective(
   outH: number,
   options: WarpPerspectiveOptions = {},
 ): HTMLCanvasElement {
-  const gpuResult = warpPerspectiveWebGL(src, corners, outW, outH);
+  const sharpen = Math.max(0, Math.min(0.35, options.sharpen ?? 0));
+  const gpuResult = warpPerspectiveWebGL(src, corners, outW, outH, sharpen);
   if (gpuResult) return gpuResult;
 
   const cpuResult = warpPerspectiveCPU(
@@ -49,6 +51,7 @@ export function warpPerspective(
     outW,
     outH,
     options.maxCpuPixels,
+    sharpen,
   );
   if (cpuResult) return cpuResult;
 
@@ -395,6 +398,7 @@ function warpPerspectiveCPU(
   outW: number,
   outH: number,
   requestedMaxPixels = 2_400_000,
+  sharpen = 0,
 ): HTMLCanvasElement | null {
   const sourceW = src instanceof HTMLImageElement ? src.naturalWidth : src.width;
   const sourceH = src instanceof HTMLImageElement ? src.naturalHeight : src.height;
@@ -452,6 +456,32 @@ function warpPerspectiveCPU(
     const result = outputCtx.createImageData(targetW, targetH);
     const sourceData = input.data;
     const resultData = result.data;
+    const useSharpening = sharpen > 0 &&
+      sourceTarget.width >= 3 &&
+      sourceTarget.height >= 3;
+    const sampleChannel = (x: number, y: number, channel: number) => {
+      const clampedX = Math.max(0, Math.min(sourceTarget.width - 1, x));
+      const clampedY = Math.max(0, Math.min(sourceTarget.height - 1, y));
+      const sampleLeft = Math.floor(clampedX);
+      const sampleTop = Math.floor(clampedY);
+      const sampleRight = Math.min(sourceTarget.width - 1, sampleLeft + 1);
+      const sampleBottom = Math.min(sourceTarget.height - 1, sampleTop + 1);
+      const sampleFx = clampedX - sampleLeft;
+      const sampleFy = clampedY - sampleTop;
+      const sampleInverseFx = 1 - sampleFx;
+      const sampleInverseFy = 1 - sampleFy;
+      const sampleTopLeft = (sampleTop * sourceTarget.width + sampleLeft) * 4 + channel;
+      const sampleTopRight = (sampleTop * sourceTarget.width + sampleRight) * 4 + channel;
+      const sampleBottomLeft = (sampleBottom * sourceTarget.width + sampleLeft) * 4 + channel;
+      const sampleBottomRight = (sampleBottom * sourceTarget.width + sampleRight) * 4 + channel;
+      return (
+        sourceData[sampleTopLeft] * sampleInverseFx +
+        sourceData[sampleTopRight] * sampleFx
+      ) * sampleInverseFy + (
+        sourceData[sampleBottomLeft] * sampleInverseFx +
+        sourceData[sampleBottomRight] * sampleFx
+      ) * sampleFy;
+    };
 
     for (let y = 0; y < targetH; y++) {
       for (let x = 0; x < targetW; x++) {
@@ -477,11 +507,58 @@ function warpPerspectiveCPU(
         const topRight = topLeft + 4;
         const bottomLeft = ((bottom * sourceTarget.width + left) * 4);
         const bottomRight = bottomLeft + 4;
-        for (let channel = 0; channel < 4; channel++) {
-          const topValue = sourceData[topLeft + channel] * (1 - fx) + sourceData[topRight + channel] * fx;
-          const bottomValue = sourceData[bottomLeft + channel] * (1 - fx) + sourceData[bottomRight + channel] * fx;
-          resultData[outputIndex + channel] = topValue * (1 - fy) + bottomValue * fy;
+        const inverseFx = 1 - fx;
+        const inverseFy = 1 - fy;
+        let outputR =
+          (sourceData[topLeft] * inverseFx + sourceData[topRight] * fx) * inverseFy +
+          (sourceData[bottomLeft] * inverseFx + sourceData[bottomRight] * fx) * fy;
+        let outputG =
+          (sourceData[topLeft + 1] * inverseFx + sourceData[topRight + 1] * fx) * inverseFy +
+          (sourceData[bottomLeft + 1] * inverseFx + sourceData[bottomRight + 1] * fx) * fy;
+        let outputB =
+          (sourceData[topLeft + 2] * inverseFx + sourceData[topRight + 2] * fx) * inverseFy +
+          (sourceData[bottomLeft + 2] * inverseFx + sourceData[bottomRight + 2] * fx) * fy;
+        const outputAlpha =
+          (sourceData[topLeft + 3] * inverseFx + sourceData[topRight + 3] * fx) * inverseFy +
+          (sourceData[bottomLeft + 3] * inverseFx + sourceData[bottomRight + 3] * fx) * fy;
+
+        if (useSharpening) {
+          const detailR =
+            outputR * 4 -
+            sampleChannel(sourceX - 1, sourceY, 0) -
+            sampleChannel(sourceX + 1, sourceY, 0) -
+            sampleChannel(sourceX, sourceY - 1, 0) -
+            sampleChannel(sourceX, sourceY + 1, 0);
+          const detailG =
+            outputG * 4 -
+            sampleChannel(sourceX - 1, sourceY, 1) -
+            sampleChannel(sourceX + 1, sourceY, 1) -
+            sampleChannel(sourceX, sourceY - 1, 1) -
+            sampleChannel(sourceX, sourceY + 1, 1);
+          const detailB =
+            outputB * 4 -
+            sampleChannel(sourceX - 1, sourceY, 2) -
+            sampleChannel(sourceX + 1, sourceY, 2) -
+            sampleChannel(sourceX, sourceY - 1, 2) -
+            sampleChannel(sourceX, sourceY + 1, 2);
+          const edgeStrength = Math.abs(
+            0.299 * detailR + 0.587 * detailG + 0.114 * detailB,
+          ) / 255;
+          let gate = 0;
+          if (edgeStrength >= 0.08) {
+            gate = 1;
+          } else if (edgeStrength > 0.025) {
+            const normalizedEdge = (edgeStrength - 0.025) / 0.055;
+            gate = normalizedEdge * normalizedEdge * (3 - 2 * normalizedEdge);
+          }
+          outputR += detailR * sharpen * gate;
+          outputG += detailG * sharpen * gate;
+          outputB += detailB * sharpen * gate;
         }
+        resultData[outputIndex] = Math.max(0, Math.min(255, outputR));
+        resultData[outputIndex + 1] = Math.max(0, Math.min(255, outputG));
+        resultData[outputIndex + 2] = Math.max(0, Math.min(255, outputB));
+        resultData[outputIndex + 3] = outputAlpha;
       }
     }
 
@@ -505,6 +582,7 @@ function warpPerspectiveWebGL(
   corners: [Point, Point, Point, Point],
   outW: number,
   outH: number,
+  sharpen = 0,
 ): HTMLCanvasElement | null {
   const sourceW = src instanceof HTMLImageElement ? src.naturalWidth : src.width;
   const sourceH = src instanceof HTMLImageElement ? src.naturalHeight : src.height;
@@ -552,10 +630,23 @@ function warpPerspectiveWebGL(
   const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, `
     precision highp float;
     uniform sampler2D uTexture;
+    uniform vec2 uTexelSize;
+    uniform float uSharpen;
     varying vec2 vTexCoordTimesWeight;
     varying float vWeight;
     void main() {
-      gl_FragColor = texture2D(uTexture, vTexCoordTimesWeight / vWeight);
+      vec2 uv = vTexCoordTimesWeight / vWeight;
+      vec4 center = texture2D(uTexture, uv);
+      vec3 detail =
+        center.rgb * 4.0 -
+        texture2D(uTexture, uv - vec2(uTexelSize.x, 0.0)).rgb -
+        texture2D(uTexture, uv + vec2(uTexelSize.x, 0.0)).rgb -
+        texture2D(uTexture, uv - vec2(0.0, uTexelSize.y)).rgb -
+        texture2D(uTexture, uv + vec2(0.0, uTexelSize.y)).rgb;
+      float edgeStrength = abs(dot(detail, vec3(0.299, 0.587, 0.114)));
+      float gate = smoothstep(0.025, 0.08, edgeStrength);
+      vec3 sharpened = clamp(center.rgb + detail * uSharpen * gate, 0.0, 1.0);
+      gl_FragColor = vec4(sharpened, center.a);
     }
   `);
   if (!vertexShader || !fragmentShader) return null;
@@ -630,6 +721,10 @@ function warpPerspectiveWebGL(
 
   const sampler = gl.getUniformLocation(program, 'uTexture');
   if (sampler) gl.uniform1i(sampler, 0);
+  const texelSize = gl.getUniformLocation(program, 'uTexelSize');
+  if (texelSize) gl.uniform2f(texelSize, 1 / sourceW, 1 / sourceH);
+  const sharpenUniform = gl.getUniformLocation(program, 'uSharpen');
+  if (sharpenUniform) gl.uniform1f(sharpenUniform, sharpen);
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
   gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
   gl.viewport(0, 0, outW, outH);

@@ -557,10 +557,11 @@ export default function PreviewScreen() {
               <img
                 src={pages[index]}
                 alt={`Page ${index + 1}`}
-                className="max-w-full max-h-full object-contain rounded-none shadow-2xl will-change-transform"
+                className="max-w-full max-h-full object-contain rounded-none shadow-2xl"
                 style={{
                   transform: `scale(${index === selectedIdx ? previewZoom : MIN_PREVIEW_ZOOM})`,
                   transformOrigin: index === selectedIdx ? zoomOrigin : '50% 50%',
+                  imageRendering: 'auto',
                 }}
                 draggable={false}
               />
