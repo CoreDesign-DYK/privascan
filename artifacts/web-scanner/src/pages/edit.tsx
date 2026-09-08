@@ -26,7 +26,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { isNative } from '@/lib/platform';
 import { enhanceDocumentCanvas } from '@/lib/filters';
-import { hasRequiredSharpness, hasUniformDocumentSharpness } from '@/lib/scan-quality';
+import { hasRequiredSharpness } from '@/lib/scan-quality';
 import { getPaperPixelSize } from '@/lib/scanner-types';
 
 const FILTERS: FilterType[] = ['original', 'auto', 'bw', 'highcontrast'];
@@ -221,10 +221,7 @@ export default function EditScreen() {
           sharpen: pendingEditMode === 'document' ? 0.08 : 0,
         },
       );
-      const sharpEnough = pendingEditMode === 'document'
-        ? hasUniformDocumentSharpness(warped)
-        : hasRequiredSharpness(warped);
-      if (!sharpEnough) {
+      if (!hasRequiredSharpness(warped)) {
         toast.error('The image is out of focus. Please capture it again.', { id: tid });
         return;
       }

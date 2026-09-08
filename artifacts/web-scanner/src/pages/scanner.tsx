@@ -269,7 +269,10 @@ function createDocumentPage(
     coverage: sharpness.regions.map(region => Number(region.detailCoverage.toFixed(4))),
     uniform: sharpness.uniform,
   });
-  if (!sharpness.sharp) return null;
+  // Region metrics are diagnostic only: valid documents often have uneven
+  // text density. Gate the exact high-resolution warp using the established
+  // whole-document threshold rather than a low-density relative comparison.
+  if (!hasRequiredSharpness(warped)) return null;
   const output = enhanceForMobile ? enhanceDocumentCanvas(warped) : warped;
   console.info('[PrivaScan] document output', {
     source: `${source.width}x${source.height}`,
@@ -410,7 +413,7 @@ const CAPTURE_QUALITY_PROFILES: Record<
   CaptureQualityMode,
   { stillShortEdge: number; videoShortEdge: number; centerInset: number }
 > = {
-  document: { stillShortEdge: 1500, videoShortEdge: 650, centerInset: 0.04 },
+  document: { stillShortEdge: 1200, videoShortEdge: 650, centerInset: 0.04 },
   book: { stillShortEdge: 1100, videoShortEdge: 700, centerInset: 0.06 },
   presentation: { stillShortEdge: 900, videoShortEdge: 600, centerInset: 0.1 },
   'id-card': { stillShortEdge: 600, videoShortEdge: 420, centerInset: 0.12 },
@@ -631,17 +634,14 @@ async function captureBestCameraFrame(
           context.drawImage(bitmap, 0, 0);
           context.filter = 'none';
           bitmap.close();
-          const videoPixels = video.videoWidth * video.videoHeight;
           const stillPixels = canvas.width * canvas.height;
           if (
-            videoPixels > 0 &&
             (
-              stillPixels < videoPixels * 0.9 ||
-              Math.min(canvas.width, canvas.height) <
-                Math.min(video.videoWidth, video.videoHeight, 1080)
+              stillPixels < 1_000_000 ||
+              Math.min(canvas.width, canvas.height) < 720
             )
           ) {
-            console.warn('[PrivaScan] rejecting low-detail still capture', {
+            console.warn('[PrivaScan] rejecting unusably small still capture', {
               still: `${canvas.width}x${canvas.height}`,
               video: `${video.videoWidth}x${video.videoHeight}`,
               attempt,
@@ -1335,21 +1335,6 @@ export default function ScannerScreen() {
       if (focusMode === 'single-shot' || focusMode === 'unknown') {
         await requestFocus();
       }
-      const previewFocused = await waitForPreviewFocus(
-        video,
-        settingsRef.current.colorMode === 'greyscale',
-        edgeCorners ? [edgeCorners] : [],
-        'document',
-        true,
-      );
-      if (!previewFocused) {
-        rejectedCornersRef.current = edgeCorners;
-        setNeedsClearerCapture(true);
-        needsClearerCaptureRef.current = true;
-        waitingClear.current = true;
-        setIsWaitingClear(true);
-        return;
-      }
       const canvas = await captureBestCameraFrame(
         video,
         settingsRef.current.colorMode === 'greyscale',
@@ -1722,20 +1707,8 @@ export default function ScannerScreen() {
     } else {
       const video  = videoRef.current;
       const useMobileQualityPipeline = isNativePlatform();
-      toast.info('Checking focus…');
       if (focusMode === 'single-shot' || focusMode === 'unknown') {
         await requestFocus();
-      }
-      const previewFocused = await waitForPreviewFocus(
-        video,
-        settingsRef.current.colorMode === 'greyscale',
-        edgeCorners ? [edgeCorners] : [],
-        'document',
-        true,
-      );
-      if (!previewFocused) {
-        toast.error('Text is not sharp yet. Hold the phone steady and try again.');
-        return;
       }
       const canvas = await captureBestCameraFrame(
         video,

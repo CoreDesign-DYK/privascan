@@ -68,3 +68,9 @@ Document sharpness must be uniform across rectified regions, not merely acceptab
 **Why:** Sharp text in one area can hide blur elsewhere, while whole-region contrast mistakes smooth shadows and uneven lighting for document content and rejects valid sparse pages.
 
 **How to apply:** Check regional sharpness on both live readiness and the exact final warp, including manual corner edits. Exempt truly blank regions, but retain blurred strokes by comparing pixels with their local low-frequency background.
+
+For Document mode, never use a heavily downscaled preview or relative regional sharpness as a hard shutter gate. Use preview analysis for diagnostics and edge stability; decide acceptance from the exact high-resolution rectified capture.
+
+**Why:** Small text disappears during preview downscaling, and uneven text density makes relative region comparisons reject valid pages even while a stable green boundary is visible.
+
+**How to apply:** Manual shutter input must start capture immediately. Auto capture should start within 1–2 seconds of stable green edges. Keep whole-document final-warp quality validation; treat regional measurements as diagnostic unless calibrated on device fixtures.
