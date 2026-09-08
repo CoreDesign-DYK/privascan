@@ -600,10 +600,9 @@ function hasRequiredSourcePixels(
 
 function hasPreferredDocumentPixels(
   corners: [Point, Point, Point, Point],
-  captureMethod: CameraCaptureCanvas['captureMethod'],
+  _captureMethod: CameraCaptureCanvas['captureMethod'],
 ): boolean {
-  if (captureMethod === 'still') return true;
-  return sourceQuadSize(corners).shortEdge >= 900;
+  return sourceQuadSize(corners).shortEdge >= 1200;
 }
 
 async function captureBestCameraFrame(
@@ -1091,6 +1090,7 @@ export default function ScannerScreen() {
   const settingsRef      = useRef(settings);
   const edgeTimerRef     = useRef<ReturnType<typeof setInterval> | null>(null);
   const stableFrames     = useRef(0);
+  const autoCaptureInFlightRef = useRef(false);
   const trackedCornersRef = useRef<[Point, Point, Point, Point] | null>(null);
   const pendingCornersRef = useRef<[Point, Point, Point, Point] | null>(null);
   const pendingCornerFrames = useRef(0);
@@ -1321,6 +1321,9 @@ export default function ScannerScreen() {
       captureIdAutoRef.current();
       return;
     }
+    if (autoCaptureInFlightRef.current) return;
+    autoCaptureInFlightRef.current = true;
+    try {
     const pageNum = pagesLenRef.current + 1;
     let captured = false;
     let rejectedCorners: [Point, Point, Point, Point] | null = null;
@@ -1423,6 +1426,9 @@ export default function ScannerScreen() {
     // Enter waiting-clear state — block next scan until doc leaves frame
     waitingClear.current = true;
     setIsWaitingClear(true);
+    } finally {
+      autoCaptureInFlightRef.current = false;
+    }
   }, [
     isMockMode, focusMode, focusReady, videoRef, edgeCorners, addPage, setActivePageIndex,
     setPendingPage, setPendingEditMode, setDetectedCorners, setLocation,

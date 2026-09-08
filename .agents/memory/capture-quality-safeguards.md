@@ -74,3 +74,9 @@ For Document mode, never use a heavily downscaled preview or relative regional s
 **Why:** Small text disappears during preview downscaling, and uneven text density makes relative region comparisons reject valid pages even while a stable green boundary is visible.
 
 **How to apply:** Manual shutter input must start capture immediately. Auto capture should start within 1–2 seconds of stable green edges. Keep whole-document final-warp quality validation; treat regional measurements as diagnostic unless calibrated on device fixtures.
+
+Do not normalize repeated scan dimensions by upscaling a smaller detected document crop. Preserve real source pixels and warn when the document short edge is below the preferred detail threshold.
+
+**Why:** Equal output dimensions or a higher reported DPI do not restore missing small-text detail and can conceal inconsistent camera capture quality.
+
+**How to apply:** Keep output scale capped at 1. Improve source capture or framing instead; use non-blocking detail warnings when immediate capture is more important than rejecting a usable page.
