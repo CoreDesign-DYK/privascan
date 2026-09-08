@@ -1016,7 +1016,9 @@ export default function ScannerScreen() {
   const [showBookGuidance, setShowBookGuidance] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [homeOpen,    setHomeOpen]    = useState(false);
-  const [resultsTrayCollapsed, setResultsTrayCollapsed] = useState(false);
+  // Returning from Preview/Edit starts in continuous-scan mode. Existing pages
+  // stay behind the compact document counter until a new capture is added.
+  const [resultsTrayCollapsed, setResultsTrayCollapsed] = useState(() => pages.length > 0);
   const [resultsTrayClosing, setResultsTrayClosing] = useState(false);
 
   // ── Text tool state ────────────────────────────────────────────────────────
