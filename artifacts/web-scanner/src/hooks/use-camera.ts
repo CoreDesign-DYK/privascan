@@ -74,23 +74,32 @@ export function useCamera() {
         // iPhone can silently choose a low-resolution stream when a single
         // constraint set is too ambitious. Try the largest useful document
         // stream first, then fall back without asking for permission again.
-        const resolutionSteps: MediaTrackConstraints[] = [
+        type DocumentMediaTrackConstraints = MediaTrackConstraints & {
+          resizeMode?: { ideal: 'none' };
+        };
+        const resolutionSteps: DocumentMediaTrackConstraints[] = [
           {
             facingMode: { ideal: 'environment' },
             aspectRatio: { ideal: 4 / 3 },
             width: { ideal: 3840, max: 4032 },
             height: { ideal: 2880, max: 3024 },
+            frameRate: { ideal: 24, max: 30 },
+            resizeMode: { ideal: 'none' },
           },
           {
             facingMode: { ideal: 'environment' },
             aspectRatio: { ideal: 4 / 3 },
             width: { ideal: 2560 },
             height: { ideal: 1920 },
+            frameRate: { ideal: 24, max: 30 },
+            resizeMode: { ideal: 'none' },
           },
           {
             facingMode: { ideal: 'environment' },
             width: { ideal: 1920 },
             height: { ideal: 1080 },
+            frameRate: { ideal: 24, max: 30 },
+            resizeMode: { ideal: 'none' },
           },
         ];
 
@@ -129,11 +138,14 @@ export function useCamera() {
         // selected. WebKit may accept getUserMedia but otherwise retain a
         // conservative preview size.
         try {
-          await track?.applyConstraints({
+          const highResolutionPreference: DocumentMediaTrackConstraints = {
             aspectRatio: { ideal: 4 / 3 },
             width: { ideal: 3840, max: 4032 },
             height: { ideal: 2880, max: 3024 },
-          });
+            frameRate: { ideal: 24, max: 30 },
+            resizeMode: { ideal: 'none' },
+          };
+          await track?.applyConstraints(highResolutionPreference);
         } catch {
           // The stream selected above remains valid when this optional
           // refinement is not supported by a particular iOS release.
@@ -147,6 +159,12 @@ export function useCamera() {
             frameRate: selectedSettings.frameRate,
             aspectRatio: selectedSettings.aspectRatio,
           });
+          if (Math.min(selectedSettings.width, selectedSettings.height) < 1440) {
+            console.warn('[PrivaScan] camera stream is below preferred document resolution', {
+              width: selectedSettings.width,
+              height: selectedSettings.height,
+            });
+          }
         }
 
         let selectedFocusMode: FocusMode = 'unsupported';

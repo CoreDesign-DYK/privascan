@@ -26,7 +26,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { isNative } from '@/lib/platform';
 import { enhanceDocumentCanvas } from '@/lib/filters';
-import { hasRequiredSharpness } from '@/lib/scan-quality';
+import { hasRequiredSharpness, hasUniformDocumentSharpness } from '@/lib/scan-quality';
 import { getPaperPixelSize } from '@/lib/scanner-types';
 
 const FILTERS: FilterType[] = ['original', 'auto', 'bw', 'highcontrast'];
@@ -218,10 +218,13 @@ export default function EditScreen() {
           maxCpuPixels: useMobileQualityPipeline
             ? 6_500_000
             : outputSize.width * outputSize.height,
-          sharpen: pendingEditMode === 'document' ? 0.16 : 0,
+          sharpen: pendingEditMode === 'document' ? 0.08 : 0,
         },
       );
-      if (!hasRequiredSharpness(warped)) {
+      const sharpEnough = pendingEditMode === 'document'
+        ? hasUniformDocumentSharpness(warped)
+        : hasRequiredSharpness(warped);
+      if (!sharpEnough) {
         toast.error('The image is out of focus. Please capture it again.', { id: tid });
         return;
       }
@@ -230,7 +233,7 @@ export default function EditScreen() {
         : warped;
       const filtered = filterCanvas(enhanced, filter, brightness, contrast);
 
-      addPage(filtered.toDataURL('image/jpeg', isNative() ? 0.98 : 0.92));
+      addPage(filtered.toDataURL('image/jpeg', 0.98));
       toast.success('Page added!', { id: tid });
       setPendingPage(null);
       setPendingEditMode(null);

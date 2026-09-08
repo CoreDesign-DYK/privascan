@@ -62,3 +62,9 @@ Document sharpening must remain conservative, edge-gated, and mathematically con
 **Why:** Linear warp sampling softens small glyph boundaries, but blanket sharpening creates noise and halos; different GPU/CPU sampling phases make scan quality depend on WebGL availability.
 
 **How to apply:** Use the same fractional five-tap sampling and luminance gate on both paths, preserve color and alpha, avoid large intermediate buffers, and apply it only to Document processing before final encoding.
+
+Document sharpness must be uniform across rectified regions, not merely acceptable as a whole-page average. Decide whether a region contains ink using locally normalized stroke occupancy rather than raw brightness variation.
+
+**Why:** Sharp text in one area can hide blur elsewhere, while whole-region contrast mistakes smooth shadows and uneven lighting for document content and rejects valid sparse pages.
+
+**How to apply:** Check regional sharpness on both live readiness and the exact final warp, including manual corner edits. Exempt truly blank regions, but retain blurred strokes by comparing pixels with their local low-frequency background.

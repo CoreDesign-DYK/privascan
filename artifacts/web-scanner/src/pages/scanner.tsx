@@ -44,7 +44,12 @@ import {
 } from '@/lib/scanner-types';
 import { enhanceDocumentCanvas } from '@/lib/filters';
 import { isNative as isNativePlatform } from '@/lib/platform';
-import { hasRequiredSharpness, measureSharpness } from '@/lib/scan-quality';
+import {
+  hasRequiredSharpness,
+  hasUniformDocumentSharpness,
+  measureDocumentSharpness,
+  measureSharpness,
+} from '@/lib/scan-quality';
 import {
   detectIdCardFromCanvas,
   isLikelyIdCardQuad,
@@ -254,10 +259,17 @@ function createDocumentPage(
     outputSize.width,
     outputSize.height,
     enhanceForMobile
-      ? { maxCpuPixels: MAX_MOBILE_CAPTURE_PIXELS, sharpen: 0.16 }
-      : { sharpen: 0.16 },
+      ? { maxCpuPixels: MAX_MOBILE_CAPTURE_PIXELS, sharpen: 0.08 }
+      : { sharpen: 0.08 },
   );
-  if (!hasRequiredSharpness(warped)) return null;
+  const sharpness = measureDocumentSharpness(warped);
+  console.info('[PrivaScan] document regional sharpness', {
+    overall: Math.round(sharpness.overall.variance),
+    regions: sharpness.regions.map(region => Math.round(region.variance)),
+    coverage: sharpness.regions.map(region => Number(region.detailCoverage.toFixed(4))),
+    uniform: sharpness.uniform,
+  });
+  if (!sharpness.sharp) return null;
   const output = enhanceForMobile ? enhanceDocumentCanvas(warped) : warped;
   console.info('[PrivaScan] document output', {
     source: `${source.width}x${source.height}`,
@@ -467,6 +479,7 @@ async function waitForPreviewFocus(
   const samples: Array<{
     variance: number;
     detailCoverage: number;
+    contentCoverage: number;
     sharp: boolean;
   }> = [];
   for (let index = 0; index < FOCUS_SAMPLE_COUNT; index += 1) {
@@ -502,7 +515,14 @@ async function waitForPreviewFocus(
     const regions = scaledQuads
       .map(quad => qualityRegionForQuad(frame, quad, profile.centerInset))
       .filter((region): region is HTMLCanvasElement => Boolean(region));
-    const measurements = regions.map(region => measureSharpness(region));
+    const documentMeasurements = qualityMode === 'document'
+      ? regions.map(region => measureDocumentSharpness(region))
+      : [];
+    const measurements = qualityMode === 'document'
+      ? documentMeasurements.map(measurement => measurement.overall)
+      : regions.map(region => measureSharpness(region));
+    const regionsAreSharp = qualityMode !== 'document' &&
+      regions.every(region => hasRequiredSharpness(region));
     const measurement = measurements.length
       ? {
           variance: Math.min(...measurements.map(value => value.variance)),
@@ -511,9 +531,14 @@ async function waitForPreviewFocus(
       : { variance: 0, detailCoverage: 0 };
     samples.push({
       ...measurement,
+      contentCoverage: measurements.length
+        ? Math.min(...measurements.map(value => value.contentCoverage))
+        : 0,
       sharp: regions.length === scaledQuads.length &&
         regions.length > 0 &&
-        regions.every(region => hasRequiredSharpness(region)),
+        (qualityMode === 'document'
+          ? documentMeasurements.every(measurement => measurement.sharp)
+          : regionsAreSharp),
     });
     const current = samples.at(-1);
     const previous = samples.at(-2);
@@ -533,7 +558,7 @@ async function waitForPreviewFocus(
   const sharpSamples = samples.filter(sample => sample.sharp);
   const bestSharp = sharpSamples.reduce(
     (current, sample) => sample.variance > current.variance ? sample : current,
-    { variance: 0, detailCoverage: 0, sharp: false },
+    { variance: 0, detailCoverage: 0, contentCoverage: 0, sharp: false },
   );
   const latest = samples.at(-1) ?? bestSharp;
   console.info('[PrivaScan] focus sampling', {
@@ -606,6 +631,27 @@ async function captureBestCameraFrame(
           context.drawImage(bitmap, 0, 0);
           context.filter = 'none';
           bitmap.close();
+          const videoPixels = video.videoWidth * video.videoHeight;
+          const stillPixels = canvas.width * canvas.height;
+          if (
+            videoPixels > 0 &&
+            (
+              stillPixels < videoPixels * 0.9 ||
+              Math.min(canvas.width, canvas.height) <
+                Math.min(video.videoWidth, video.videoHeight, 1080)
+            )
+          ) {
+            console.warn('[PrivaScan] rejecting low-detail still capture', {
+              still: `${canvas.width}x${canvas.height}`,
+              video: `${video.videoWidth}x${video.videoHeight}`,
+              attempt,
+            });
+            if (attempt < 2) {
+              await new Promise<void>((resolve) => window.setTimeout(resolve, 180));
+              continue;
+            }
+            break;
+          }
           console.info('[PrivaScan] camera capture', {
             method: canvas.captureMethod,
             width: canvas.width,
@@ -2180,7 +2226,7 @@ export default function ScannerScreen() {
       lines.forEach((l, i) => ctx.fillText(l, canvas.width / 2, startY + i * lineH));
 
       removePage(pages.length - 1);
-      addPage(canvas.toDataURL('image/jpeg', 0.92));
+      addPage(canvas.toDataURL('image/jpeg', MOBILE_SCAN_JPEG_QUALITY));
       toast.success('Text added');
       setTextPanelOpen(false);
       setTextInput('');
@@ -2850,7 +2896,7 @@ export default function ScannerScreen() {
               ctx.rotate(Math.PI / 2);
               ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
               removePage(pages.length - 1);
-              addPage(c.toDataURL('image/jpeg', 0.92));
+              addPage(c.toDataURL('image/jpeg', MOBILE_SCAN_JPEG_QUALITY));
               toast.success('Rotated 90°');
             }} />
 

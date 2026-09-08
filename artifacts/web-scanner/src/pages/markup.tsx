@@ -270,7 +270,7 @@ export default function MarkupScreen() {
       }
     }
 
-    const result = out.toDataURL('image/jpeg', 0.92);
+    const result = out.toDataURL('image/jpeg', 0.98);
     updatePage(pageIndex, result);
     toast.success('Markup saved');
     setLocation('/preview');

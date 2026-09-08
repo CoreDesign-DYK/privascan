@@ -59,7 +59,7 @@ const MAX_PREVIEW_ZOOM = 3;
 const PAGE_SWIPE_DISTANCE = 48;
 const PAGE_SWIPE_DIRECTION_RATIO = 1.2;
 const PAGE_SWIPE_ANIMATION_MS = 280;
-const editJpegQuality = () => isIOS() ? 0.98 : 0.92;
+const editJpegQuality = () => 0.98;
 
 function midpoint(a: Point, b: Point): Point {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
