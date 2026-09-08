@@ -2,6 +2,31 @@ import { jsPDF } from 'jspdf';
 import { type PaperSize } from '@/lib/scanner-types';
 import { isNative } from '@/lib/platform';
 
+const NATIVE_SHARE_DIRECTORY = 'privascan-shares';
+const NATIVE_SHARE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+async function assertValidShareBlob(blob: Blob, mimeType: string): Promise<void> {
+  if (blob.size === 0) {
+    throw new Error('Generated file is empty.');
+  }
+
+  if (mimeType === 'application/pdf') {
+    if (blob.size < 5) {
+      throw new Error('Generated PDF is incomplete.');
+    }
+    const header = new Uint8Array(await blob.slice(0, 5).arrayBuffer());
+    const signature = String.fromCharCode(...header);
+    if (signature !== '%PDF-') {
+      throw new Error('Generated file is not a valid PDF.');
+    }
+  } else if (mimeType === 'image/jpeg') {
+    const header = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+    if (header.length < 2 || header[0] !== 0xff || header[1] !== 0xd8) {
+      throw new Error('Generated file is not a valid JPEG.');
+    }
+  }
+}
+
 function loadImageDimensions(dataUrl: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -32,6 +57,10 @@ function containImage(
 }
 
 export async function generatePDF(pages: string[], paperSize: PaperSize): Promise<Blob> {
+  if (pages.length === 0) {
+    throw new Error('Cannot generate a PDF without scanned pages.');
+  }
+
   // Rough mapping of paper sizes to jsPDF format
   // jsPDF supports: a3, a4, a5, letter, legal
   let format = 'a4';
@@ -65,7 +94,9 @@ export async function generatePDF(pages: string[], paperSize: PaperSize): Promis
     );
   }
 
-  return doc.output('blob');
+  const blob = doc.output('blob');
+  await assertValidShareBlob(blob, 'application/pdf');
+  return blob;
 }
 
 /**
@@ -110,22 +141,62 @@ async function downloadBlobNative(blob: Blob, filename: string): Promise<void> {
   }
 }
 
-async function shareFileNative(blob: Blob, filename: string): Promise<void> {
+async function shareFileNative(blob: Blob, filename: string, mimeType: string): Promise<void> {
   const { Filesystem, Directory } = await import('@capacitor/filesystem');
   const { Share } = await import('@capacitor/share');
   const { toast } = await import('sonner');
 
-  let wrote = false;
   try {
+    await assertValidShareBlob(blob, mimeType);
     const base64 = await blobToBase64(blob);
+    if (!base64) {
+      throw new Error('PDF conversion produced no data.');
+    }
 
-    // Write to cache so Share can access a file URI
+    try {
+      const existingShares = await Filesystem.readdir({
+        path: NATIVE_SHARE_DIRECTORY,
+        directory: Directory.Cache,
+      });
+      const cutoff = Date.now() - NATIVE_SHARE_MAX_AGE_MS;
+      await Promise.all(existingShares.files
+        .filter((file) => file.mtime < cutoff)
+        .map((file) => (
+          file.type === 'directory'
+            ? Filesystem.rmdir({
+                path: `${NATIVE_SHARE_DIRECTORY}/${file.name}`,
+                directory: Directory.Cache,
+                recursive: true,
+              })
+            : Filesystem.deleteFile({
+                path: `${NATIVE_SHARE_DIRECTORY}/${file.name}`,
+                directory: Directory.Cache,
+              })
+        ).catch(() => undefined)));
+    } catch {
+      // The share directory may not exist yet.
+    }
+
+    const safeFilename = filename.replace(/[^a-zA-Z0-9._-]+/g, '_');
+    const sharePath = `${NATIVE_SHARE_DIRECTORY}/${Date.now()}/${safeFilename}`;
     const result = await Filesystem.writeFile({
-      path: filename,
+      path: sharePath,
       data: base64,
       directory: Directory.Cache,
+      recursive: true,
     });
-    wrote = true;
+
+    const writtenFile = await Filesystem.stat({
+      path: sharePath,
+      directory: Directory.Cache,
+    });
+    if (writtenFile.size !== blob.size || writtenFile.size === 0) {
+      await Filesystem.deleteFile({
+        path: sharePath,
+        directory: Directory.Cache,
+      }).catch(() => undefined);
+      throw new Error(`Shared PDF write was incomplete (${writtenFile.size}/${blob.size} bytes).`);
+    }
 
     await Share.share({
       title: filename,
@@ -133,20 +204,13 @@ async function shareFileNative(blob: Blob, filename: string): Promise<void> {
       dialogTitle: 'Share PrivaScan File',
     });
   } catch (err) {
-    // User cancelled share — not an error worth toasting
-    if (err instanceof Error && (err.message.includes('cancel') || err.message.includes('dismissed'))) {
-      return;
+    const message = err instanceof Error ? err.message.toLowerCase() : '';
+    if (message.includes('cancel') || message.includes('dismissed')) {
+      throw new DOMException('Share canceled', 'AbortError');
     }
     console.error('Native share failed:', err);
     toast.error('Share failed. Please try again.');
-  } finally {
-    // Always clean up the temporary cache file
-    if (wrote) {
-      try {
-        const { Filesystem: FS, Directory: Dir } = await import('@capacitor/filesystem');
-        await FS.deleteFile({ path: filename, directory: Dir.Cache });
-      } catch { /* cleanup errors are silently ignored */ }
-    }
+    throw err;
   }
 }
 
@@ -180,7 +244,7 @@ export function downloadBlob(blob: Blob, filename: string): void {
  */
 export async function shareFile(blob: Blob, filename: string, mimeType: string): Promise<void> {
   if (isNative()) {
-    return shareFileNative(blob, filename);
+    return shareFileNative(blob, filename, mimeType);
   }
   const file = new File([blob], filename, { type: mimeType });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
