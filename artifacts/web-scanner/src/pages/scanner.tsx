@@ -1624,6 +1624,17 @@ export default function ScannerScreen() {
       if (Math.abs(event.gamma) < 45) return;
       pendingBookUprightSamplesRef.current = 0;
       const candidate: -1 | 1 = event.gamma > 0 ? 1 : -1;
+      const confirmedDirection = bookSidewaysDirectionRef.current;
+      if (confirmedDirection !== 0 && candidate !== confirmedDirection) {
+        // Android can flip the gamma sign when the phone is pitched backward,
+        // even though the same physical edge remains down. Never switch Book
+        // sides directly from one sign to the other. A real side change must
+        // first pass through the confirmed upright state above.
+        pendingBookDirectionRef.current = null;
+        pendingBookDirectionSamplesRef.current = 0;
+        bookDirectionUpdatedAtRef.current = Date.now();
+        return;
+      }
       if (pendingBookDirectionRef.current === candidate) {
         pendingBookDirectionSamplesRef.current += 1;
       } else {
