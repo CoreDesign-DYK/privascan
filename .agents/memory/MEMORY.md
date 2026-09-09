@@ -10,4 +10,5 @@
 - [Cross-platform pnpm binaries](cross-platform-pnpm-binaries.md) — Keep Darwin native packages installable because downloaded iOS projects build on Mac.
 - [Apple Developer enrollment status](apple-developer-enrollment.md) — Apple Store order confirmation followed by App Store Connect confirmation indicates access is provisioned.
 - [Book scan geometry](book-scan-geometry.md) — Split only on a reliably detected binding; dewarp and validate left/right pages independently.
+- [Book orientation labels](book-orientation-labels.md) — In the portrait-locked scanner, derive Book L/R position and text rotation from physical device orientation.
 - [Native share file lifetime](native-share-file-lifetime.md) — Retain verified cache files after the share sheet returns; recipient apps may read them later.

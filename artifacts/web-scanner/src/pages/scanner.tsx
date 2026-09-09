@@ -1305,7 +1305,7 @@ export default function ScannerScreen() {
 
   const [scanMode,    setScanMode]    = useState<ScanMode>('document');
   const [showBookGuidance, setShowBookGuidance] = useState(false);
-  const [bookLeftPageAtBottom, setBookLeftPageAtBottom] = useState(false);
+  const [bookSidewaysDirection, setBookSidewaysDirection] = useState<-1 | 0 | 1>(0);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [homeOpen,    setHomeOpen]    = useState(false);
   // Returning from Preview/Edit starts in continuous-scan mode. Existing pages
@@ -1419,7 +1419,7 @@ export default function ScannerScreen() {
       if (event.gamma == null || Math.abs(event.gamma) < 45) return;
       // The scanner UI remains portrait-locked. When the phone's right edge is
       // down (positive gamma), CSS-bottom is the user's physical left.
-      setBookLeftPageAtBottom(event.gamma > 0);
+      setBookSidewaysDirection(event.gamma > 0 ? 1 : -1);
     };
 
     window.addEventListener('deviceorientation', handleDeviceOrientation, { passive: true });
@@ -2917,11 +2917,16 @@ export default function ScannerScreen() {
               <span
                 className={cn(
                   'book-page-side-label',
-                  bookLeftPageAtBottom
+                  bookSidewaysDirection > 0
                     ? 'book-page-side-label-right'
                     : 'book-page-side-label-left',
                 )}
-                style={{ color: bookGuideColor }}
+                style={{
+                  color: bookGuideColor,
+                  transform: `translate(-50%, -50%) rotate(${
+                    bookSidewaysDirection > 0 ? -90 : bookSidewaysDirection < 0 ? 90 : 0
+                  }deg)`,
+                }}
                 aria-hidden="true"
               >
                 L
@@ -2929,11 +2934,16 @@ export default function ScannerScreen() {
               <span
                 className={cn(
                   'book-page-side-label',
-                  bookLeftPageAtBottom
+                  bookSidewaysDirection > 0
                     ? 'book-page-side-label-left'
                     : 'book-page-side-label-right',
                 )}
-                style={{ color: bookGuideColor }}
+                style={{
+                  color: bookGuideColor,
+                  transform: `translate(-50%, -50%) rotate(${
+                    bookSidewaysDirection > 0 ? -90 : bookSidewaysDirection < 0 ? 90 : 0
+                  }deg)`,
+                }}
                 aria-hidden="true"
               >
                 R
