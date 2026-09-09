@@ -230,7 +230,7 @@ export default function EditScreen() {
         : warped;
       const filtered = filterCanvas(enhanced, filter, brightness, contrast);
 
-      addPage(filtered.toDataURL('image/jpeg', 0.98));
+      addPage(filtered.toDataURL('image/jpeg', isNative() ? 0.98 : 0.92));
       toast.success('Page added!', { id: tid });
       setPendingPage(null);
       setPendingEditMode(null);
