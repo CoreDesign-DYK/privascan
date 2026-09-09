@@ -23,7 +23,7 @@ export interface BookDetection {
 
 const SAMPLE_W = 480;
 const SAMPLE_H = 360;
-const FOLD_ROWS = 13;
+const FOLD_ROWS = 17;
 
 function lerp(a: Point, b: Point, t: number): Point {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
@@ -183,8 +183,8 @@ export function detectBookFromCanvas(src: HTMLCanvasElement): BookDetection | nu
 
   const pointAtRow = (t: number): Point => {
     const nextIndex = foldSamples.findIndex(samplePoint => samplePoint.t >= t);
-    if (nextIndex <= 0) return foldSamples[0].point;
     if (nextIndex === -1) return foldSamples[foldSamples.length - 1].point;
+    if (nextIndex === 0) return foldSamples[0].point;
     const previous = foldSamples[nextIndex - 1];
     const next = foldSamples[nextIndex];
     const amount = (t - previous.t) / Math.max(1e-6, next.t - previous.t);

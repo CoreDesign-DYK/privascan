@@ -21,6 +21,8 @@ export interface CurvedPageWarp {
 export interface BookDeformation {
   confidence: number;
   columnOffsets: number[];
+  /** Optional normalized vertical correction field, sampled [row][column]. */
+  rowColumnOffsets?: number[][];
 }
 
 export function fitWarpSizeToPixelLimit(
@@ -158,7 +160,63 @@ function isSafeBookDeformation(mapping?: BookDeformation): boolean {
       return false;
     }
   }
+  if (mapping.rowColumnOffsets) {
+    const rows = mapping.rowColumnOffsets;
+    if (rows.length < 3 || rows.length > 16) return false;
+    const columns = rows[0]?.length ?? 0;
+    if (columns < 5 || columns > 32 || rows.some(row => row.length !== columns)) return false;
+    for (let row = 0; row < rows.length; row += 1) {
+      for (let column = 0; column < columns; column += 1) {
+        const offset = rows[row][column];
+        if (!Number.isFinite(offset) || Math.abs(offset) > 0.035) return false;
+        if (column > 0 && Math.abs(offset - rows[row][column - 1]) > 0.018) return false;
+        if (row > 0 && Math.abs(offset - rows[row - 1][column]) > 0.026) return false;
+        if (row > 0) {
+          const rowStep = 1 / (rows.length - 1);
+          const verticalJacobian = 1 + (offset - rows[row - 1][column]) / rowStep;
+          if (verticalJacobian <= 0.05) return false;
+        }
+      }
+    }
+    if (
+      rows[0].some(offset => Math.abs(offset) > 0.002) ||
+      rows[rows.length - 1].some(offset => Math.abs(offset) > 0.002)
+    ) return false;
+  }
   return true;
+}
+
+function sampleBookOffset(mapping: BookDeformation, u: number, v: number): number {
+  const safeU = Math.max(0, Math.min(1, Number.isFinite(u) ? u : 0));
+  const safeV = Math.max(0, Math.min(1, Number.isFinite(v) ? v : 0));
+  const surface = mapping.rowColumnOffsets;
+  const surfaceColumns = surface?.[0]?.length ?? 0;
+  const rectangularSurface = Boolean(
+    surface &&
+    surface.length >= 3 &&
+    surfaceColumns >= 5 &&
+    surface.every(row => row.length === surfaceColumns),
+  );
+  if (surface && rectangularSurface) {
+    const rowPosition = safeV * (surface.length - 1);
+    const columnPosition = safeU * (surfaceColumns - 1);
+    const row = Math.min(surface.length - 2, Math.floor(rowPosition));
+    const column = Math.min(surface[0].length - 2, Math.floor(columnPosition));
+    const rowAmount = rowPosition - row;
+    const columnAmount = columnPosition - column;
+    const top = surface[row][column] * (1 - columnAmount) +
+      surface[row][column + 1] * columnAmount;
+    const bottom = surface[row + 1][column] * (1 - columnAmount) +
+      surface[row + 1][column + 1] * columnAmount;
+    return top * (1 - rowAmount) + bottom * rowAmount;
+  }
+  const position = safeU * (mapping.columnOffsets.length - 1);
+  const index = Math.min(mapping.columnOffsets.length - 2, Math.floor(position));
+  const amount = position - index;
+  return (
+    mapping.columnOffsets[index] * (1 - amount) +
+    mapping.columnOffsets[index + 1] * amount
+  ) * 4 * safeV * (1 - safeV);
 }
 
 function curvedPageSourcePoint(
@@ -170,14 +228,7 @@ function curvedPageSourcePoint(
   const deformation = page.deformation;
   let mappedV = v;
   if (deformation && deformation.confidence >= 0.62 && deformation.columnOffsets.length >= 2) {
-    const position = u * (deformation.columnOffsets.length - 1);
-    const index = Math.min(deformation.columnOffsets.length - 2, Math.floor(position));
-    const amount = position - index;
-    const offset = deformation.columnOffsets[index] * (1 - amount) +
-      deformation.columnOffsets[index + 1] * amount;
-    // Preserve the detected top/bottom corners and keep the vertical mapping
-    // monotonic by tapering the bounded correction at both page boundaries.
-    mappedV = Math.max(0, Math.min(1, v + offset * 4 * v * (1 - v)));
+    mappedV = Math.max(0, Math.min(1, v + sampleBookOffset(deformation, u, v)));
   }
   const outside = page.side === 'left'
     ? lerp2(TL, BL, mappedV)
@@ -275,8 +326,8 @@ function warpBookPageWebGL(
   }
   gl.useProgram(program);
 
-  const columns = 24;
-  const rows = 32;
+  const columns = 32;
+  const rows = 40;
   const positions: number[] = [];
   const texCoords: number[] = [];
   for (let row = 0; row <= rows; row++) {
@@ -423,22 +474,6 @@ function warpBookPageCPU(
     })),
     deformation: page.deformation,
   };
-  const [TL, TR, BR, BL] = scaledPage.corners;
-  const actualWidth = (
-    Math.hypot(TR.x - TL.x, TR.y - TL.y) +
-    Math.hypot(BR.x - BL.x, BR.y - BL.y)
-  ) / 2;
-  const actualHeight = (
-    Math.hypot(BL.x - TL.x, BL.y - TL.y) +
-    Math.hypot(BR.x - TR.x, BR.y - TR.y)
-  ) / 2;
-  const outputScale = Math.min(
-    1,
-    actualWidth / Math.max(1, outW),
-    actualHeight / Math.max(1, outH),
-  );
-  outW = Math.max(1, Math.round(outW * outputScale));
-  outH = Math.max(1, Math.round(outH * outputScale));
   const sourceCanvas = document.createElement('canvas');
   sourceCanvas.width = sourceTarget.width;
   sourceCanvas.height = sourceTarget.height;

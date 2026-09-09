@@ -836,7 +836,7 @@ function estimateBookDeformation(
     const index = (y * width + x) * 4;
     return image.data[index] * 0.299 + image.data[index + 1] * 0.587 + image.data[index + 2] * 0.114;
   };
-  const columnCount = 9;
+  const columnCount = 13;
   const signals = Array.from({ length: columnCount }, (_, column) => {
     const centerX = Math.round(width * (0.12 + column / (columnCount - 1) * 0.76));
     return Array.from({ length: height }, (_, y) => {
@@ -913,7 +913,143 @@ function estimateBookDeformation(
     maxOffset: Number(maxOffset.toFixed(4)),
     applied: safe,
   });
-  return safe ? { confidence, columnOffsets: smoothed } : undefined;
+  if (!safe) return undefined;
+
+  // Measure local text-line displacement in several horizontal bands. This
+  // creates a conservative 2D surface field while retaining the proven global
+  // column model whenever local evidence is incomplete.
+  const surfaceRowCount = 7;
+  const surfaceRows: number[][] = [
+    Array.from({ length: columnCount }, () => 0),
+  ];
+  let supportedSurfaceRows = 0;
+  let surfaceCorrelationTotal = 0;
+  for (let row = 1; row < surfaceRowCount - 1; row += 1) {
+    const centerY = Math.round(row / (surfaceRowCount - 1) * (height - 1));
+    const halfWindow = Math.max(12, Math.round(height * 0.075));
+    const rowOffsets: number[] = [];
+    let supportedInRow = 0;
+    let rowCorrelation = 0;
+    for (let column = 0; column < columnCount; column += 1) {
+      let bestShift = 0;
+      let bestCorrelation = -1;
+      for (let shift = -maxShift; shift <= maxShift; shift += 1) {
+        let total = 0;
+        let count = 0;
+        for (
+          let y = Math.max(3, centerY - halfWindow);
+          y <= Math.min(height - 4, centerY + halfWindow);
+          y += 1
+        ) {
+          const shiftedY = y + shift;
+          if (shiftedY < 3 || shiftedY >= height - 3) continue;
+          total += reference.values[y] * normalized[column].values[shiftedY];
+          count += 1;
+        }
+        const correlation = total / Math.max(1, count);
+        if (correlation > bestCorrelation) {
+          bestCorrelation = correlation;
+          bestShift = shift;
+        }
+      }
+      if (bestCorrelation >= 0.45 && normalized[column].deviation >= 5) {
+        supportedInRow += 1;
+        rowCorrelation += bestCorrelation;
+      }
+      rowOffsets.push((bestShift - baseline) / height);
+    }
+    const smoothedRow = rowOffsets.map((value, index) => {
+      if (index === 0 || index === rowOffsets.length - 1) return value;
+      return (rowOffsets[index - 1] + value * 2 + rowOffsets[index + 1]) / 4;
+    });
+    const agreesWithGlobal = smoothedRow.reduce(
+      (sum, value, index) => sum + Math.abs(value - smoothed[index]),
+      0,
+    ) / smoothedRow.length <= 0.012;
+    const rowIsSafe = supportedInRow >= 9 &&
+      agreesWithGlobal &&
+      smoothedRow.every((value, index) =>
+        Math.abs(value) <= 0.035 &&
+        (index === 0 || Math.abs(value - smoothedRow[index - 1]) <= 0.018));
+    surfaceRows.push(rowIsSafe ? smoothedRow : smoothed);
+    if (rowIsSafe) {
+      supportedSurfaceRows += 1;
+      surfaceCorrelationTotal += rowCorrelation / supportedInRow;
+    }
+  }
+  surfaceRows.push(Array.from({ length: columnCount }, () => 0));
+  const useSurface = supportedSurfaceRows >= 3 &&
+    surfaceCorrelationTotal / Math.max(1, supportedSurfaceRows) >= 0.5 &&
+    surfaceRows.every((row, rowIndex) =>
+      row.every((value, columnIndex) =>
+        rowIndex === 0 ||
+        Math.abs(value - surfaceRows[rowIndex - 1][columnIndex]) <= 0.026));
+  console.info('[PrivaScan] book surface analysis', {
+    supportedRows: supportedSurfaceRows,
+    totalRows: surfaceRowCount - 2,
+    applied: useSurface,
+  });
+  return {
+    confidence,
+    columnOffsets: smoothed,
+    rowColumnOffsets: useSurface ? surfaceRows : undefined,
+  };
+}
+
+function validateBookPageOutput(
+  canvas: HTMLCanvasElement,
+  expected: { width: number; height: number },
+): { valid: boolean; reason?: string; contentCoverage: number; luminanceDeviation: number } {
+  if (
+    canvas.width < 1 || canvas.height < 1 ||
+    canvas.width < expected.width * 0.98 ||
+    canvas.height < expected.height * 0.98 ||
+    canvas.width > expected.width * 1.02 ||
+    canvas.height > expected.height * 1.02
+  ) {
+    return { valid: false, reason: 'invalid-dimensions', contentCoverage: 0, luminanceDeviation: 0 };
+  }
+  const sample = document.createElement('canvas');
+  sample.width = 160;
+  sample.height = Math.max(120, Math.round(160 * canvas.height / canvas.width));
+  const context = sample.getContext('2d', { willReadFrequently: true });
+  if (!context) {
+    sample.width = 0;
+    sample.height = 0;
+    return { valid: false, reason: 'unreadable-output', contentCoverage: 0, luminanceDeviation: 0 };
+  }
+  context.drawImage(canvas, 0, 0, sample.width, sample.height);
+  try {
+    const data = context.getImageData(0, 0, sample.width, sample.height).data;
+    let total = 0;
+    let squared = 0;
+    let opaque = 0;
+    let nonExtreme = 0;
+    const pixels = sample.width * sample.height;
+    for (let index = 0; index < data.length; index += 4) {
+      const luminance = data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114;
+      total += luminance;
+      squared += luminance * luminance;
+      if (data[index + 3] >= 250) opaque += 1;
+      if (luminance > 8 && luminance < 247) nonExtreme += 1;
+    }
+    const mean = total / Math.max(1, pixels);
+    const deviation = Math.sqrt(Math.max(0, squared / Math.max(1, pixels) - mean * mean));
+    const contentCoverage = nonExtreme / Math.max(1, pixels);
+    const valid = opaque / Math.max(1, pixels) >= 0.995 &&
+      contentCoverage >= 0.005 && deviation >= 1;
+    return {
+      valid,
+      reason: valid ? undefined : 'blank-or-degenerate-output',
+      contentCoverage,
+      luminanceDeviation: deviation,
+    };
+  } catch {
+    return { valid: false, reason: 'unreadable-output', contentCoverage: 0, luminanceDeviation: 0 };
+  } finally {
+    sample.width = 0;
+    sample.height = 0;
+  }
 }
 
 function createBookPageDataUrls(
@@ -987,6 +1123,16 @@ function createBookPageDataUrls(
     );
     let output: HTMLCanvasElement | null = null;
     try {
+      const validation = validateBookPageOutput(warped, outputSize);
+      if (!validation.valid) {
+        console.info('[PrivaScan] book page output rejected', {
+          side: page.side,
+          reason: validation.reason,
+          contentCoverage: Number(validation.contentCoverage.toFixed(3)),
+          luminanceDeviation: Number(validation.luminanceDeviation.toFixed(2)),
+        });
+        return null;
+      }
       if (!hasRequiredSharpness(warped)) return null;
       output = enhanceForMobile ? enhanceDocumentCanvas(warped) : warped;
       const dataUrl = output.toDataURL('image/jpeg', outputQuality);
@@ -999,6 +1145,8 @@ function createBookPageDataUrls(
         requestedDpi: settings.targetDpi,
         effectiveDpi: estimateEffectiveDpi(output.width, output.height, settings.paperSize),
         foldConfidence: Number(detection.foldConfidence.toFixed(3)),
+        contentCoverage: Number(validation.contentCoverage.toFixed(3)),
+        luminanceDeviation: Number(validation.luminanceDeviation.toFixed(2)),
       });
     } finally {
       if (output && output !== warped) {
@@ -1065,6 +1213,17 @@ function scaleBookDetection(
     foldCurve: detection.foldCurve.map(scalePoint),
     foldConfidence: detection.foldConfidence,
   };
+}
+
+function unrotateBookPoint(
+  point: Point,
+  videoWidth: number,
+  videoHeight: number,
+  direction: -1 | 0 | 1,
+): Point {
+  if (direction > 0) return { x: point.y, y: videoHeight - point.x };
+  if (direction < 0) return { x: videoWidth - point.y, y: point.x };
+  return point;
 }
 
 function bookFoldDistance(
@@ -1359,6 +1518,7 @@ export default function ScannerScreen() {
   const missedEdgeFrames = useRef(0);
   const trackConfirmFrames = useRef(0);
   const previousBookDetectionRef = useRef<BookDetection | null>(null);
+  const trackedBookOverlayRef = useRef<BookDetection | null>(null);
   const stableBookFoldFrames = useRef(0);
   const bookSidewaysDirectionRef = useRef<-1 | 0 | 1>(0);
   const pendingBookDirectionRef = useRef<-1 | 1 | null>(null);
@@ -1435,6 +1595,8 @@ export default function ScannerScreen() {
       pendingBookUprightSamplesRef.current = 0;
       bookDirectionUpdatedAtRef.current = 0;
       bookDirectionGenerationRef.current += 1;
+      trackedBookOverlayRef.current = null;
+      setBookDetection(null);
       setBookSidewaysDirection(0);
       return;
     }
@@ -1978,7 +2140,40 @@ export default function ScannerScreen() {
         const tracked = updateTrackedCorners(corners, detectionFrameWidth, detectionFrameHeight);
         setEdgeCorners(tracked.corners);
         setEdgeIsLive(Boolean(corners));
-        setBookDetection(detectedBook);
+        if (scanModeRef.current === 'book') {
+          if (detectedBook && tracked.corners) {
+            const previousOverlay = trackedBookOverlayRef.current;
+            const canBlend = previousOverlay &&
+              previousOverlay.foldCurve.length === detectedBook.foldCurve.length;
+            const blendPoint = (previous: Point, current: Point): Point => ({
+              x: previous.x + (current.x - previous.x) * 0.46,
+              y: previous.y + (current.y - previous.y) * 0.46,
+            });
+            const overlay: BookDetection = {
+              ...detectedBook,
+              outer: tracked.corners,
+              foldCurve: canBlend
+                ? detectedBook.foldCurve.map((point, index) =>
+                    blendPoint(previousOverlay.foldCurve[index], point))
+                : detectedBook.foldCurve.map(point => ({ ...point })),
+            };
+            trackedBookOverlayRef.current = overlay;
+            setBookDetection(overlay);
+          } else if (tracked.corners && trackedBookOverlayRef.current) {
+            const overlay: BookDetection = {
+              ...trackedBookOverlayRef.current,
+              outer: tracked.corners,
+            };
+            trackedBookOverlayRef.current = overlay;
+            setBookDetection(overlay);
+          } else {
+            trackedBookOverlayRef.current = null;
+            setBookDetection(null);
+          }
+        } else {
+          trackedBookOverlayRef.current = null;
+          setBookDetection(null);
+        }
         setIdCardDetection(detectedIdCard);
         setIdCardReady(
           scanModeRef.current === 'id-cards' &&
@@ -2229,6 +2424,10 @@ export default function ScannerScreen() {
       bookSidewaysDirectionRef.current === bookDirection &&
       bookDirectionGenerationRef.current === bookDirectionGeneration &&
       Date.now() - bookDirectionUpdatedAtRef.current <= 2_000;
+    const capturedOrientationIsCurrent = () =>
+      bookDirection !== 0 &&
+      bookSidewaysDirectionRef.current === bookDirection &&
+      bookDirectionGenerationRef.current === bookDirectionGeneration;
     let full: CameraCaptureCanvas | null = null;
     let previewFallback: CameraCaptureCanvas | null = null;
     const scheduleBookRetry = (reason: string) => {
@@ -2344,7 +2543,7 @@ export default function ScannerScreen() {
             : 'Move closer so text on both pages stays sharp.');
         return;
       }
-      if (!bookOrientationIsCurrent()) {
+      if (!capturedOrientationIsCurrent()) {
         toast.info('Hold the phone in the same sideways direction while capturing.');
         return;
       }
@@ -2800,6 +2999,56 @@ export default function ScannerScreen() {
           />
         </svg>
       )}
+      {!isMockMode && videoReady && scanMode === 'book' && bookDetection &&
+        bookSidewaysDirection !== 0 && (
+        <svg
+          className="absolute inset-0 w-full h-full z-10 pointer-events-none"
+          viewBox={`0 0 ${viewW} ${viewH}`}
+          preserveAspectRatio="xMidYMid slice"
+          aria-hidden="true"
+        >
+          <polygon
+            points={bookDetection.outer.map(point => {
+              const mapped = unrotateBookPoint(
+                point,
+                viewW,
+                viewH,
+                bookSidewaysDirection,
+              );
+              return `${mapped.x},${mapped.y}`;
+            }).join(' ')}
+            fill={edgeFill}
+            stroke={edgeStroke}
+            strokeWidth="10"
+            strokeLinejoin="round"
+            style={{
+              opacity: edgeIsLive ? 1 : 0,
+              transition: 'opacity 0.18s ease, fill 0.3s, stroke 0.3s ease',
+            }}
+          />
+          <polyline
+            points={bookDetection.foldCurve.map(point => {
+              const mapped = unrotateBookPoint(
+                point,
+                viewW,
+                viewH,
+                bookSidewaysDirection,
+              );
+              return `${mapped.x},${mapped.y}`;
+            }).join(' ')}
+            fill="none"
+            stroke={edgeStroke}
+            strokeWidth="9"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray="18 14"
+            style={{
+              opacity: edgeIsLive ? 1 : 0,
+              transition: 'opacity 0.18s ease, stroke 0.3s ease',
+            }}
+          />
+        </svg>
+      )}
        {/* ── H: Top bar — logo · capture preferences · navigation ── */}
       <div
         className="scanner-topbar absolute top-0 inset-x-0 z-20 grid grid-cols-[auto_minmax(0,1fr)_auto] sm:grid-cols-[1fr_auto_1fr] items-center px-3 sm:px-4 pb-6"
@@ -3061,6 +3310,7 @@ export default function ScannerScreen() {
               className="relative h-full w-full border transition-colors duration-200"
               style={{
                 borderColor: `${bookGuideColor}55`,
+                opacity: edgeIsLive && bookDetection ? 0.28 : 1,
               }}
             >
               <span
@@ -3103,6 +3353,7 @@ export default function ScannerScreen() {
                   width: '100vw',
                   borderColor: bookGuideColor,
                   transform: 'translate(-50%, -50%)',
+                  opacity: edgeIsLive && bookDetection ? 0 : 1,
                 }}
                 aria-hidden="true"
               />
@@ -3301,11 +3552,17 @@ export default function ScannerScreen() {
                       : edgeIsLive
                         ? 'All four card edges detected — hold steady'
                         : 'Reacquiring card edges…')
-                  : isStable
-                    ? 'Frame locked — capturing…'
-                    : edgeIsLive
-                      ? 'Document detected — tracking edges'
-                      : 'Keeping frame — reacquiring edges…'}
+                  : scanMode === 'book'
+                    ? isStable
+                      ? 'Book edges locked — capturing…'
+                      : edgeIsLive
+                        ? 'Both pages and center fold detected — hold steady'
+                        : 'Reacquiring book edges…'
+                    : isStable
+                      ? 'Frame locked — capturing…'
+                      : edgeIsLive
+                        ? 'Document detected — tracking edges'
+                        : 'Keeping frame — reacquiring edges…'}
               </span>
             ) : (
               scanMode === 'book' ? (
@@ -3318,7 +3575,7 @@ export default function ScannerScreen() {
                   )}
                   aria-hidden={!showBookGuidance}
                 >
-                  Point camera at a document
+                  Turn your phone sideways and fit both pages inside the frame
                 </span>
               ) : (
                 <span className="text-white/35 text-sm">
