@@ -14,6 +14,13 @@ export interface CurvedPageWarp {
   corners: [Point, Point, Point, Point];
   foldCurve: Point[];
   side: 'left' | 'right';
+  deformation?: BookDeformation;
+}
+
+/** Conservative, optional page-surface correction measured across page columns. */
+export interface BookDeformation {
+  confidence: number;
+  columnOffsets: number[];
 }
 
 export function fitWarpSizeToPixelLimit(
@@ -109,7 +116,15 @@ export function warpBookPage(
   outH: number,
   options: WarpPerspectiveOptions = {},
 ): HTMLCanvasElement {
-  const gpuResult = warpBookPageWebGL(src, page, outW, outH);
+  const safeDeformation = isSafeBookDeformation(page.deformation);
+  const effectivePage = safeDeformation ? page : { ...page, deformation: undefined };
+  if (page.deformation && !safeDeformation) {
+    console.info('[PrivaScan] book deformation rejected', {
+      confidence: page.deformation.confidence,
+      reason: 'unsafe-or-non-monotonic',
+    });
+  }
+  const gpuResult = warpBookPageWebGL(src, effectivePage, outW, outH);
   if (gpuResult) return gpuResult;
 
   // Preserve the requested output dimensions when the caller did not set a
@@ -123,16 +138,27 @@ export function warpBookPage(
     : Math.max(2_400_000, target.width * target.height);
   const cpuResult = warpBookPageCPU(
     src,
-    page,
+    effectivePage,
     target.width,
     target.height,
     sourceReadLimit,
   );
   if (cpuResult) return cpuResult;
 
-  // This last-resort path is intentionally simple and keeps the same
-  // conservative page geometry if a browser refuses pixel reads.
-  return warpPerspective(src, page.corners, target.width, target.height, options);
+  throw new Error('Curved book-page warp failed');
+}
+
+function isSafeBookDeformation(mapping?: BookDeformation): boolean {
+  if (!mapping || mapping.confidence < 0.62 || mapping.confidence > 1) return false;
+  if (mapping.columnOffsets.length < 5 || mapping.columnOffsets.length > 32) return false;
+  for (let index = 0; index < mapping.columnOffsets.length; index += 1) {
+    const offset = mapping.columnOffsets[index];
+    if (!Number.isFinite(offset) || Math.abs(offset) > 0.035) return false;
+    if (index > 0 && Math.abs(offset - mapping.columnOffsets[index - 1]) > 0.018) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function curvedPageSourcePoint(
@@ -141,10 +167,22 @@ function curvedPageSourcePoint(
   v: number,
 ): Point {
   const [TL, TR, BR, BL] = page.corners;
+  const deformation = page.deformation;
+  let mappedV = v;
+  if (deformation && deformation.confidence >= 0.62 && deformation.columnOffsets.length >= 2) {
+    const position = u * (deformation.columnOffsets.length - 1);
+    const index = Math.min(deformation.columnOffsets.length - 2, Math.floor(position));
+    const amount = position - index;
+    const offset = deformation.columnOffsets[index] * (1 - amount) +
+      deformation.columnOffsets[index + 1] * amount;
+    // Preserve the detected top/bottom corners and keep the vertical mapping
+    // monotonic by tapering the bounded correction at both page boundaries.
+    mappedV = Math.max(0, Math.min(1, v + offset * 4 * v * (1 - v)));
+  }
   const outside = page.side === 'left'
-    ? lerp2(TL, BL, v)
-    : lerp2(TR, BR, v);
-  const fold = sampleCurve(page.foldCurve, v);
+    ? lerp2(TL, BL, mappedV)
+    : lerp2(TR, BR, mappedV);
+  const fold = sampleCurve(page.foldCurve, mappedV);
   return page.side === 'left'
     ? lerp2(outside, fold, u)
     : lerp2(fold, outside, u);
@@ -177,6 +215,10 @@ function warpBookPageWebGL(
     premultipliedAlpha: false,
   });
   if (!gl) return null;
+  const discardCanvas = () => {
+    canvas.width = 0;
+    canvas.height = 0;
+  };
 
   const maxTexture = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
   const maxRenderbuffer = gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) as number;
@@ -185,7 +227,10 @@ function warpBookPageWebGL(
     sourceW > maxTexture || sourceH > maxTexture ||
     outW > maxRenderbuffer || outH > maxRenderbuffer ||
     outW > maxViewport[0] || outH > maxViewport[1]
-  ) return null;
+  ) {
+    discardCanvas();
+    return null;
+  }
 
   const vertexShader = compileShader(gl, gl.VERTEX_SHADER, `
     attribute vec2 aPosition;
@@ -204,14 +249,30 @@ function warpBookPageWebGL(
       gl_FragColor = texture2D(uTexture, vTexCoord);
     }
   `);
-  if (!vertexShader || !fragmentShader) return null;
+  if (!vertexShader || !fragmentShader) {
+    if (vertexShader) gl.deleteShader(vertexShader);
+    if (fragmentShader) gl.deleteShader(fragmentShader);
+    discardCanvas();
+    return null;
+  }
 
   const program = gl.createProgram();
-  if (!program) return null;
+  if (!program) {
+    gl.deleteShader(vertexShader);
+    gl.deleteShader(fragmentShader);
+    discardCanvas();
+    return null;
+  }
   gl.attachShader(program, vertexShader);
   gl.attachShader(program, fragmentShader);
   gl.linkProgram(program);
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) return null;
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    gl.deleteProgram(program);
+    gl.deleteShader(vertexShader);
+    gl.deleteShader(fragmentShader);
+    discardCanvas();
+    return null;
+  }
   gl.useProgram(program);
 
   const columns = 24;
@@ -243,7 +304,16 @@ function warpBookPageWebGL(
   const positionBuffer = gl.createBuffer();
   const texCoordBuffer = gl.createBuffer();
   const indexBuffer = gl.createBuffer();
-  if (!positionBuffer || !texCoordBuffer || !indexBuffer) return null;
+  if (!positionBuffer || !texCoordBuffer || !indexBuffer) {
+    if (positionBuffer) gl.deleteBuffer(positionBuffer);
+    if (texCoordBuffer) gl.deleteBuffer(texCoordBuffer);
+    if (indexBuffer) gl.deleteBuffer(indexBuffer);
+    gl.deleteProgram(program);
+    gl.deleteShader(vertexShader);
+    gl.deleteShader(fragmentShader);
+    discardCanvas();
+    return null;
+  }
 
   const bindAttribute = (
     buffer: WebGLBuffer,
@@ -263,7 +333,20 @@ function warpBookPageWebGL(
   bindAttribute(texCoordBuffer, 'aTexCoord', texCoords, 2);
 
   const texture = gl.createTexture();
-  if (!texture) return null;
+  const cleanup = () => {
+    if (texture) gl.deleteTexture(texture);
+    gl.deleteBuffer(positionBuffer);
+    gl.deleteBuffer(texCoordBuffer);
+    gl.deleteBuffer(indexBuffer);
+    gl.deleteProgram(program);
+    gl.deleteShader(vertexShader);
+    gl.deleteShader(fragmentShader);
+  };
+  if (!texture) {
+    cleanup();
+    discardCanvas();
+    return null;
+  }
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, texture);
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
@@ -274,9 +357,15 @@ function warpBookPageWebGL(
   try {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
   } catch {
+    cleanup();
+    discardCanvas();
     return null;
   }
-  if (gl.getError() !== gl.NO_ERROR) return null;
+  if (gl.getError() !== gl.NO_ERROR) {
+    cleanup();
+    discardCanvas();
+    return null;
+  }
 
   const sampler = gl.getUniformLocation(program, 'uTexture');
   if (sampler) gl.uniform1i(sampler, 0);
@@ -286,7 +375,14 @@ function warpBookPageWebGL(
   gl.clearColor(1, 1, 1, 1);
   gl.clear(gl.COLOR_BUFFER_BIT);
   gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
-  if (gl.getError() !== gl.NO_ERROR) return null;
+  if (gl.getError() !== gl.NO_ERROR) {
+    cleanup();
+    discardCanvas();
+    return null;
+  }
+  cleanup();
+  // Do not explicitly lose the context here: some Android WebViews clear the
+  // drawing buffer when WEBGL_lose_context fires, producing a blank scan.
   return canvas;
 }
 
@@ -325,7 +421,24 @@ function warpBookPageCPU(
       x: (point.x - minX) * sourceScaleX,
       y: (point.y - minY) * sourceScaleY,
     })),
+    deformation: page.deformation,
   };
+  const [TL, TR, BR, BL] = scaledPage.corners;
+  const actualWidth = (
+    Math.hypot(TR.x - TL.x, TR.y - TL.y) +
+    Math.hypot(BR.x - BL.x, BR.y - BL.y)
+  ) / 2;
+  const actualHeight = (
+    Math.hypot(BL.x - TL.x, BL.y - TL.y) +
+    Math.hypot(BR.x - TR.x, BR.y - TR.y)
+  ) / 2;
+  const outputScale = Math.min(
+    1,
+    actualWidth / Math.max(1, outW),
+    actualHeight / Math.max(1, outH),
+  );
+  outW = Math.max(1, Math.round(outW * outputScale));
+  outH = Math.max(1, Math.round(outH * outputScale));
   const sourceCanvas = document.createElement('canvas');
   sourceCanvas.width = sourceTarget.width;
   sourceCanvas.height = sourceTarget.height;
@@ -334,7 +447,13 @@ function warpBookPageCPU(
   output.width = outW;
   output.height = outH;
   const outputCtx = output.getContext('2d');
-  if (!sourceCtx || !outputCtx) return null;
+  if (!sourceCtx || !outputCtx) {
+    sourceCanvas.width = 0;
+    sourceCanvas.height = 0;
+    output.width = 0;
+    output.height = 0;
+    return null;
+  }
 
   try {
     sourceCtx.drawImage(
@@ -381,8 +500,14 @@ function warpBookPageCPU(
       }
     }
     outputCtx.putImageData(result, 0, 0);
+    sourceCanvas.width = 1;
+    sourceCanvas.height = 1;
     return output;
   } catch {
+    sourceCanvas.width = 0;
+    sourceCanvas.height = 0;
+    output.width = 0;
+    output.height = 0;
     return null;
   }
 }
@@ -745,7 +870,11 @@ function compileShader(
   if (!shader) return null;
   gl.shaderSource(shader, source);
   gl.compileShader(shader);
-  return gl.getShaderParameter(shader, gl.COMPILE_STATUS) ? shader : null;
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    gl.deleteShader(shader);
+    return null;
+  }
+  return shader;
 }
 
 /** Solve the 8 unknowns of a 2D projective transform with Gaussian elimination. */

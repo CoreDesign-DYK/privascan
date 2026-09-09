@@ -28,7 +28,14 @@ import {
   detectPresentationFromCanvas,
   presentationOutputSize,
 } from '@/lib/presentation-detection';
-import { estimateOutputSize, type Point, warpBookPage, warpPerspective } from '@/lib/perspective';
+import {
+  estimateOutputSize,
+  type BookDeformation,
+  type CurvedPageWarp,
+  type Point,
+  warpBookPage,
+  warpPerspective,
+} from '@/lib/perspective';
 import {
   type ScannerSettings,
   type ScanMode,
@@ -605,6 +612,84 @@ function hasPreferredDocumentPixels(
   return sourceQuadSize(corners).shortEdge >= 1200;
 }
 
+async function encodedImageSize(
+  blob: Blob,
+): Promise<{ width: number; height: number; orientation: number } | null> {
+  const bytes = new Uint8Array(await blob.slice(0, 256 * 1024).arrayBuffer());
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (
+    bytes.length >= 24 &&
+    bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47
+  ) {
+    return { width: view.getUint32(16), height: view.getUint32(20), orientation: 1 };
+  }
+  if (bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8) {
+    const startOfFrame = new Set([
+      0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7,
+      0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf,
+    ]);
+    let orientation = 1;
+    let offset = 2;
+    while (offset + 8 < bytes.length) {
+      while (offset < bytes.length && bytes[offset] !== 0xff) offset += 1;
+      while (offset < bytes.length && bytes[offset] === 0xff) offset += 1;
+      if (offset >= bytes.length) break;
+      const marker = bytes[offset++];
+      if (marker === 0xd9 || marker === 0xda) break;
+      if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) continue;
+      if (offset + 2 > bytes.length) break;
+      const length = view.getUint16(offset);
+      if (length < 2 || offset + length > bytes.length) break;
+      if (marker === 0xe1 && length >= 16) {
+        const payload = offset + 2;
+        const exif =
+          bytes[payload] === 0x45 && bytes[payload + 1] === 0x78 &&
+          bytes[payload + 2] === 0x69 && bytes[payload + 3] === 0x66;
+        if (exif) {
+          const tiff = payload + 6;
+          const littleEndian = bytes[tiff] === 0x49 && bytes[tiff + 1] === 0x49;
+          const bigEndian = bytes[tiff] === 0x4d && bytes[tiff + 1] === 0x4d;
+          if (littleEndian || bigEndian) {
+            const ifdOffset = view.getUint32(tiff + 4, littleEndian);
+            const ifd = tiff + ifdOffset;
+            if (ifd + 2 <= bytes.length) {
+              const entryCount = view.getUint16(ifd, littleEndian);
+              for (let entry = 0; entry < entryCount; entry += 1) {
+                const entryOffset = ifd + 2 + entry * 12;
+                if (entryOffset + 12 > bytes.length) break;
+                if (view.getUint16(entryOffset, littleEndian) === 0x0112) {
+                  const value = view.getUint16(entryOffset + 8, littleEndian);
+                  if (value >= 1 && value <= 8) orientation = value;
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+      if (startOfFrame.has(marker) && length >= 7) {
+        return {
+          width: view.getUint16(offset + 5),
+          height: view.getUint16(offset + 3),
+          orientation,
+        };
+      }
+      offset += length;
+    }
+  }
+  if (
+    bytes.length >= 30 &&
+    String.fromCharCode(...bytes.slice(0, 4)) === 'RIFF' &&
+    String.fromCharCode(...bytes.slice(8, 12)) === 'WEBP' &&
+    String.fromCharCode(...bytes.slice(12, 16)) === 'VP8X'
+  ) {
+    const uint24 = (offset: number) =>
+      bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16);
+    return { width: uint24(24) + 1, height: uint24(27) + 1, orientation: 1 };
+  }
+  return null;
+}
+
 async function captureBestCameraFrame(
   video: HTMLVideoElement,
   greyscale: boolean,
@@ -621,18 +706,38 @@ async function captureBestCameraFrame(
     if (track && ImageCaptureConstructor) {
       const imageCapture = new ImageCaptureConstructor(track);
       for (let attempt = 1; attempt <= 2; attempt += 1) {
+        let bitmap: ImageBitmap | null = null;
+        let canvas: CameraCaptureCanvas | null = null;
+        let keepCanvas = false;
         try {
           const photo = await imageCapture.takePhoto();
-          const bitmap = await createImageBitmap(photo);
-          const canvas = document.createElement('canvas') as CameraCaptureCanvas;
+          const intrinsic = await encodedImageSize(photo);
+          if (!intrinsic?.width || !intrinsic.height) {
+            throw new Error('Unsupported still-image header');
+          }
+          const swapsAxes = intrinsic.orientation >= 5 && intrinsic.orientation <= 8;
+          const orientedWidth = swapsAxes ? intrinsic.height : intrinsic.width;
+          const orientedHeight = swapsAxes ? intrinsic.width : intrinsic.height;
+          const decodeScale = Math.min(
+            1,
+            Math.sqrt(MAX_MOBILE_CAPTURE_PIXELS / (orientedWidth * orientedHeight)),
+          );
+          bitmap = decodeScale < 1
+            ? await createImageBitmap(photo, {
+                resizeWidth: Math.max(1, Math.floor(orientedWidth * decodeScale)),
+                resizeHeight: Math.max(1, Math.floor(orientedHeight * decodeScale)),
+                resizeQuality: 'high',
+              })
+            : await createImageBitmap(photo);
+          canvas = document.createElement('canvas') as CameraCaptureCanvas;
           canvas.captureMethod = 'still';
           canvas.width = bitmap.width;
           canvas.height = bitmap.height;
-          const context = canvas.getContext('2d')!;
+          const context = canvas.getContext('2d');
+          if (!context) throw new Error('Still capture canvas is unavailable');
           if (greyscale) context.filter = 'grayscale(100%)';
           context.drawImage(bitmap, 0, 0);
           context.filter = 'none';
-          bitmap.close();
           const stillPixels = canvas.width * canvas.height;
           if (
             (
@@ -657,11 +762,18 @@ async function captureBestCameraFrame(
             height: canvas.height,
             attempt,
           });
+          keepCanvas = true;
           return canvas;
         } catch (error) {
           console.warn(`[PrivaScan] high-resolution still attempt ${attempt} failed`, error);
           if (attempt < 2) {
             await new Promise<void>((resolve) => window.setTimeout(resolve, 180));
+          }
+        } finally {
+          bitmap?.close();
+          if (canvas && !keepCanvas) {
+            canvas.width = 0;
+            canvas.height = 0;
           }
         }
       }
@@ -674,6 +786,125 @@ async function captureBestCameraFrame(
     height: fallback.height,
   });
   return fallback;
+}
+
+function estimateBookDeformation(
+  source: HTMLCanvasElement,
+  page: CurvedPageWarp,
+): BookDeformation | undefined {
+  const { w, h } = estimateOutputSize(page.corners);
+  const width = 280;
+  const height = Math.max(180, Math.min(420, Math.round(width * h / Math.max(1, w))));
+  const thumbnail = warpBookPage(source, page, width, height, { maxCpuPixels: width * height });
+  const readableThumbnail = document.createElement('canvas');
+  readableThumbnail.width = width;
+  readableThumbnail.height = height;
+  const context = readableThumbnail.getContext('2d', { willReadFrequently: true });
+  if (!context) {
+    thumbnail.width = 0;
+    thumbnail.height = 0;
+    readableThumbnail.width = 0;
+    readableThumbnail.height = 0;
+    return undefined;
+  }
+  context.drawImage(thumbnail, 0, 0, width, height);
+
+  let image: ImageData;
+  try {
+    image = context.getImageData(0, 0, width, height);
+  } catch {
+    thumbnail.width = 0;
+    thumbnail.height = 0;
+    readableThumbnail.width = 0;
+    readableThumbnail.height = 0;
+    return undefined;
+  }
+  thumbnail.width = 0;
+  thumbnail.height = 0;
+  readableThumbnail.width = 0;
+  readableThumbnail.height = 0;
+  const luma = (x: number, y: number) => {
+    const index = (y * width + x) * 4;
+    return image.data[index] * 0.299 + image.data[index + 1] * 0.587 + image.data[index + 2] * 0.114;
+  };
+  const columnCount = 9;
+  const signals = Array.from({ length: columnCount }, (_, column) => {
+    const centerX = Math.round(width * (0.12 + column / (columnCount - 1) * 0.76));
+    return Array.from({ length: height }, (_, y) => {
+      if (y < 3 || y >= height - 3) return 0;
+      let energy = 0;
+      for (let dx = -3; dx <= 3; dx += 1) {
+        energy += Math.abs(luma(centerX + dx, y + 1) - luma(centerX + dx, y - 1));
+      }
+      return energy / 7;
+    });
+  });
+  const normalize = (signal: number[]) => {
+    const body = signal.slice(Math.round(height * 0.08), Math.round(height * 0.92));
+    const mean = body.reduce((sum, value) => sum + value, 0) / Math.max(1, body.length);
+    const deviation = Math.sqrt(
+      body.reduce((sum, value) => sum + (value - mean) ** 2, 0) / Math.max(1, body.length),
+    );
+    return {
+      values: signal.map(value => (value - mean) / Math.max(1, deviation)),
+      deviation,
+    };
+  };
+  const normalized = signals.map(normalize);
+  const reference = normalized[Math.floor(columnCount / 2)];
+  const maxShift = Math.max(3, Math.min(12, Math.round(height * 0.03)));
+  const shifts: number[] = [];
+  const correlations: number[] = [];
+  for (const candidate of normalized) {
+    let bestShift = 0;
+    let bestCorrelation = -1;
+    for (let shift = -maxShift; shift <= maxShift; shift += 1) {
+      let total = 0;
+      let count = 0;
+      for (let y = Math.round(height * 0.1); y < height * 0.9; y += 1) {
+        const shiftedY = y + shift;
+        if (shiftedY < 0 || shiftedY >= height) continue;
+        total += reference.values[y] * candidate.values[shiftedY];
+        count += 1;
+      }
+      const correlation = total / Math.max(1, count);
+      if (correlation > bestCorrelation) {
+        bestCorrelation = correlation;
+        bestShift = shift;
+      }
+    }
+    shifts.push(bestShift);
+    correlations.push(bestCorrelation);
+  }
+  const supported = correlations.filter((correlation, index) =>
+    index === Math.floor(columnCount / 2) || correlation >= 0.42,
+  ).length;
+  const meanCorrelation = correlations.reduce((sum, value) => sum + Math.max(0, value), 0) /
+    correlations.length;
+  const textEvidence = normalized.filter(value => value.deviation >= 5).length;
+  const baseline = shifts[Math.floor(columnCount / 2)];
+  const rawOffsets = shifts.map(shift => (shift - baseline) / height);
+  const smoothed = rawOffsets.map((value, index) => {
+    if (index === 0 || index === rawOffsets.length - 1) return value;
+    return (rawOffsets[index - 1] + value * 2 + rawOffsets[index + 1]) / 4;
+  });
+  const maxOffset = Math.max(...smoothed.map(Math.abs));
+  const confidence = Math.min(1, meanCorrelation) *
+    Math.min(1, supported / 7) *
+    Math.min(1, textEvidence / 7);
+  const safe = supported >= 7 && textEvidence >= 7 && meanCorrelation >= 0.48 &&
+    confidence >= 0.62 && maxOffset >= 0.003 && maxOffset <= 0.035 &&
+    smoothed.every((value, index) =>
+      Math.abs(value) <= 0.035 &&
+      (index === 0 || Math.abs(value - smoothed[index - 1]) <= 0.018));
+  console.info('[PrivaScan] book deformation analysis', {
+    confidence: Number(confidence.toFixed(3)),
+    supportedColumns: supported,
+    textColumns: textEvidence,
+    maxOffset: Number(maxOffset.toFixed(4)),
+    applied: safe,
+  });
+  return safe ? { confidence, columnOffsets: smoothed } : undefined;
 }
 
 function createBookPageDataUrls(
@@ -730,29 +961,44 @@ function createBookPageDataUrls(
       targetPage.height,
       maxPixels,
     );
+    const pageWarp: CurvedPageWarp = {
+      corners: insetCorners,
+      foldCurve: insetFoldCurve,
+      side: page.side,
+    };
     const warped = warpBookPage(
       source,
       {
-        corners: insetCorners,
-        foldCurve: insetFoldCurve,
-        side: page.side,
+        ...pageWarp,
+        deformation: estimateBookDeformation(source, pageWarp),
       },
       outputSize.width,
       outputSize.height,
       Number.isFinite(maxPixels) ? { maxCpuPixels: maxPixels } : undefined,
     );
-    if (!hasRequiredSharpness(warped)) return null;
-    const output = enhanceForMobile ? enhanceDocumentCanvas(warped) : warped;
-    dataUrls.push(output.toDataURL('image/jpeg', outputQuality));
-    console.info('[PrivaScan] book page output', {
-      side: page.side,
-      source: `${source.width}x${source.height}`,
-      crop: `${w}x${h}`,
-      output: `${output.width}x${output.height}`,
-      requestedDpi: settings.targetDpi,
-      effectiveDpi: estimateEffectiveDpi(output.width, output.height, settings.paperSize),
-      foldConfidence: Number(detection.foldConfidence.toFixed(3)),
-    });
+    let output: HTMLCanvasElement | null = null;
+    try {
+      if (!hasRequiredSharpness(warped)) return null;
+      output = enhanceForMobile ? enhanceDocumentCanvas(warped) : warped;
+      const dataUrl = output.toDataURL('image/jpeg', outputQuality);
+      dataUrls.push(dataUrl);
+      console.info('[PrivaScan] book page output', {
+        side: page.side,
+        source: `${source.width}x${source.height}`,
+        crop: `${w}x${h}`,
+        output: `${output.width}x${output.height}`,
+        requestedDpi: settings.targetDpi,
+        effectiveDpi: estimateEffectiveDpi(output.width, output.height, settings.paperSize),
+        foldConfidence: Number(detection.foldConfidence.toFixed(3)),
+      });
+    } finally {
+      if (output && output !== warped) {
+        output.width = 0;
+        output.height = 0;
+      }
+      warped.width = 0;
+      warped.height = 0;
+    }
   }
 
   return dataUrls.length === 2 ? [dataUrls[0], dataUrls[1]] : null;
@@ -1091,6 +1337,12 @@ export default function ScannerScreen() {
   const edgeTimerRef     = useRef<ReturnType<typeof setInterval> | null>(null);
   const stableFrames     = useRef(0);
   const autoCaptureInFlightRef = useRef(false);
+  const bookCaptureInFlightRef = useRef(false);
+  const bookRetryCountRef = useRef(0);
+  const bookRetryReadyAtRef = useRef(0);
+  const captureSessionRef = useRef(0);
+  const captureOwnerRef = useRef<{ owner: string; session: number } | null>(null);
+  const scannerMountedRef = useRef(true);
   const trackedCornersRef = useRef<[Point, Point, Point, Point] | null>(null);
   const pendingCornersRef = useRef<[Point, Point, Point, Point] | null>(null);
   const pendingCornerFrames = useRef(0);
@@ -1109,11 +1361,38 @@ export default function ScannerScreen() {
   const capturePresentationAutoRef = useRef<() => void>(() => {});
   const captureIdAutoRef = useRef<() => void>(() => {});
   const scanModeRef      = useRef<ScanMode>('document');
+  const acquireCapture = (owner: string): number | null => {
+    if (captureOwnerRef.current) return null;
+    const session = ++captureSessionRef.current;
+    captureOwnerRef.current = { owner, session };
+    return session;
+  };
+  const releaseCapture = (owner: string, session: number) => {
+    if (captureOwnerRef.current?.owner === owner &&
+      captureOwnerRef.current.session === session) captureOwnerRef.current = null;
+  };
+  const captureIsCurrent = (owner: string, session: number, expectedMode: ScanMode) =>
+    scannerMountedRef.current && scanModeRef.current === expectedMode &&
+    captureSessionRef.current === session &&
+    captureOwnerRef.current?.owner === owner && captureOwnerRef.current.session === session;
 
   useEffect(() => { modeRef.current      = mode;     }, [mode]);
   useEffect(() => { pagesLenRef.current  = pages.length; }, [pages.length]);
   useEffect(() => { settingsRef.current  = settings; }, [settings]);
-  useEffect(() => { scanModeRef.current  = scanMode; }, [scanMode]);
+  useEffect(() => {
+    scanModeRef.current = scanMode;
+    captureSessionRef.current += 1;
+  }, [scanMode]);
+  useEffect(() => () => {
+    scannerMountedRef.current = false;
+    captureSessionRef.current += 1;
+  }, []);
+  useEffect(() => {
+    if (scanMode !== 'book' || mode !== 'auto') {
+      bookRetryCountRef.current = 0;
+      bookRetryReadyAtRef.current = 0;
+    }
+  }, [mode, scanMode]);
   useEffect(() => { setDpiInput(String(settings.targetDpi)); }, [settings.targetDpi]);
   // Reset ID card stage when switching scan modes
   useEffect(() => { setIdStage('front'); idFrontRef.current = null; }, [scanMode]);
@@ -1308,6 +1587,7 @@ export default function ScannerScreen() {
 
   /* ── Auto-capture ───────────────────────────────────────────────────────── */
   const autoCaptureFrame = useCallback(async () => {
+    if (bookCaptureInFlightRef.current && scanModeRef.current !== 'book') return;
     if (!isMockMode && !focusReady) return;
     if (scanModeRef.current === 'book') {
       captureBookAutoRef.current();
@@ -1321,6 +1601,8 @@ export default function ScannerScreen() {
       captureIdAutoRef.current();
       return;
     }
+    const captureSession = acquireCapture('document-auto');
+    if (captureSession === null) return;
     if (autoCaptureInFlightRef.current) return;
     autoCaptureInFlightRef.current = true;
     try {
@@ -1330,6 +1612,7 @@ export default function ScannerScreen() {
     let limitedResolution = false;
 
     if (isMockMode || !videoRef.current) {
+      if (!captureIsCurrent('document-auto', captureSession, 'document')) return;
       addPage(generateMockPage(pageNum, settingsRef.current));
       captured = true;
     } else {
@@ -1342,6 +1625,7 @@ export default function ScannerScreen() {
         video,
         settingsRef.current.colorMode === 'greyscale',
       );
+      if (!captureIsCurrent('document-auto', captureSession, 'document')) return;
       // Re-check the exact high-resolution frame being saved. Live detection
       // can be one or more frames old after the phone has moved.
       const corners = detectCornersFromCanvas(canvas);
@@ -1378,6 +1662,7 @@ export default function ScannerScreen() {
         useMobileQualityPipeline,
       );
       if (page) {
+        if (!captureIsCurrent('document-auto', captureSession, 'document')) return;
         addPage(page);
         captured = true;
       } else if (!corners) {
@@ -1416,6 +1701,7 @@ export default function ScannerScreen() {
     rejectedCornersRef.current = null;
     rejectedBookDetectionRef.current = null;
 
+    if (!captureIsCurrent('document-auto', captureSession, 'document')) return;
     triggerCaptureEffects();
     setCapturedLabel(pageNum);
     setTimeout(() => setCapturedLabel(null), 1800);
@@ -1428,6 +1714,7 @@ export default function ScannerScreen() {
     setIsWaitingClear(true);
     } finally {
       autoCaptureInFlightRef.current = false;
+      releaseCapture('document-auto', captureSession);
     }
   }, [
     isMockMode, focusMode, focusReady, videoRef, edgeCorners, addPage, setActivePageIndex,
@@ -1610,9 +1897,15 @@ export default function ScannerScreen() {
           Boolean(corners && tracked.stable && detectedIdCard && detectedIdCard.confidence >= 0.58),
         );
 
-        if (modeRef.current !== 'auto' || !focusReady) return;
+        if (modeRef.current !== 'auto' || (scanModeRef.current !== 'book' && !focusReady)) return;
 
         // ── Waiting-clear phase: hold until document leaves frame ────────────
+        if (scanModeRef.current === 'book' && waitingClear.current) {
+          waitingClear.current = false;
+          setIsWaitingClear(false);
+          setNeedsClearerCapture(false);
+          needsClearerCaptureRef.current = false;
+        }
         if (waitingClear.current) {
           if (!tracked.corners) {
             // Document removed — ready for next scan
@@ -1670,7 +1963,9 @@ export default function ScannerScreen() {
         const stableTarget = scanModeRef.current === 'document'
           ? DOCUMENT_STABLE_TARGET
           : STABLE_TARGET;
-        if (corners && tracked.stable && bookFoldStable) {
+        const bookRetryReady = scanModeRef.current !== 'book' ||
+          Date.now() >= bookRetryReadyAtRef.current;
+        if (corners && tracked.stable && bookFoldStable && bookRetryReady) {
           stableFrames.current = Math.min(stableFrames.current + 1, stableTarget);
         } else {
           stableFrames.current = Math.max(stableFrames.current - 2, 0);
@@ -1702,6 +1997,9 @@ export default function ScannerScreen() {
 
   /* ── Manual capture ─────────────────────────────────────────────────────── */
   const manualCaptureFrame = useCallback(async () => {
+    const captureSession = acquireCapture('document-manual');
+    if (captureSession === null) return;
+    try {
     if (!isMockMode && !focusReady) {
       toast.info('Focusing camera. Please wait a moment.');
       return;
@@ -1720,6 +2018,7 @@ export default function ScannerScreen() {
         video,
         settingsRef.current.colorMode === 'greyscale',
       );
+      if (!captureIsCurrent('document-manual', captureSession, 'document')) return;
       // Prefer the capture-frame result over a potentially stale live overlay.
       const corners = detectCornersFromCanvas(canvas);
       let limitedResolution = false;
@@ -1797,17 +2096,22 @@ export default function ScannerScreen() {
         toast.error('The captured document is not sharp enough. Hold steady and try again.');
         return;
       }
+      if (!captureIsCurrent('document-manual', captureSession, 'document')) return;
       addPage(page);
       if (limitedResolution) {
         toast.warning('Scan captured. Review small text because this camera frame has limited resolution.');
       }
     }
+    if (!captureIsCurrent('document-manual', captureSession, 'document')) return;
     triggerCaptureEffects();
     setActivePageIndex(pageNum - 1);
 
     // Review the page first. Crop is available from the review toolbar only
     // when a user wants to adjust the automatic correction.
     setLocation('/preview');
+    } finally {
+      releaseCapture('document-manual', captureSession);
+    }
   }, [
     isMockMode, focusMode, focusReady, videoRef, edgeCorners, addPage, setActivePageIndex,
     setPendingPage, setPendingEditMode, setDetectedCorners, setLocation,
@@ -1816,14 +2120,32 @@ export default function ScannerScreen() {
 
   /* ── Book capture ───────────────────────────────────────────────────────── */
   const bookCapture = useCallback(async () => {
-    if (!isMockMode && !focusReady) {
-      toast.info('Focusing camera. Please wait a moment.');
+    const ownedSession = acquireCapture('book');
+    if (ownedSession === null) {
+      console.info('[PrivaScan] book capture skipped: capture already in flight');
       return;
     }
+    bookCaptureInFlightRef.current = true;
+    const captureSession = ownedSession;
+    let full: CameraCaptureCanvas | null = null;
+    const scheduleBookRetry = (reason: string) => {
+      if (modeRef.current === 'auto' && scanModeRef.current === 'book' &&
+        scannerMountedRef.current && captureSession === captureSessionRef.current) {
+        stableBookFoldFrames.current = 0;
+        previousBookDetectionRef.current = null;
+        bookRetryCountRef.current = Math.min(3, bookRetryCountRef.current + 1);
+        const retryDelay = [0, 650, 1_200, 2_000][bookRetryCountRef.current];
+        bookRetryReadyAtRef.current = Date.now() + retryDelay;
+        stableFrames.current = 0;
+      }
+      console.warn('[PrivaScan] book capture failed', { reason });
+    };
+    try {
     const grey = settingsRef.current.colorMode === 'greyscale';
     const base = pagesLenRef.current;
 
     if (isMockMode || !videoRef.current) {
+      if (!scannerMountedRef.current || captureSession !== captureSessionRef.current) return;
       addPage(generateMockBookHalf('left',  base + 1, settingsRef.current));
       addPage(generateMockBookHalf('right', base + 2, settingsRef.current));
     } else {
@@ -1831,44 +2153,16 @@ export default function ScannerScreen() {
       if (focusMode === 'single-shot' || focusMode === 'unknown') {
         await requestFocus();
       }
-      const previewQuads = bookDetection
-        ? [bookDetection.left, bookDetection.right]
-        : edgeCorners ? [edgeCorners] : [];
-      const previewFocused = await waitForPreviewFocus(
-        video,
-        grey,
-        previewQuads,
-        'book',
-      );
-      if (!previewFocused) {
-        if (modeRef.current === 'auto') {
-          waitingClear.current = true;
-          setIsWaitingClear(true);
-          setNeedsClearerCapture(true);
-          needsClearerCaptureRef.current = true;
-          rejectedCornersRef.current = bookDetection?.outer ?? edgeCorners;
-          rejectedBookDetectionRef.current = bookDetection;
-        }
-        toast.error('Hold steady and keep both pages and the center fold in focus.');
-        return;
-      }
       // Capture and validate the exact frame before splitting the corrected
       // book spread. Keep iOS processing within the same memory ceiling used
       // by standard document capture.
-      const full = await captureBestCameraFrame(
+      full = await captureBestCameraFrame(
         video,
         grey,
       );
 
       const useMobileQualityPipeline = isNativePlatform();
       const detection = detectBookFromCanvas(full);
-      const recoveryDetection = detection
-        ? scaleBookDetection(
-            detection,
-            video.videoWidth / Math.max(1, full.width),
-            video.videoHeight / Math.max(1, full.height),
-          )
-        : bookDetection;
       const sourcePixelsOk = detection
         ? hasRequiredSourcePixels(
             [detection.left, detection.right],
@@ -1886,14 +2180,7 @@ export default function ScannerScreen() {
           )
         : null;
       if (!bookPages) {
-        if (modeRef.current === 'auto') {
-          waitingClear.current = true;
-          setIsWaitingClear(true);
-          setNeedsClearerCapture(true);
-          needsClearerCaptureRef.current = true;
-          rejectedCornersRef.current = recoveryDetection?.outer ?? edgeCorners;
-          rejectedBookDetectionRef.current = recoveryDetection;
-        }
+        scheduleBookRetry(!detection ? 'capture-frame-detection' : sourcePixelsOk ? 'page-validation' : 'insufficient-source-pixels');
         toast.error(!detection
           ? 'Align both pages and the center fold, then try again.'
           : sourcePixelsOk
@@ -1901,17 +2188,35 @@ export default function ScannerScreen() {
             : 'Move closer so text on both pages stays sharp.');
         return;
       }
+      if (!scannerMountedRef.current || captureSession !== captureSessionRef.current ||
+        scanModeRef.current !== 'book') return;
       addPage(bookPages[0]);
       addPage(bookPages[1]);
+      bookRetryCountRef.current = 0;
+      bookRetryReadyAtRef.current = 0;
     }
 
+    if (!scannerMountedRef.current || captureSession !== captureSessionRef.current ||
+      scanModeRef.current !== 'book') return;
     rejectedBookDetectionRef.current = null;
     triggerCaptureEffects();
     setCapturedLabel(base + 2);
     setTimeout(() => setCapturedLabel(null), 1800);
     setActivePageIndex(base + 1);
     setLocation('/preview');
-  }, [isMockMode, focusMode, focusReady, videoRef, edgeCorners, bookDetection, addPage, setActivePageIndex, setLocation, triggerCaptureEffects, requestFocus]);
+    } catch (error) {
+      scheduleBookRetry('exception');
+      console.error('[PrivaScan] book capture exception', error);
+      toast.error('Book capture failed. Hold steady and try again.');
+    } finally {
+      if (full) {
+        full.width = 0;
+        full.height = 0;
+      }
+      bookCaptureInFlightRef.current = false;
+      releaseCapture('book', captureSession);
+    }
+  }, [isMockMode, focusMode, videoRef, edgeCorners, bookDetection, addPage, setActivePageIndex, setLocation, triggerCaptureEffects, requestFocus]);
 
   useEffect(() => {
     captureBookAutoRef.current = bookCapture;
@@ -1919,6 +2224,9 @@ export default function ScannerScreen() {
 
   /* ── Presentation capture ───────────────────────────────────────────────── */
   const presentationCapture = useCallback(async () => {
+    const captureSession = acquireCapture('presentation');
+    if (captureSession === null) return;
+    try {
     if (!isMockMode && !focusReady) {
       toast.info('Focusing camera. Please wait a moment.');
       return;
@@ -1927,6 +2235,7 @@ export default function ScannerScreen() {
     const pageNum = pagesLenRef.current + 1;
 
     if (isMockMode || !videoRef.current) {
+      if (!captureIsCurrent('presentation', captureSession, 'presentation')) return;
       addPage(generateMockPresentation(pageNum, settingsRef.current));
     } else {
       const video = videoRef.current;
@@ -1939,6 +2248,7 @@ export default function ScannerScreen() {
         edgeCorners ? [edgeCorners] : [],
         'presentation',
       );
+      if (!captureIsCurrent('presentation', captureSession, 'presentation')) return;
       if (!previewFocused) {
         if (modeRef.current === 'auto') {
           waitingClear.current = true;
@@ -1954,6 +2264,7 @@ export default function ScannerScreen() {
         video,
         grey,
       );
+      if (!captureIsCurrent('presentation', captureSession, 'presentation')) return;
       // Re-detect the exact high-resolution frame. The live outline guides the
       // user, but only capture-frame geometry is trusted for rectification.
       const detection = detectPresentationFromCanvas(src);
@@ -2012,14 +2323,19 @@ export default function ScannerScreen() {
         toast.error('The image is out of focus. Wait a moment and try again.');
         return;
       }
+      if (!captureIsCurrent('presentation', captureSession, 'presentation')) return;
       addPage(page);
     }
 
     setCapturedLabel(pageNum);
+    if (!captureIsCurrent('presentation', captureSession, 'presentation')) return;
     triggerCaptureEffects();
     setTimeout(() => setCapturedLabel(null), 1800);
     setActivePageIndex(pageNum - 1);
     setLocation('/preview');
+    } finally {
+      releaseCapture('presentation', captureSession);
+    }
    }, [
      isMockMode, focusMode, focusReady, videoRef, edgeCorners, addPage,
      setPendingPage, setPendingEditMode, setDetectedCorners,
@@ -2032,6 +2348,9 @@ export default function ScannerScreen() {
 
   /* ── ID Cards capture (2-stage) ─────────────────────────────────────────── */
   const idCardsCapture = useCallback(async () => {
+    const captureSession = acquireCapture('id-card');
+    if (captureSession === null) return;
+    try {
     if (!isMockMode && !focusReady) {
       toast.info('Focusing camera. Please wait a moment.');
       return;
@@ -2063,11 +2382,18 @@ export default function ScannerScreen() {
         liveCardCorners ? [liveCardCorners] : [],
         'id-card',
       );
+      if (!captureIsCurrent('id-card', captureSession, 'id-cards')) return null;
       if (!previewFocused) return null;
       const src = await captureBestCameraFrame(
         video,
         grey,
       );
+      if (!captureIsCurrent('id-card', captureSession, 'id-cards')) {
+        src.width = 0;
+        src.height = 0;
+        return null;
+      }
+      try {
       const guide = guideQuadForCanvas(
         scannerRootRef.current,
         idGuideRef.current,
@@ -2087,6 +2413,10 @@ export default function ScannerScreen() {
         settingsRef.current,
         isNativePlatform(),
       );
+      } finally {
+        src.width = 0;
+        src.height = 0;
+      }
     };
 
     if (idStage === 'front') {
@@ -2095,6 +2425,7 @@ export default function ScannerScreen() {
         rejectCapture('Align the card inside the guide, move closer, and hold steady.');
         return;
       }
+      if (!captureIsCurrent('id-card', captureSession, 'id-cards')) return;
       idFrontRef.current = frontData;
       triggerCaptureEffects();
       setIdStage('back');
@@ -2114,6 +2445,7 @@ export default function ScannerScreen() {
       if (!frontData) { setIdStage('front'); return; }
 
       if (isMockMode) {
+        if (!captureIsCurrent('id-card', captureSession, 'id-cards')) return;
         addPage(generateMockIdComposite(settingsRef.current));
         setActivePageIndex(pagesLenRef.current);
         setLocation('/preview');
@@ -2128,6 +2460,7 @@ export default function ScannerScreen() {
           backData,
           outputJpegQuality(isNativePlatform()),
         );
+        if (!captureIsCurrent('id-card', captureSession, 'id-cards')) return;
         addPage(composite);
         setActivePageIndex(pagesLenRef.current);
         toast.success('ID Card saved — front and back combined on one page.');
@@ -2141,6 +2474,9 @@ export default function ScannerScreen() {
       setIdCardReady(false);
       setCapturedLabel(pagesLenRef.current + 1);
       setTimeout(() => setCapturedLabel(null), 1800);
+    }
+    } finally {
+      releaseCapture('id-card', captureSession);
     }
   }, [
     isMockMode, focusMode, focusReady, videoRef, addPage, edgeCorners, idCardDetection, idStage,
