@@ -32,6 +32,12 @@ description: GitHub Actions requirements and keystore setup for Capacitor 8 Andr
 Release AAB job condition: `vars.RELEASE_ENABLED == 'true' || github.event_name == 'workflow_dispatch'`
 → Must use "Run workflow" button manually; push-triggered builds only produce Debug APK.
 
+## Standalone Debug APK
+
+**Why:** A tracked Android debug source-set Capacitor config containing `server.url` overrides the main config and turns a packaged APK into a Replit live-preview client. The user confirmed that removing this URL eliminates the development-preview banner.
+
+**How to apply:** Keep the tracked debug config free of `server.url` for GitHub APK builds. Generate a live-reload URL only through the dedicated live-sync command when interactive development explicitly needs it.
+
 ## Current keystore
 - File: `artifacts/web-scanner/.keys/privascan-release.p12` (gitignored)
 - Alias: `privascan`
