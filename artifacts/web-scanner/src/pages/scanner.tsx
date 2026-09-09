@@ -393,16 +393,25 @@ function captureVideoFrame(
   video: HTMLVideoElement,
   greyscale: boolean,
   maxPixels = Number.POSITIVE_INFINITY,
+  quarterTurn: -1 | 0 | 1 = 0,
 ): CameraCaptureCanvas {
   const sourcePixels = video.videoWidth * video.videoHeight;
   const scale = sourcePixels > maxPixels ? Math.sqrt(maxPixels / sourcePixels) : 1;
+  const drawWidth = Math.max(1, Math.round(video.videoWidth * scale));
+  const drawHeight = Math.max(1, Math.round(video.videoHeight * scale));
   const canvas = document.createElement('canvas') as CameraCaptureCanvas;
   canvas.captureMethod = 'video';
-  canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
-  canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+  canvas.width = quarterTurn === 0 ? drawWidth : drawHeight;
+  canvas.height = quarterTurn === 0 ? drawHeight : drawWidth;
   const ctx = canvas.getContext('2d')!;
   if (greyscale) ctx.filter = 'grayscale(100%)';
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  if (quarterTurn === 0) {
+    ctx.drawImage(video, 0, 0, drawWidth, drawHeight);
+  } else {
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate(quarterTurn * Math.PI / 2);
+    ctx.drawImage(video, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+  }
   ctx.filter = 'none';
   return canvas;
 }
@@ -1351,6 +1360,12 @@ export default function ScannerScreen() {
   const trackConfirmFrames = useRef(0);
   const previousBookDetectionRef = useRef<BookDetection | null>(null);
   const stableBookFoldFrames = useRef(0);
+  const bookSidewaysDirectionRef = useRef<-1 | 0 | 1>(0);
+  const pendingBookDirectionRef = useRef<-1 | 1 | null>(null);
+  const pendingBookDirectionSamplesRef = useRef(0);
+  const pendingBookUprightSamplesRef = useRef(0);
+  const bookDirectionUpdatedAtRef = useRef(0);
+  const bookDirectionGenerationRef = useRef(0);
   const waitingClear     = useRef(false);        // true = waiting for doc to leave frame
   const rejectedCornersRef = useRef<[Point, Point, Point, Point] | null>(null);
   const rejectedBookDetectionRef = useRef<BookDetection | null>(null);
@@ -1413,13 +1428,58 @@ export default function ScannerScreen() {
   }, [scanMode]);
 
   useEffect(() => {
-    if (scanMode !== 'book') return;
+    if (scanMode !== 'book') {
+      bookSidewaysDirectionRef.current = 0;
+      pendingBookDirectionRef.current = null;
+      pendingBookDirectionSamplesRef.current = 0;
+      pendingBookUprightSamplesRef.current = 0;
+      bookDirectionUpdatedAtRef.current = 0;
+      bookDirectionGenerationRef.current += 1;
+      setBookSidewaysDirection(0);
+      return;
+    }
 
     const handleDeviceOrientation = (event: DeviceOrientationEvent) => {
-      if (event.gamma == null || Math.abs(event.gamma) < 45) return;
+      if (event.gamma == null) return;
+      if (Math.abs(event.gamma) <= 30) {
+        pendingBookUprightSamplesRef.current += 1;
+        pendingBookDirectionRef.current = null;
+        pendingBookDirectionSamplesRef.current = 0;
+        if (
+          pendingBookUprightSamplesRef.current >= 3 &&
+          bookSidewaysDirectionRef.current !== 0
+        ) {
+          bookSidewaysDirectionRef.current = 0;
+          bookDirectionUpdatedAtRef.current = 0;
+          bookDirectionGenerationRef.current += 1;
+          stableBookFoldFrames.current = 0;
+          previousBookDetectionRef.current = null;
+          trackedCornersRef.current = null;
+          setBookSidewaysDirection(0);
+        }
+        return;
+      }
+      if (Math.abs(event.gamma) < 45) return;
+      pendingBookUprightSamplesRef.current = 0;
+      const candidate: -1 | 1 = event.gamma > 0 ? 1 : -1;
+      if (pendingBookDirectionRef.current === candidate) {
+        pendingBookDirectionSamplesRef.current += 1;
+      } else {
+        pendingBookDirectionRef.current = candidate;
+        pendingBookDirectionSamplesRef.current = 1;
+      }
+      if (pendingBookDirectionSamplesRef.current < 3) return;
       // The scanner UI remains portrait-locked. When the phone's right edge is
       // down (positive gamma), CSS-bottom is the user's physical left.
-      setBookSidewaysDirection(event.gamma > 0 ? 1 : -1);
+      bookDirectionUpdatedAtRef.current = Date.now();
+      if (bookSidewaysDirectionRef.current !== candidate) {
+        bookSidewaysDirectionRef.current = candidate;
+        bookDirectionGenerationRef.current += 1;
+        stableBookFoldFrames.current = 0;
+        previousBookDetectionRef.current = null;
+        trackedCornersRef.current = null;
+        setBookSidewaysDirection(candidate);
+      }
     };
 
     window.addEventListener('deviceorientation', handleDeviceOrientation, { passive: true });
@@ -1824,17 +1884,30 @@ export default function ScannerScreen() {
         let detectedBook: BookDetection | null = null;
         let detectedIdCard: IdCardDetection | null = null;
         let bookFoldStable = scanModeRef.current !== 'book';
+        let detectionFrameWidth = video.videoWidth;
+        let detectionFrameHeight = video.videoHeight;
         let corners: [Point, Point, Point, Point] | null;
         if (scanModeRef.current === 'book') {
-          const liveFrame = captureVideoFrame(video, false, 480 * 360);
-          const liveDetection = detectBookFromCanvas(liveFrame);
+          const bookDirection = bookSidewaysDirectionRef.current;
+          const directionIsFresh = bookDirection !== 0 &&
+            Date.now() - bookDirectionUpdatedAtRef.current <= 2_000;
+          const liveFrame = directionIsFresh
+            ? captureVideoFrame(video, false, 480 * 360, bookDirection)
+            : null;
+          const liveDetection = liveFrame ? detectBookFromCanvas(liveFrame) : null;
+          detectionFrameWidth = video.videoHeight;
+          detectionFrameHeight = video.videoWidth;
           detectedBook = liveDetection
             ? scaleBookDetection(
                 liveDetection,
-                video.videoWidth / liveFrame.width,
-                video.videoHeight / liveFrame.height,
+                detectionFrameWidth / liveFrame!.width,
+                detectionFrameHeight / liveFrame!.height,
               )
             : null;
+          if (liveFrame) {
+            liveFrame.width = 0;
+            liveFrame.height = 0;
+          }
           corners = detectedBook?.outer ?? null;
           const previousBook = previousBookDetectionRef.current;
           if (
@@ -1844,8 +1917,8 @@ export default function ScannerScreen() {
             bookFoldDistance(
               previousBook,
               detectedBook,
-              video.videoWidth,
-              video.videoHeight,
+              detectionFrameWidth,
+              detectionFrameHeight,
             ) <= BOOK_FOLD_STABLE_DISTANCE
           ) {
             stableBookFoldFrames.current = Math.min(
@@ -1902,7 +1975,7 @@ export default function ScannerScreen() {
           previousBookDetectionRef.current = null;
           stableBookFoldFrames.current = 0;
         }
-        const tracked = updateTrackedCorners(corners, video.videoWidth, video.videoHeight);
+        const tracked = updateTrackedCorners(corners, detectionFrameWidth, detectionFrameHeight);
         setEdgeCorners(tracked.corners);
         setEdgeIsLive(Boolean(corners));
         setBookDetection(detectedBook);
@@ -1937,7 +2010,12 @@ export default function ScannerScreen() {
             (
               (
                 rejectedCornersRef.current &&
-                documentMoved(rejectedCornersRef.current, tracked.corners, video.videoWidth, video.videoHeight)
+                documentMoved(
+                  rejectedCornersRef.current,
+                  tracked.corners,
+                  detectionFrameWidth,
+                  detectionFrameHeight,
+                )
               ) ||
               (
                 scanModeRef.current === 'book' &&
@@ -1948,8 +2026,8 @@ export default function ScannerScreen() {
                     bookFoldDistance(
                       rejectedBookDetectionRef.current,
                       detectedBook,
-                      video.videoWidth,
-                      video.videoHeight,
+                      detectionFrameWidth,
+                      detectionFrameHeight,
                     ) > BOOK_FOLD_STABLE_DISTANCE * 0.55
                   ) ||
                   (
@@ -2142,6 +2220,15 @@ export default function ScannerScreen() {
     }
     bookCaptureInFlightRef.current = true;
     const captureSession = ownedSession;
+    const bookDirection = bookSidewaysDirectionRef.current;
+    const bookDirectionGeneration = bookDirectionGenerationRef.current;
+    const directionIsFresh = bookDirection !== 0 &&
+      Date.now() - bookDirectionUpdatedAtRef.current <= 2_000;
+    const bookOrientationIsCurrent = () =>
+      bookDirection !== 0 &&
+      bookSidewaysDirectionRef.current === bookDirection &&
+      bookDirectionGenerationRef.current === bookDirectionGeneration &&
+      Date.now() - bookDirectionUpdatedAtRef.current <= 2_000;
     let full: CameraCaptureCanvas | null = null;
     let previewFallback: CameraCaptureCanvas | null = null;
     const scheduleBookRetry = (reason: string) => {
@@ -2165,9 +2252,17 @@ export default function ScannerScreen() {
       addPage(generateMockBookHalf('left',  base + 1, settingsRef.current));
       addPage(generateMockBookHalf('right', base + 2, settingsRef.current));
     } else {
+      if (!directionIsFresh) {
+        toast.info('Turn your phone sideways and hold it steady, then try again.');
+        return;
+      }
       const video = videoRef.current;
       if (focusMode === 'single-shot' || focusMode === 'unknown') {
         await requestFocus();
+      }
+      if (!bookOrientationIsCurrent()) {
+        toast.info('Keep the phone sideways and steady, then try again.');
+        return;
       }
       // Keep a full-resolution preview frame from the same pixels used for its
       // Book geometry. Android still photos can use a different sensor crop,
@@ -2176,6 +2271,7 @@ export default function ScannerScreen() {
         video,
         grey,
         isNativePlatform() ? MAX_MOBILE_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
+        bookDirection,
       );
       const previewDetection = detectBookFromCanvas(previewFallback);
       // Capture and validate the exact frame before splitting the corrected
@@ -2185,9 +2281,18 @@ export default function ScannerScreen() {
         video,
         grey,
       );
+      if (!bookOrientationIsCurrent()) {
+        toast.info('Hold the phone in the same sideways direction while capturing.');
+        return;
+      }
 
       const useMobileQualityPipeline = isNativePlatform();
-      let detection = detectBookFromCanvas(full);
+      // EXIF-decoded stills are trusted only when already landscape. A portrait
+      // still can contain a horizontal binding, so use the explicitly
+      // normalized video frame instead of risking a false page split.
+      let detection = full.width > full.height
+        ? detectBookFromCanvas(full)
+        : null;
       if (detection) {
         previewFallback.width = 0;
         previewFallback.height = 0;
@@ -2237,6 +2342,10 @@ export default function ScannerScreen() {
           : sourcePixelsOk
             ? 'Both pages must be sharp. Hold steady and try again.'
             : 'Move closer so text on both pages stays sharp.');
+        return;
+      }
+      if (!bookOrientationIsCurrent()) {
+        toast.info('Hold the phone in the same sideways direction while capturing.');
         return;
       }
       if (!scannerMountedRef.current || captureSession !== captureSessionRef.current ||
