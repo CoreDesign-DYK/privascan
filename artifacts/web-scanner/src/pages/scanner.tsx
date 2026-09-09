@@ -2899,14 +2899,20 @@ export default function ScannerScreen() {
                 borderColor: `${bookGuideColor}55`,
               }}
             >
-              <div className="absolute top-0 left-0 w-10 h-10 border-t-[4px] border-l-[4px] transition-colors duration-200"
-                style={{ borderColor: bookGuideColor }} />
-              <div className="absolute top-0 right-0 w-10 h-10 border-t-[4px] border-r-[4px] transition-colors duration-200"
-                style={{ borderColor: bookGuideColor }} />
-              <div className="absolute bottom-0 left-0 w-10 h-10 border-b-[4px] border-l-[4px] transition-colors duration-200"
-                style={{ borderColor: bookGuideColor }} />
-              <div className="absolute bottom-0 right-0 w-10 h-10 border-b-[4px] border-r-[4px] transition-colors duration-200"
-                style={{ borderColor: bookGuideColor }} />
+              <span
+                className="book-page-side-label book-page-side-label-left"
+                style={{ color: bookGuideColor }}
+                aria-hidden="true"
+              >
+                L
+              </span>
+              <span
+                className="book-page-side-label book-page-side-label-right"
+                style={{ color: bookGuideColor }}
+                aria-hidden="true"
+              >
+                R
+              </span>
               <div
                 className="absolute top-1/2 left-1/2 border-t-[4px] border-dashed transition-colors duration-200"
                 style={{

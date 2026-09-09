@@ -180,6 +180,42 @@
   display: block;
 }
 
+.book-page-side-label {
+  position: absolute;
+  z-index: 2;
+  font-size: 48px;
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.75);
+  transition: color 200ms ease;
+}
+
+/* The portrait scanner shows a sideways spread: top is the left page. */
+.book-page-side-label-left {
+  left: 50%;
+  top: 25%;
+  transform: translate(-50%, -50%);
+}
+
+.book-page-side-label-right {
+  left: 50%;
+  top: 75%;
+  transform: translate(-50%, -50%);
+}
+
+/* In either landscape rotation, screen-left remains L and screen-right R. */
+@media (orientation: landscape) {
+  .book-page-side-label-left {
+    left: 25%;
+    top: 50%;
+  }
+
+  .book-page-side-label-right {
+    left: 75%;
+    top: 50%;
+  }
+}
+
 /* ── Hide scrollbar (thumbnail strip) ── */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
