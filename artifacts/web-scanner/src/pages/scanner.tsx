@@ -2143,6 +2143,7 @@ export default function ScannerScreen() {
     bookCaptureInFlightRef.current = true;
     const captureSession = ownedSession;
     let full: CameraCaptureCanvas | null = null;
+    let previewFallback: CameraCaptureCanvas | null = null;
     const scheduleBookRetry = (reason: string) => {
       if (modeRef.current === 'auto' && scanModeRef.current === 'book' &&
         scannerMountedRef.current && captureSession === captureSessionRef.current) {
@@ -2168,6 +2169,15 @@ export default function ScannerScreen() {
       if (focusMode === 'single-shot' || focusMode === 'unknown') {
         await requestFocus();
       }
+      // Keep a full-resolution preview frame from the same pixels used for its
+      // Book geometry. Android still photos can use a different sensor crop,
+      // so preview coordinates must never be projected onto the still.
+      previewFallback = captureVideoFrame(
+        video,
+        grey,
+        isNativePlatform() ? MAX_MOBILE_CAPTURE_PIXELS : Number.POSITIVE_INFINITY,
+      );
+      const previewDetection = detectBookFromCanvas(previewFallback);
       // Capture and validate the exact frame before splitting the corrected
       // book spread. Keep iOS processing within the same memory ceiling used
       // by standard document capture.
@@ -2177,7 +2187,33 @@ export default function ScannerScreen() {
       );
 
       const useMobileQualityPipeline = isNativePlatform();
-      const detection = detectBookFromCanvas(full);
+      let detection = detectBookFromCanvas(full);
+      if (detection) {
+        previewFallback.width = 0;
+        previewFallback.height = 0;
+        previewFallback = null;
+      } else if (previewDetection) {
+        full.width = 0;
+        full.height = 0;
+        full = previewFallback;
+        previewFallback = null;
+        detection = previewDetection;
+      } else {
+        previewFallback.width = 0;
+        previewFallback.height = 0;
+        previewFallback = null;
+      }
+      console.info('[PrivaScan] book capture detection', {
+        source: full.captureMethod === 'still' && detection
+          ? 'captured-still'
+          : detection
+            ? 'exact-preview-frame'
+            : 'none',
+        previewFrameDetected: Boolean(previewDetection),
+        foldConfidence: detection
+          ? Number(detection.foldConfidence.toFixed(3))
+          : 0,
+      });
       const sourcePixelsOk = detection
         ? hasRequiredSourcePixels(
             [detection.left, detection.right],
@@ -2227,6 +2263,10 @@ export default function ScannerScreen() {
       if (full) {
         full.width = 0;
         full.height = 0;
+      }
+      if (previewFallback) {
+        previewFallback.width = 0;
+        previewFallback.height = 0;
       }
       bookCaptureInFlightRef.current = false;
       releaseCapture('book', captureSession);
