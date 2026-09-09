@@ -3397,7 +3397,7 @@ export default function ScannerScreen() {
                   key={id}
                   onClick={() => {
                     setScanMode(id);
-                    if (id === 'book') setMode('auto');
+                    if (id === 'book') setMode('manual');
                   }}
                   className={cn(
                     'px-3 py-1 rounded-full text-[10px] font-semibold transition-all select-none',
