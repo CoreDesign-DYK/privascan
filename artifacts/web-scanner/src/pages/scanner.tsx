@@ -1305,6 +1305,7 @@ export default function ScannerScreen() {
 
   const [scanMode,    setScanMode]    = useState<ScanMode>('document');
   const [showBookGuidance, setShowBookGuidance] = useState(false);
+  const [bookLeftPageAtBottom, setBookLeftPageAtBottom] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [homeOpen,    setHomeOpen]    = useState(false);
   // Returning from Preview/Edit starts in continuous-scan mode. Existing pages
@@ -1409,6 +1410,20 @@ export default function ScannerScreen() {
     }, 2_500);
 
     return () => window.clearTimeout(timer);
+  }, [scanMode]);
+
+  useEffect(() => {
+    if (scanMode !== 'book') return;
+
+    const handleDeviceOrientation = (event: DeviceOrientationEvent) => {
+      if (event.gamma == null || Math.abs(event.gamma) < 45) return;
+      // The scanner UI remains portrait-locked. When the phone's right edge is
+      // down (positive gamma), CSS-bottom is the user's physical left.
+      setBookLeftPageAtBottom(event.gamma > 0);
+    };
+
+    window.addEventListener('deviceorientation', handleDeviceOrientation, { passive: true });
+    return () => window.removeEventListener('deviceorientation', handleDeviceOrientation);
   }, [scanMode]);
 
   const applyTargetDpi = useCallback((value: number) => {
@@ -2900,14 +2915,24 @@ export default function ScannerScreen() {
               }}
             >
               <span
-                className="book-page-side-label book-page-side-label-left"
+                className={cn(
+                  'book-page-side-label',
+                  bookLeftPageAtBottom
+                    ? 'book-page-side-label-right'
+                    : 'book-page-side-label-left',
+                )}
                 style={{ color: bookGuideColor }}
                 aria-hidden="true"
               >
                 L
               </span>
               <span
-                className="book-page-side-label book-page-side-label-right"
+                className={cn(
+                  'book-page-side-label',
+                  bookLeftPageAtBottom
+                    ? 'book-page-side-label-left'
+                    : 'book-page-side-label-right',
+                )}
                 style={{ color: bookGuideColor }}
                 aria-hidden="true"
               >
