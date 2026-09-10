@@ -12,3 +12,4 @@
 - [Book scan geometry](book-scan-geometry.md) — Split only on a reliably detected binding; dewarp and validate left/right pages independently.
 - [Book orientation labels](book-orientation-labels.md) — In the portrait-locked scanner, derive Book L/R position and text rotation from physical device orientation.
 - [Native share file lifetime](native-share-file-lifetime.md) — Retain verified cache files after the share sheet returns; recipient apps may read them later.
+- [ID Card capture guide](id-card-capture-guide.md) — Use one focus-friendly ID-1 L-corner frame; green means aligned and ready for sequential Front/Back auto-capture.

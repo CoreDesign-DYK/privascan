@@ -8,7 +8,7 @@
 
 import { type Point } from './perspective';
 
-export const ID_CARD_ASPECT_RATIO = 85.6 / 54;
+export const ID_CARD_ASPECT_RATIO = 85.6 / 53.98;
 
 export interface IdCardDetection {
   corners: [Point, Point, Point, Point];
@@ -45,18 +45,31 @@ export function detectIdCardFromCanvas(
   );
   const width = Math.max(1, Math.round(source.width * scale));
   const height = Math.max(1, Math.round(source.height * scale));
-  const sample = document.createElement('canvas');
-  sample.width = width;
-  sample.height = height;
+  const ownsSample = scale < 1;
+  const sample = ownsSample ? document.createElement('canvas') : source;
+  if (ownsSample) {
+    sample.width = width;
+    sample.height = height;
+  }
   const context = sample.getContext('2d', { willReadFrequently: true });
-  if (!context) return null;
-  context.drawImage(source, 0, 0, width, height);
+  if (!context) {
+    if (ownsSample) {
+      sample.width = 0;
+      sample.height = 0;
+    }
+    return null;
+  }
+  if (ownsSample) context.drawImage(source, 0, 0, width, height);
   const image = context.getImageData(0, 0, width, height);
   const sampledGuide = guideCorners.map(point => ({
     x: point.x * scale,
     y: point.y * scale,
   })) as GuideQuad;
   const detection = detectIdCardFromImageData(image, sampledGuide);
+  if (ownsSample) {
+    sample.width = 0;
+    sample.height = 0;
+  }
   if (!detection) return null;
   return {
     ...detection,
