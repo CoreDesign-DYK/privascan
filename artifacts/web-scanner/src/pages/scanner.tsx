@@ -1602,8 +1602,23 @@ export default function ScannerScreen() {
     }
 
     const handleDeviceOrientation = (event: DeviceOrientationEvent) => {
-      if (event.gamma == null) return;
-      if (Math.abs(event.gamma) <= 30) {
+      if (event.beta == null || event.gamma == null) return;
+
+      // Use the gravity vector projected onto the portrait-locked screen
+      // instead of gamma alone. Android's Euler representation can flip the
+      // gamma sign when the same sideways phone is tilted toward or away from
+      // the user; sin(gamma) * cos(beta) preserves the physical screen side
+      // that is pointing down through that representation change.
+      const betaRadians = event.beta * Math.PI / 180;
+      const gammaRadians = event.gamma * Math.PI / 180;
+      const gravityX = Math.sin(gammaRadians) * Math.cos(betaRadians);
+      const gravityY = Math.sin(betaRadians);
+      const sidewaysStrength = Math.abs(gravityX);
+      const verticalStrength = Math.abs(gravityY);
+      const isConfirmedVertical =
+        sidewaysStrength <= 0.25 && verticalStrength >= 0.75;
+
+      if (isConfirmedVertical) {
         pendingBookUprightSamplesRef.current += 1;
         pendingBookDirectionRef.current = null;
         pendingBookDirectionSamplesRef.current = 0;
@@ -1621,15 +1636,26 @@ export default function ScannerScreen() {
         }
         return;
       }
-      if (Math.abs(event.gamma) < 45) return;
+
+      // An ambiguous front/back tilt must not clear or reverse a previously
+      // confirmed left/right turn. Keep it fresh until either a strong
+      // sideways vector or a confirmed vertical posture is observed.
+      if (sidewaysStrength < 0.55) {
+        pendingBookUprightSamplesRef.current = 0;
+        pendingBookDirectionRef.current = null;
+        pendingBookDirectionSamplesRef.current = 0;
+        if (bookSidewaysDirectionRef.current !== 0) {
+          bookDirectionUpdatedAtRef.current = Date.now();
+        }
+        return;
+      }
+
       pendingBookUprightSamplesRef.current = 0;
-      const candidate: -1 | 1 = event.gamma > 0 ? 1 : -1;
+      const candidate: -1 | 1 = gravityX > 0 ? 1 : -1;
       const confirmedDirection = bookSidewaysDirectionRef.current;
       if (confirmedDirection !== 0 && candidate !== confirmedDirection) {
-        // Android can flip the gamma sign when the phone is pitched backward,
-        // even though the same physical edge remains down. Never switch Book
-        // sides directly from one sign to the other. A real side change must
-        // first pass through the confirmed upright state above.
+        // Never switch sides directly. A real left/right turn must first pass
+        // through the confirmed vertical posture above.
         pendingBookDirectionRef.current = null;
         pendingBookDirectionSamplesRef.current = 0;
         bookDirectionUpdatedAtRef.current = Date.now();
@@ -3328,8 +3354,10 @@ export default function ScannerScreen() {
                 className={cn(
                   'book-page-side-label',
                   bookSidewaysDirection > 0
-                    ? 'book-page-side-label-right'
-                    : 'book-page-side-label-left',
+                    ? 'book-page-side-label-left'
+                    : bookSidewaysDirection < 0
+                      ? 'book-page-side-label-right'
+                      : 'book-page-side-label-left',
                 )}
                 style={{
                   color: bookGuideColor,
@@ -3345,8 +3373,10 @@ export default function ScannerScreen() {
                 className={cn(
                   'book-page-side-label',
                   bookSidewaysDirection > 0
-                    ? 'book-page-side-label-left'
-                    : 'book-page-side-label-right',
+                    ? 'book-page-side-label-right'
+                    : bookSidewaysDirection < 0
+                      ? 'book-page-side-label-left'
+                      : 'book-page-side-label-right',
                 )}
                 style={{
                   color: bookGuideColor,
