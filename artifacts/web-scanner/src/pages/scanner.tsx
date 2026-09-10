@@ -3759,9 +3759,9 @@ export default function ScannerScreen() {
           </div>
         )}
 
-        {/* Scan modes are only needed before the first capture. Once pages
-            exist, this space is dedicated to the edit toolbar above. */}
-        {pages.length === 0 && (
+        {/* Keep mode switching available while the camera-first result tray is
+            collapsed, including after returning via Keep scanning. */}
+        {(pages.length === 0 || resultsTrayCollapsed) && (
           <div className="scanner-mode-selector flex justify-center transition-all duration-200 pointer-events-auto">
             <div className="flex items-center gap-0 bg-white/8 border border-white/10 rounded-full px-1 py-1">
               {([
@@ -3791,7 +3791,7 @@ export default function ScannerScreen() {
         )}
 
         {/* ID Cards stage indicator */}
-        {pages.length === 0 && scanMode === 'id-cards' && (
+        {(pages.length === 0 || resultsTrayCollapsed) && scanMode === 'id-cards' && (
           <div className="scanner-id-stage flex justify-center -mt-2">
             <span className="text-[10px] font-semibold text-sky-400">
               {idStage === 'front'
