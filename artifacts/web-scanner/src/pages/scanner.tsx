@@ -1524,7 +1524,6 @@ export default function ScannerScreen() {
   const pendingBookDirectionRef = useRef<-1 | 1 | null>(null);
   const pendingBookDirectionSamplesRef = useRef(0);
   const pendingBookUprightSamplesRef = useRef(0);
-  const bookDirectionUpdatedAtRef = useRef(0);
   const bookDirectionGenerationRef = useRef(0);
   const waitingClear     = useRef(false);        // true = waiting for doc to leave frame
   const rejectedCornersRef = useRef<[Point, Point, Point, Point] | null>(null);
@@ -1593,7 +1592,6 @@ export default function ScannerScreen() {
       pendingBookDirectionRef.current = null;
       pendingBookDirectionSamplesRef.current = 0;
       pendingBookUprightSamplesRef.current = 0;
-      bookDirectionUpdatedAtRef.current = 0;
       bookDirectionGenerationRef.current += 1;
       trackedBookOverlayRef.current = null;
       setBookDetection(null);
@@ -1627,7 +1625,6 @@ export default function ScannerScreen() {
           bookSidewaysDirectionRef.current !== 0
         ) {
           bookSidewaysDirectionRef.current = 0;
-          bookDirectionUpdatedAtRef.current = 0;
           bookDirectionGenerationRef.current += 1;
           stableBookFoldFrames.current = 0;
           previousBookDetectionRef.current = null;
@@ -1644,9 +1641,7 @@ export default function ScannerScreen() {
         pendingBookUprightSamplesRef.current = 0;
         pendingBookDirectionRef.current = null;
         pendingBookDirectionSamplesRef.current = 0;
-        if (bookSidewaysDirectionRef.current !== 0) {
-          bookDirectionUpdatedAtRef.current = Date.now();
-        }
+        // Keep the confirmed side through front/back tilt ambiguity.
         return;
       }
 
@@ -1658,7 +1653,6 @@ export default function ScannerScreen() {
         // through the confirmed vertical posture above.
         pendingBookDirectionRef.current = null;
         pendingBookDirectionSamplesRef.current = 0;
-        bookDirectionUpdatedAtRef.current = Date.now();
         return;
       }
       if (pendingBookDirectionRef.current === candidate) {
@@ -1670,7 +1664,6 @@ export default function ScannerScreen() {
       if (pendingBookDirectionSamplesRef.current < 3) return;
       // The scanner UI remains portrait-locked. When the phone's right edge is
       // down (positive gamma), CSS-bottom is the user's physical left.
-      bookDirectionUpdatedAtRef.current = Date.now();
       if (bookSidewaysDirectionRef.current !== candidate) {
         bookSidewaysDirectionRef.current = candidate;
         bookDirectionGenerationRef.current += 1;
@@ -2088,9 +2081,11 @@ export default function ScannerScreen() {
         let corners: [Point, Point, Point, Point] | null;
         if (scanModeRef.current === 'book') {
           const bookDirection = bookSidewaysDirectionRef.current;
-          const directionIsFresh = bookDirection !== 0 &&
-            Date.now() - bookDirectionUpdatedAtRef.current <= 2_000;
-          const liveFrame = directionIsFresh
+          // A confirmed Book direction remains valid until the orientation
+          // state machine observes a stable vertical transition. Android may
+          // pause sensor events while the phone is held perfectly still, so a
+          // short timestamp timeout must not disable live Book detection.
+          const liveFrame = bookDirection !== 0
             ? captureVideoFrame(video, false, 480 * 360, bookDirection)
             : null;
           const liveDetection = liveFrame ? detectBookFromCanvas(liveFrame) : null;
@@ -2454,13 +2449,11 @@ export default function ScannerScreen() {
     const captureSession = ownedSession;
     const bookDirection = bookSidewaysDirectionRef.current;
     const bookDirectionGeneration = bookDirectionGenerationRef.current;
-    const directionIsFresh = bookDirection !== 0 &&
-      Date.now() - bookDirectionUpdatedAtRef.current <= 2_000;
+    const directionIsConfirmed = bookDirection !== 0;
     const bookOrientationIsCurrent = () =>
       bookDirection !== 0 &&
       bookSidewaysDirectionRef.current === bookDirection &&
-      bookDirectionGenerationRef.current === bookDirectionGeneration &&
-      Date.now() - bookDirectionUpdatedAtRef.current <= 2_000;
+      bookDirectionGenerationRef.current === bookDirectionGeneration;
     const capturedOrientationIsCurrent = () =>
       bookDirection !== 0 &&
       bookSidewaysDirectionRef.current === bookDirection &&
@@ -2488,7 +2481,7 @@ export default function ScannerScreen() {
       addPage(generateMockBookHalf('left',  base + 1, settingsRef.current));
       addPage(generateMockBookHalf('right', base + 2, settingsRef.current));
     } else {
-      if (!directionIsFresh) {
+      if (!directionIsConfirmed) {
         toast.info('Turn your phone sideways and hold it steady, then try again.');
         return;
       }
@@ -3059,7 +3052,7 @@ export default function ScannerScreen() {
             strokeWidth="10"
             strokeLinejoin="round"
             style={{
-              opacity: edgeIsLive ? 1 : 0,
+              opacity: edgeIsLive ? 1 : 0.55,
               transition: 'opacity 0.18s ease, fill 0.3s, stroke 0.3s ease',
             }}
           />
@@ -3080,7 +3073,7 @@ export default function ScannerScreen() {
             strokeLinejoin="round"
             strokeDasharray="18 14"
             style={{
-              opacity: edgeIsLive ? 1 : 0,
+              opacity: edgeIsLive ? 1 : 0.55,
               transition: 'opacity 0.18s ease, stroke 0.3s ease',
             }}
           />
